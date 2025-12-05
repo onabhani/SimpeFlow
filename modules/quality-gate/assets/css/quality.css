@@ -1,0 +1,456 @@
+/* ===== Container & basics ===== */
+.sfa-qg-field{ border:1px solid #e5e7eb; padding:8px; border-radius:6px; background:#fff; }
+.sfa-qg-ui{ margin-top:6px; }
+
+/* Status summary in Workflow step box */
+.gravityflow-status-box-field.sfa-qg-summary{ margin-top:6px; font-size:14px; line-height:1.35; }
+.sfa-qg-required-hint{ margin-top:8px; font-size:13px; color:#b91c1c; }
+.sfa-qg-disabled{ opacity:.65; cursor:not-allowed!important; }
+
+/* ===== Items (card look) ===== */
+.sfa-qg-item{
+  border:1px solid #cbd5e1;
+  border-radius:10px;
+  padding:10px 14px 12px 14px; /* equal L/R + a little bottom breathing room */
+  margin:8px 0;
+  background:#fff;
+  box-sizing:border-box;
+}
+
+/* Item head (name + status/badges + caret) — always one row */
+.sfa-qg-item-head{}
+.sfa-qg-item-head .sfa-qg-item-row{
+  display:grid;
+  grid-template-columns: minmax(0,1fr) auto 20px; /* name | status | caret */
+  align-items:center;
+  gap:8px;
+}
+.sfa-qg-item-head .sfa-qg-item-row > *{ min-width:0; } /* long names can wrap within col */
+.sfa-qg-item-name{
+  font-size:13px; font-weight:600;
+  margin:0; padding:0; border:0;
+}
+.sfa-qg-item-label{ color:#6b7280; font-weight:600; margin-right:6px; }
+.sfa-qg-status{ display:inline-flex; gap:6px; align-items:center; flex-wrap:nowrap; justify-self:end; }
+.sfa-qg-caret{ display:inline-block; justify-self:end; }
+
+/* Tag used for “Passed Previously” — DO NOT wrap */
+.sfa-qg-tag{
+  font-size:12px; color:#065f46; background:#ecfdf5; border:1px solid #a7f3d0;
+  border-radius:999px; padding:2px 8px; margin-left:8px;
+  white-space:nowrap; overflow-wrap:normal; line-height:1.15;
+}
+
+/* ===== Metric rows ===== */
+.sfa-qg-metric-row{
+  display:grid;
+  grid-template-columns: 220px auto 1fr;  /* label | radios | note */
+  gap:8px;
+  align-items:center;
+  padding:8px 14px;                        /* equal side padding */
+  border-top:1px solid #d1d5db;
+  box-sizing:border-box;
+}
+
+/* NEW — radios + note span columns 2 → last so the note can use full width */
+.sfa-qg-metric-row .sfa-qg-metric-inputs{
+  grid-column: 2 / -1;           /* occupy both the "pills" and "note" tracks */
+  display: grid;                  /* inner layout: pills | note */
+  grid-template-columns: auto 1fr;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Ensure the note really stretches */
+.sfa-qg-metric-row .sfa-qg-note{
+  width: 100% !important;
+  max-width: none !important;
+  justify-self: stretch;
+}
+
+.sfa-qg-metric-row:first-child{ border-top:0; }
+.sfa-qg-metric-row > *{ min-width:0; }
+.sfa-qg-metric-label{ color:#111827; }
+
+/* Group holding radios + note: 2-col grid so the note can expand */
+.sfa-qg-metric-inputs{
+  display:grid;
+  grid-template-columns: auto 1fr;         /* pills | note */
+  align-items:start;
+  gap:8px;
+}
+
+/* Radio pills */
+.sfa-qg-choice{ display:inline-flex; gap:8px; margin-right:8px; min-width:0; }
+.sfa-qg-radio{
+  display:inline-flex; align-items:center; gap:8px;
+  border:1px solid #d7dde6; border-radius:999px; padding:4px 10px;
+  cursor:pointer; user-select:none; background:#f9fafb;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
+}
+.sfa-qg-radio input{ position:absolute; opacity:0; pointer-events:none; }
+.sfa-qg-radio span{ line-height:1; }
+.sfa-qg-radio input:focus-visible + span{ outline:2px solid #2563eb; outline-offset:2px; border-radius:3px; }
+
+/* Selected pill colours */
+.sfa-qg-radio[data-value="pass"].is-checked,
+.sfa-qg-radio.is-pass{
+  background:#ecfdf5; border-color:#10b981; box-shadow:0 0 0 3px rgba(16,185,129,.15); color:#065f46;
+}
+.sfa-qg-radio[data-value="fail"].is-checked,
+.sfa-qg-radio.is-fail{
+  background:#fef2f2; border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.15); color:#991b1b;
+}
+
+/* Note field — full border on all sides, full width, compact height */
+.gform_wrapper .sfa-qg-note,
+.sfa-qg-note{
+  margin:8px 0 6px 0 !important;   /* no left indent; span column */
+  width:100%; max-width:100%;
+  min-height:38px; height:auto;
+  box-sizing:border-box;
+  background:#fff;
+  border:1px solid #d1d5db !important;
+  border-radius:8px;
+  padding:4px 8px;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.02);
+}
+
+.sfa-qg-readonly .sfa-qg-radio,
+.sfa-qg-readonly .sfa-qg-note{ opacity:.6; pointer-events:none; }
+
+/* ===== Read-only report (entry detail) ===== */
+.sfa-qg-report{ border:1px solid #e5e7eb; border-radius:6px; }
+.sfa-qg-report .qg-row{ display:flex; justify-content:space-between; padding:8px 10px; border-top:1px dashed #e5e7eb; }
+.sfa-qg-report .qg-row:first-child{ border-top:0; }
+.sfa-qg-report .qg-name{ font-weight:600; }
+.sfa-qg-report .qg-meta{ font-size:12px; color:#4b5563; }
+.sfa-qg-report .qg-note{ display:block; font-size:12px; color:#6b7280; margin-top:2px; }
+.sfa-qg-report .qg-summary{ padding:8px 10px; background:#f9fafb; font-size:13px; border-top:1px solid #e5e7eb; }
+
+/* Badges used in report view */
+.sfa-qg-badge{
+  display:inline-block; min-width:42px; text-align:center;
+  font-weight:700; font-size:11px; line-height:1;
+  padding:4px 6px; border-radius:4px; border:1px solid transparent;
+}
+.sfa-qg-badge.is-empty{ background:#f3f4f6; color:#6b7280; border-color:#e5e7eb; }
+.sfa-qg-badge.is-pass{  background:#ecfdf5; color:#065f46; border-color:#10b98133; }
+.sfa-qg-badge.is-fail{  background:#fef2f2; color:#991b1b; border-color:#ef444433; }
+
+/* ===== Responsive tweaks ===== */
+@media (max-width:640px){
+  /* Header already single-line grid; add a subtle separator under it */
+  .sfa-qg-item-head{ padding-bottom:6px; border-bottom:1px dashed #d1d5db; margin-bottom:8px; }
+
+  /* On phones, stack pills over the note to make the note truly full width */
+  .sfa-qg-metric-inputs{ grid-template-columns: 1fr; }
+}
+
+/* Required-note visual hint */
+.sfa-qg-note.is-required-empty{
+  border-color:#ef4444 !important;
+  box-shadow:0 0 0 2px rgba(239,68,68,.12);
+}
+
+/* QG-017: make PENDING (is-empty) look amber */
+.sfa-qg-badge.is-empty{ background:#fff7ed; color:#9a3412; border-color:#f59e0b33; }
+
+/* Blue chip for “Fixed” (used in the failed-items table) */
+.sfa-qg-badge.is-fixed{ background:#dbeafe; color:#1e40af; border-color:#93c5fd; }
+
+/* Rework: hide duplicate item names under the checkbox choices */
+.qg-rework-field .gchoice label{ font-size:0; }
+.qg-rework-field .gchoice .gform-field-label{ display:none; } /* covers newer GF markup */
+
+/* When the field isn’t editable, hide the button and the helper hint */
+.qg-rework-readonly .qg-select-all-fixed,
+.qg-rework-readonly .qg-rework-help p{ display:none; }
+
+/* spacing for the left checkbox in the rework table */
+.qg-rework-help .qg-row-check{ margin-right:8px; vertical-align:middle; }
+
+/* Ensure the description box (where we inject the rework controls) is visible */
+.qg-rework-field .gfield_description{ display:block !important; }
+
+/* Hide bulleted GF read-only list under our helper */
+.gravityflow-field-value .bulleted{ display:none; }
+
+/* ReCheck: non-target items are read-only */
+.sfa-qg-readonly .sfa-qg-radio{ cursor:not-allowed; opacity:.6; }
+.sfa-qg-readonly .sfa-qg-radio input,
+.sfa-qg-readonly .sfa-qg-note{ pointer-events:none; }
+
+/* ===== GF wrappers / gutters cleanup ===== */
+.gform_wrapper .gfield--type-quality_checklist ul,
+.gform_wrapper .gfield--type-quality_checklist ol{ list-style:none !important; padding-left:0 !important; margin-left:0 !important; }
+.gform_wrapper .gfield--type-quality_checklist .qg-row::before{ display:none !important; }
+
+/* Opt-in: remove left field gutter (set CSS Class Name: qg-no-gutter) */
+.gform_wrapper .gfield.qg-no-gutter{ margin-left:0 !important; }
+.gform_wrapper .gfield.qg-no-gutter > .ginput_container,
+.gform_wrapper .gfield.qg-no-gutter .qg-list,
+.gform_wrapper .gfield.qg-no-gutter .qg-row{ padding-left:0 !important; margin-left:0 !important; }
+.gform_wrapper .gfield.qg-no-gutter ul,
+.gform_wrapper .gfield.qg-no-gutter ol{ list-style:none !important; padding-left:0 !important; margin-left:0 !important; }
+.gform_wrapper .gfield.qg-no-gutter .qg-row::before{ display:none !important; }
+
+/* ===== Rework table ===== */
+.qg-rework-table{
+  width:100%;
+  border:1px solid #e2e2e2;
+  border-collapse:separate;
+  border-spacing:0;
+  margin:6px 0 10px;
+  table-layout:fixed;
+}
+.qg-rework-table th,
+.qg-rework-table td{
+  padding:6px 10px;
+  vertical-align:top;
+  border-top:1px solid #eee;
+}
+.qg-rework-table thead th{ background:#f9fafb; font-weight:600; border-bottom:1px solid #e2e2e2; }
+.qg-rework-table th + th,
+.qg-rework-table td + td{ border-left:1px solid #e6e6e6; }
+.qg-rework-table th:first-child,
+.qg-rework-table td:first-child{ border-left:0; }
+.qg-rework-table tr:last-child td{ border-bottom:0; }
+
+/* ===== QC preview (read-only) — remove the left gutter on the value column ===== */
+.gravityflow-field-value:has(> .sfa-qg-report){ padding-left:0 !important; margin-left:0 !important; }
+.gravityflow-field-value:has(> .sfa-qg-report)::before{ content:none !important; display:none !important; }
+/* fallback for browsers without :has() support */
+.gravityflow-field-value > .sfa-qg-report{ margin-left:0 !important; }
+
+/* ===== QC preview (read-only) list — mobile friendly, scoped ===== */
+.sfa-qg-list{ width:100%; max-width:none; margin:6px 0 10px; padding:0; box-sizing:border-box; }
+.sfa-qg-list .sfa-qg-item{
+  display:grid; grid-template-columns:1fr auto; gap:8px; align-items:start;
+  padding:10px 12px; border:1px solid #e6e6e6; border-top:0; background:#fff; box-sizing:border-box;
+}
+.sfa-qg-list .sfa-qg-item:first-child{ border-top:1px solid #e6e6e6; }
+.sfa-qg-list .sfa-qg-name,
+.sfa-qg-list .sfa-qg-note{ min-width:0; word-break:break-word; overflow-wrap:anywhere; white-space:normal; line-height:1.35; }
+.sfa-qg-list .sfa-qg-note{ color:#6b7280; }
+.sfa-qg-list .sfa-qg-badge{ display:inline-block; padding:.25rem .55rem; border-radius:999px; font-size:12px; line-height:1; white-space:nowrap; justify-self:end; }
+.sfa-qg-list .sfa-qg-badge.is-fail{ background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+.sfa-qg-list .sfa-qg-badge.is-pass{ background:#dcfce7; color:#166534; border:1px solid #bbf7d0; }
+@media (max-width:640px){
+  .sfa-qg-list .sfa-qg-item{ grid-template-columns:1fr; padding:10px; }
+  .sfa-qg-list .sfa-qg-badge{ justify-self:start; margin-top:4px; }
+}
+
+/* ===== Safety: never allow horizontal overflow from this field ===== */
+.gform_wrapper .gfield--type-quality_checklist,
+.gform_wrapper .gfield--type-quality_checklist .ginput_container,
+.gform_wrapper .gfield--type-quality_checklist .sfa-qg,
+.gform_wrapper .gfield--type-quality_checklist .sfa-qg-ui{
+  max-width:100%; box-sizing:border-box; overflow-x:hidden;
+}
+
+/* Roll back any experimental multi-column layouts on wide screens */
+@media (min-width:1200px){ .sfa-qg-ui{ display:block !important; gap:0 !important; } }
+@media (min-width:1600px){ .sfa-qg-ui{ display:block !important; } }
+
+/* === FIX: keep Pass/Fail on the left, full-width note, no clipping === */
+
+/* 1) Two-column row: [label | (pills + note)] */
+.sfa-qg-metric-row{
+  grid-template-columns: 220px 1fr !important;   /* label | inputs */
+  padding: 8px 14px !important;                  /* same both sides */
+}
+
+/* 2) Place both pills and note in the 2nd column */
+.sfa-qg-metric-row .sfa-qg-choice,
+.sfa-qg-metric-row .sfa-qg-note{
+  grid-column: 2 / 3 !important;
+}
+
+/* 3) Pills stay left; slightly tighter right margin */
+.sfa-qg-metric-row .sfa-qg-choice{
+  justify-content: flex-start !important;
+  margin-right: 6px !important;
+}
+
+/* 4) Note = true full width with compact height and full border */
+.sfa-qg-metric-row .sfa-qg-note{
+  width: 100% !important;
+  margin: 6px 0 6px 0 !important;
+  min-height: 36px !important;
+  padding: 6px 10px !important;
+  border: 1px solid #d1d5db !important;  /* ensure 4-side border */
+  border-radius: 8px !important;
+  box-sizing: border-box;
+}
+
+/* 5) Stop any clipping of rounded pills */
+.sfa-qg .sfa-qg-item,
+.gform_wrapper .gfield--type-quality_checklist .sfa-qg,
+.gform_wrapper .gfield--type-quality_checklist .sfa-qg-ui{
+  overflow: visible !important;
+}
+
+/* 6) Phones: keep layout simple (pills above note) */
+@media (max-width:640px){
+  .sfa-qg-metric-row{ grid-template-columns: 150px 1fr !important; }
+  /* already stacked because both are on column 2 */
+}
+
+
+/* Wide screens: always inline -> [Label | Pass/Fail | Note] */
+@media (min-width: 1024px){
+  .sfa-qg-metric-row{
+    grid-template-columns: 220px auto 1fr;   /* label | pills | note */
+  }
+  .sfa-qg-metric-row .sfa-qg-metric-inputs{
+    grid-template-columns: auto 1fr;         /* pills | note */
+  }
+}
+
+/* Narrow phones: give a bit more room to the label column */
+@media (max-width: 480px){
+  .sfa-qg-metric-row{
+    grid-template-columns: minmax(110px, 40%) 1fr; /* label | everything else */
+  }
+}
+
+
+
+/* === Layout: mobile vs desktop (REPLACES the previous "FIX" block) === */
+
+/* Base: safe equal side padding */
+.sfa-qg-metric-row { padding: 8px 14px; }
+
+/* MOBILE (≤640px) — label | everything; pills above note; note full width */
+@media (max-width: 640px) {
+  .sfa-qg-metric-row {
+    grid-template-columns: minmax(110px, 40%) 1fr !important; /* label | rest */
+  }
+  /* put pills and note in column 2; stack them */
+  .sfa-qg-metric-row .sfa-qg-metric-inputs,
+  .sfa-qg-metric-row .sfa-qg-note {
+    grid-column: 2 / 3 !important;
+  }
+  .sfa-qg-metric-row .sfa-qg-metric-inputs {
+    display: grid !important;
+    grid-template-columns: 1fr !important;     /* pills on their own row */
+    gap: 8px;
+  }
+  /* note must truly span full width on phones */
+  .sfa-qg-metric-row .sfa-qg-note {
+    width: 100% !important;
+    max-width: none !important;
+    justify-self: stretch;
+    margin: 6px 0 !important;
+    min-height: 36px !important;
+    padding: 6px 10px !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 8px !important;
+    box-sizing: border-box;
+  }
+}
+
+/* DESKTOP (≥1024px) — INLINE: [label | pills | note] */
+@media (min-width: 1024px) {
+  .sfa-qg-metric-row {
+    grid-template-columns: 220px auto 1fr !important;  /* label | pills | note */
+  }
+  /* ensure each piece is in its own column */
+  .sfa-qg-metric-row .sfa-qg-metric-inputs { grid-column: 2 / 3 !important; }
+  .sfa-qg-metric-row .sfa-qg-note          { grid-column: 3 / 4 !important; }
+
+  /* keep the pills slightly off the right border and tight together */
+  .sfa-qg-metric-row .sfa-qg-choice {
+    justify-content: flex-start;
+    gap: 8px;
+    margin-right: 6px; /* tiny cushion so they never kiss the edge */
+  }
+
+  /* make sure the note fills its column */
+  .sfa-qg-metric-row .sfa-qg-note {
+    width: 100% !important;
+    max-width: none !important;
+    justify-self: stretch;
+    margin: 0 !important;
+    min-height: 36px !important;
+    padding: 6px 10px !important;
+    border: 1px solid #d1d5db !important;
+    border-radius: 8px !important;
+  }
+}
+
+
+
+/* MOBILE (≤640px) — keep pills inside and aligned */
+@media (max-width:640px){
+  /* make the pills row the same width as the note row */
+  .sfa-qg-metric-row .sfa-qg-choice{
+    width: 100%;
+    justify-content: flex-end;   /* push Pass/Fail to the right edge */
+    gap: 8px;                    /* spacing between the two pills */
+    margin-right: 0;             /* no extra nudge */
+  }
+  /* prevent the pills from shrinking when right-aligned */
+  .sfa-qg-metric-row .sfa-qg-radio{ flex: 0 0 auto; }
+}
+
+
+
+/* MOBILE — note field spans full width under the pills */
+@media (max-width:640px){
+  /* stack the inputs area: [pills] then [note] */
+  .sfa-qg-metric-row .sfa-qg-metric-inputs{
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  /* force the note to occupy the whole row */
+  .sfa-qg-metric-row .sfa-qg-note{
+    grid-column: 1 / -1 !important;
+    width: 100% !important;
+    max-width: none !important;
+  }
+}
+
+
+
+
+
+
+/* MOBILE HEADER FIX: name + caret on row 1, chips on row 2 */
+@media (max-width:640px){
+  .sfa-qg-item-head .sfa-qg-item-row{
+    display:grid;
+    grid-template-columns: 1fr 20px !important;
+    grid-template-areas:
+      "name caret"
+      "status status";
+    align-items:start !important;
+    column-gap:8px;
+  }
+
+  .sfa-qg-item-head .sfa-qg-item-name{ grid-area:name !important; }
+  .sfa-qg-item-head .sfa-qg-caret{
+    grid-area:caret !important;
+    justify-self:end !important;
+    align-self:start !important;   /* keep on first line */
+  }
+  .sfa-qg-item-head .sfa-qg-status{
+    grid-area:status !important;   /* always second line */
+    justify-self:start !important;
+    margin-top:4px !important;
+    min-width:0 !important;
+    max-width:100% !important;
+    flex-wrap:wrap !important;     /* allow chips to wrap */
+    gap:8px;
+  }
+}
+
+
+
+
+@media (max-width:640px){
+  .sfa-qg-metric-row .sfa-qg-choice{ flex-wrap:nowrap; min-width:0; }
+}
+
