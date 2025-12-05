@@ -326,7 +326,9 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
         try{
           var arr = JSON.parse(raw);
           if (Array.isArray(arr)){ arr.forEach(function(n){ if (n) fixed[String(n)] = 1; }); }
-        }catch(e){}
+        }catch(e){
+          qgDebug('[QG] Failed to parse data-fixed JSON', raw, e);
+        }
       }
 
       // live checked inputs (if present)
@@ -400,7 +402,16 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
   }
 
   function renderField(cfg){
-    var $wrap = $('.sfa-qg-field[data-form="'+cfg.formId+'"][data-field="'+cfg.fieldId+'"]');
+    // Validate formId and fieldId are numeric to prevent selector injection
+    if (!cfg || !cfg.formId || !cfg.fieldId) return;
+    var formId = parseInt(cfg.formId, 10);
+    var fieldId = parseInt(cfg.fieldId, 10);
+    if (isNaN(formId) || isNaN(fieldId)) {
+      qgDebug('[QG] Invalid formId or fieldId', cfg);
+      return;
+    }
+
+    var $wrap = $('.sfa-qg-field[data-form="'+formId+'"][data-field="'+fieldId+'"]');
     if (!$wrap.length) return;
 
     var metricsDef = buildMetricsDef(cfg.metricLabels);
@@ -444,8 +455,7 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
       items = qgSortItemsForQG205(items, recheckOnly, metricsDef);
     }
 
-    // Prefer existing.fixedItems -> cfg.fixedItems -> DOM/global
-    var fixedLookup = qgBuildFixedLookup(cfg, existing);
+    // fixedLookup already built above (line 417), no need to rebuild
 
     items.forEach(function(it, idx){
       var isFixedTarget = !!(recheckOnly && isRecheckTarget[it.name]); // items coordinator marked to recheck
@@ -600,7 +610,8 @@ if (readOnly && initialStatus === 'pass') {
                     .addClass('is-checked ' + (val==='pass' ? 'is-pass' : 'is-fail'));
               }
               var note = (m.note||'');
-              var $note = $row.find('.sfa-qg-note').val(note);
+              var $note = $row.find('.sfa-qg-note');
+              $note.val(note);
               qgApplyNoteRequiredUI($note, !!cfg.requireNoteOnFail && val==='fail');
             }
           });
@@ -691,8 +702,16 @@ if (readOnly && initialStatus === 'pass') {
     var cfg = d.config || {};
     if (!cfg.formId || !cfg.fieldId) return;
 
+    // Validate formId and fieldId
+    var formId = parseInt(cfg.formId, 10);
+    var fieldId = parseInt(cfg.fieldId, 10);
+    if (isNaN(formId) || isNaN(fieldId)) {
+      qgDebug('[QG] Invalid formId or fieldId in items-loaded event', cfg);
+      return;
+    }
+
     // Re-read data-config (it was updated by the lazy-loader) and render
-    var sel = '.sfa-qg-field[data-form="' + cfg.formId + '"][data-field="' + cfg.fieldId + '"]';
+    var sel = '.sfa-qg-field[data-form="' + formId + '"][data-field="' + fieldId + '"]';
     var $wrap = jQuery(sel);
     if (!$wrap.length) return;
 
@@ -886,7 +905,9 @@ var formIdGuess = _id.replace(/\D/g,'') || '';
       var r = await fetch(SFA_QG_AJAX.url, {method:'POST', credentials:'same-origin', body:fd});
       var j = await r.json();
       if (j && j.success && j.data && Array.isArray(j.data.items)) return j.data.items;
-    }catch(e){}
+    }catch(e){
+      qgDebug('[QG] Failed to fetch items', e);
+    }
     return null;
   }
 

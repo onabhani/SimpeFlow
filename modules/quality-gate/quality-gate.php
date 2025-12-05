@@ -121,47 +121,53 @@ $e  = $wpdb->prefix . 'gf_entry';
 		}
 
 		if ( $entry_ids ) {
-			$in = implode( ',', array_map( 'intval', array_slice( $entry_ids, 0, 1000 ) ) );
+			// Process entries in batches to avoid query length limits
+			$batch_size = 1000;
+			$batches = array_chunk( $entry_ids, $batch_size );
 
-			// Attach failed items to those entries
-			$q2 = "SELECT entry_id, meta_value FROM $em WHERE meta_key = '_qc_failed_items' AND entry_id IN ($in)";
-			foreach ( (array) $wpdb->get_results( $q2, ARRAY_A ) as $r2 ) {
-				$list = json_decode( (string) $r2['meta_value'], true );
-				if ( is_array( $list ) ) {
-					$eid = (int) $r2['entry_id'];
-					foreach ( $list as $name ) {
-						$name = trim( (string) $name );
-						if ( $name === '' ) continue;
-						$top_failed[ $name ] = ( $top_failed[ $name ] ?? 0 ) + 1;
+			foreach ( $batches as $batch ) {
+				$in = implode( ',', array_map( 'intval', $batch ) );
+
+				// Attach failed items to those entries
+				$q2 = "SELECT entry_id, meta_value FROM $em WHERE meta_key = '_qc_failed_items' AND entry_id IN ($in)";
+				foreach ( (array) $wpdb->get_results( $q2, ARRAY_A ) as $r2 ) {
+					$list = json_decode( (string) $r2['meta_value'], true );
+					if ( is_array( $list ) ) {
+						$eid = (int) $r2['entry_id'];
+						foreach ( $list as $name ) {
+							$name = trim( (string) $name );
+							if ( $name === '' ) continue;
+							$top_failed[ $name ] = ( $top_failed[ $name ] ?? 0 ) + 1;
+							if ( isset( $failed_entries_map[ $eid ] ) ) {
+								$failed_entries_map[ $eid ]['items'][] = $name;
+							}
+						}
 						if ( isset( $failed_entries_map[ $eid ] ) ) {
-							$failed_entries_map[ $eid ]['items'][] = $name;
+							$failed_entries_map[ $eid ]['items'] = array_values( array_unique( $failed_entries_map[ $eid ]['items'] ) );
 						}
 					}
-					if ( isset( $failed_entries_map[ $eid ] ) ) {
-						$failed_entries_map[ $eid ]['items'] = array_values( array_unique( $failed_entries_map[ $eid ]['items'] ) );
-					}
 				}
-			}
 
-			// Attach failing metric labels
-			$q3 = "SELECT entry_id, meta_value FROM $em WHERE meta_key = '_qc_failed_metrics' AND entry_id IN ($in)";
-			foreach ( (array) $wpdb->get_results( $q3, ARRAY_A ) as $r3 ) {
-				$list = json_decode( (string) $r3['meta_value'], true );
-				if ( is_array( $list ) ) {
-					$eid = (int) $r3['entry_id'];
-					foreach ( $list as $label ) {
-						$label = trim( (string) $label );
-						if ( $label === '' ) continue;
-						$top_failed_metrics[ $label ] = ( $top_failed_metrics[ $label ] ?? 0 ) + 1;
+				// Attach failing metric labels
+				$q3 = "SELECT entry_id, meta_value FROM $em WHERE meta_key = '_qc_failed_metrics' AND entry_id IN ($in)";
+				foreach ( (array) $wpdb->get_results( $q3, ARRAY_A ) as $r3 ) {
+					$list = json_decode( (string) $r3['meta_value'], true );
+					if ( is_array( $list ) ) {
+						$eid = (int) $r3['entry_id'];
+						foreach ( $list as $label ) {
+							$label = trim( (string) $label );
+							if ( $label === '' ) continue;
+							$top_failed_metrics[ $label ] = ( $top_failed_metrics[ $label ] ?? 0 ) + 1;
+							if ( isset( $failed_entries_map[ $eid ] ) ) {
+								$failed_entries_map[ $eid ]['metrics_labels'][] = $label;
+							}
+						}
 						if ( isset( $failed_entries_map[ $eid ] ) ) {
-							$failed_entries_map[ $eid ]['metrics_labels'][] = $label;
+							$failed_entries_map[ $eid ]['metrics_labels'] = array_values( array_unique( $failed_entries_map[ $eid ]['metrics_labels'] ) );
 						}
 					}
-					if ( isset( $failed_entries_map[ $eid ] ) ) {
-						$failed_entries_map[ $eid ]['metrics_labels'] = array_values( array_unique( $failed_entries_map[ $eid ]['metrics_labels'] ) );
-					}
 				}
-			}
+			} // End batch processing loop
 		}
 
 		arsort( $top_failed );
@@ -1216,9 +1222,21 @@ if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
 	}
 }
 
-/** Collect ONLY the selected values from the rework checkbox field (supports input_X_Y and input_X[]). */
+/**
+ * Collect ONLY the selected values from the rework checkbox field (supports input_X_Y and input_X[]).
+ *
+ * SECURITY NOTE: This function accesses $_POST data but is designed to be called only within
+ * Gravity Forms hooks (gform_pre_render, gform_validation, etc.) which already perform
+ * nonce verification. Do not call this function outside of validated GF contexts.
+ */
 if ( ! function_exists( 'sfa_qg_collect_rework_values_from_post' ) ) {
 	function sfa_qg_collect_rework_values_from_post( $form, $field_id ) {
+		// Defensive check: ensure we're in a Gravity Forms context
+		if ( ! is_array( $form ) || ! isset( $form['fields'] ) ) {
+			sfa_qg_log( 'sfa_qg_collect_rework_values_from_post called with invalid form', array( 'field_id' => $field_id ) );
+			return array();
+		}
+
 		$selected = array();
 
 		// Standard GF style: input_5_1, input_5_2, ...
@@ -1733,11 +1751,19 @@ add_filter( 'gform_validation', function( $result ) {
 
 
 
+/**
+ * Get current Gravity Flow step ID from request parameters.
+ *
+ * SECURITY NOTE: Uses absint() to sanitize all input. This is safe for reading
+ * step IDs which are always integers. Gravity Flow performs its own authorization
+ * checks to ensure users can only access steps they have permission for.
+ */
 if ( ! function_exists( 'sfa_qg_current_step_id' ) ) {
 	function sfa_qg_current_step_id() {
 		// Gravity Flow sometimes uses different keys or none at all.
 		$keys = array( 'step', 'step_id', 'gflow_step', 'workflow_step', 'current_step' );
 		foreach ( $keys as $k ) {
+			// Using absint() ensures we only get positive integers, preventing injection
 			if ( isset( $_GET[ $k ] ) && $_GET[ $k ] !== '' ) return absint( $_GET[ $k ] );
 			if ( isset( $_POST[ $k ] ) && $_POST[ $k ] !== '' ) return absint( $_POST[ $k ] );
 		}
