@@ -530,6 +530,46 @@ if (readOnly && initialStatus === 'pass') {
     // Remove the placeholder once UI exists
     $wrap.find('.sfa-qg-placeholder').remove();
 
+    // LocalStorage backup helpers
+    var backupKey = 'qg_backup_' + formId + '_' + fieldId;
+    var backupTimer;
+
+    function saveToLocalStorage() {
+      try {
+        var backup = {
+          timestamp: Date.now(),
+          items: items,
+          formId: formId,
+          fieldId: fieldId,
+          entryId: getParam('lid') || getParam('entry_id') || 0
+        };
+        localStorage.setItem(backupKey, JSON.stringify(backup));
+        qgDebug('[QG] Auto-saved to localStorage', backupKey);
+      } catch(e) {
+        qgDebug('[QG] Failed to save to localStorage', e);
+      }
+    }
+
+    function scheduleAutoSave() {
+      clearTimeout(backupTimer);
+      backupTimer = setTimeout(saveToLocalStorage, 2000); // 2 second debounce
+    }
+
+    function clearLocalStorageBackup() {
+      try {
+        localStorage.removeItem(backupKey);
+        qgDebug('[QG] Cleared localStorage backup', backupKey);
+      } catch(e) {}
+    }
+
+    function getParam(name) {
+      try {
+        return new URLSearchParams(window.location.search).get(name);
+      } catch(e) {
+        return null;
+      }
+    }
+
     function collectAndWrite(){
       // sync metrics from DOM into items
       qgSyncFixedBadgesIntoQC();
@@ -586,9 +626,42 @@ if (readOnly && initialStatus === 'pass') {
 
       if (complete){
         $input.val(JSON.stringify(payload)).trigger('change');
+        clearLocalStorageBackup(); // Clear backup on successful completion
       } else {
         // Not complete → keep input empty (legacy behavior) but still updated data-config lets the UI show badges
         $input.val('').trigger('change');
+      }
+
+      // Schedule auto-save to localStorage
+      scheduleAutoSave();
+    }
+
+    // Try to restore from localStorage backup if no existing data
+    if (!existing || !existing.items) {
+      try {
+        var backupData = localStorage.getItem(backupKey);
+        if (backupData) {
+          var backup = JSON.parse(backupData);
+          var age = Date.now() - backup.timestamp;
+
+          // Only restore if backup is less than 4 hours old
+          if (age < 4 * 60 * 60 * 1000 && backup.items && backup.items.length) {
+            var ageMinutes = Math.round(age / 60000);
+            var restoreMsg = 'Found unsaved work from ' + ageMinutes + ' minutes ago. Restore it?';
+
+            if (confirm(restoreMsg)) {
+              existing = { items: backup.items };
+              qgDebug('[QG] Restored from localStorage backup', backup);
+            } else {
+              clearLocalStorageBackup();
+            }
+          } else if (age >= 4 * 60 * 60 * 1000) {
+            // Clear old backups
+            clearLocalStorageBackup();
+          }
+        }
+      } catch(e) {
+        qgDebug('[QG] Failed to restore from localStorage', e);
       }
     }
 
@@ -633,6 +706,67 @@ if (readOnly && initialStatus === 'pass') {
       $input.val('');
     }
 
+    // Swipe gestures for iPad: left = fail, right = pass
+    if ('ontouchstart' in window) {
+      var touchStartX = 0;
+      var touchStartY = 0;
+
+      $wrap.on('touchstart', '.sfa-qg-metric-row', function(e) {
+        touchStartX = e.originalEvent.touches[0].clientX;
+        touchStartY = e.originalEvent.touches[0].clientY;
+      });
+
+      $wrap.on('touchend', '.sfa-qg-metric-row', function(e) {
+        if (!touchStartX || !touchStartY) return;
+
+        var touchEndX = e.originalEvent.changedTouches[0].clientX;
+        var touchEndY = e.originalEvent.changedTouches[0].clientY;
+        var deltaX = touchEndX - touchStartX;
+        var deltaY = Math.abs(touchEndY - touchStartY);
+
+        // Require 80px horizontal swipe and less than 30px vertical (prevent accidental swipes during scroll)
+        if (Math.abs(deltaX) > 80 && deltaY < 30) {
+          var $row = $(this);
+          var $radio;
+
+          if (deltaX > 0) {
+            // Swipe right = Pass
+            $radio = $row.find('.sfa-qg-result[value="pass"]');
+          } else {
+            // Swipe left = Fail
+            $radio = $row.find('.sfa-qg-result[value="fail"]');
+          }
+
+          if ($radio.length && !$radio.prop('disabled')) {
+            $radio.prop('checked', true).trigger('change');
+
+            // Visual feedback: brief highlight
+            $row.addClass('sfa-qg-swipe-feedback');
+            setTimeout(function() {
+              $row.removeClass('sfa-qg-swipe-feedback');
+            }, 300);
+          }
+        }
+
+        touchStartX = 0;
+        touchStartY = 0;
+      });
+
+      $wrap.on('touchmove', '.sfa-qg-metric-row', function(e) {
+        // Allow scrolling, but reset if significant movement
+        var currentX = e.originalEvent.touches[0].clientX;
+        var currentY = e.originalEvent.touches[0].clientY;
+        var deltaX = Math.abs(currentX - touchStartX);
+        var deltaY = Math.abs(currentY - touchStartY);
+
+        // If vertical scroll is detected, cancel swipe
+        if (deltaY > deltaX) {
+          touchStartX = 0;
+          touchStartY = 0;
+        }
+      });
+    }
+
     // listeners
     $wrap.off('change input', '.sfa-qg-result, .sfa-qg-note');
 
@@ -673,8 +807,10 @@ if (readOnly && initialStatus === 'pass') {
     // Ensure we capture fixedItems & metrics before submit as well
     var $form = $wrap.closest('form');
     if ($form.length){
-      $form.off('submit.qg'+cfg.formId+'_'+cfg.fieldId).on('submit.qg'+cfg.formId+'_'+cfg.fieldId, function(){
+      $form.off('submit.qg'+formId+'_'+fieldId).on('submit.qg'+formId+'_'+fieldId, function(){
         collectAndWrite();
+        // Clear localStorage backup on submit (assuming successful save to server)
+        setTimeout(clearLocalStorageBackup, 1000); // Delay to ensure submission completes
       });
     }
 

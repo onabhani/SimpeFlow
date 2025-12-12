@@ -181,6 +181,17 @@
 .sfa-qg-readonly .sfa-qg-radio input,
 .sfa-qg-readonly .sfa-qg-note{ pointer-events:none; }
 
+/* Swipe gesture feedback */
+.sfa-qg-swipe-feedback{
+  background: #e0f2fe !important;
+  transform: scale(0.98);
+  transition: all 0.3s ease;
+}
+@keyframes swipeFlash {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(59, 130, 246, 0.1); }
+}
+
 /* ===== GF wrappers / gutters cleanup ===== */
 .gform_wrapper .gfield--type-quality_checklist ul,
 .gform_wrapper .gfield--type-quality_checklist ol{ list-style:none !important; padding-left:0 !important; margin-left:0 !important; }
