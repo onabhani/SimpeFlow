@@ -192,6 +192,113 @@
   50% { background: rgba(59, 130, 246, 0.1); }
 }
 
+/* Batch controls */
+.sfa-qg-batch-controls{
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.qg-batch-btn{
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  min-height: 44px; /* iPad touch target */
+}
+
+.qg-batch-btn:hover{
+  background: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.qg-batch-btn:active{
+  transform: scale(0.98);
+}
+
+.qg-batch-all-pass{
+  color: #065f46;
+  border-color: #10b981;
+  background: #ecfdf5;
+}
+
+.qg-batch-all-pass:hover{
+  background: #d1fae5;
+}
+
+.qg-batch-info{
+  margin-left: auto;
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 600;
+}
+
+/* Photo button */
+.sfa-qg-note-wrapper{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.sfa-qg-photo-btn{
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.sfa-qg-photo-btn:hover{
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.sfa-qg-photo-btn:active{
+  transform: scale(0.95);
+}
+
+.sfa-qg-photo-btn.has-photo{
+  border-color: #10b981;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.sfa-qg-photo-btn .dashicons{
+  font-size: 20px;
+  width: 20px;
+  height: 20px;
+}
+
+@media (max-width: 640px){
+  .sfa-qg-batch-controls{
+    flex-wrap: wrap;
+  }
+
+  .qg-batch-info{
+    width: 100%;
+    text-align: center;
+    margin-left: 0;
+    margin-top: 4px;
+  }
+}
+
 /* ===== GF wrappers / gutters cleanup ===== */
 .gform_wrapper .gfield--type-quality_checklist ul,
 .gform_wrapper .gfield--type-quality_checklist ol{ list-style:none !important; padding-left:0 !important; margin-left:0 !important; }

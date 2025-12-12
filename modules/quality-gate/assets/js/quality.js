@@ -214,16 +214,32 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     $choices.append($pass).append($fail);
     $row.append($choices); // grid column 2
 
-    // Col 3: note
+    // Col 3: note + photo button wrapper
+    var $noteWrapper = $('<div class="sfa-qg-note-wrapper"></div>');
     var $note = $('<input type="text" class="sfa-qg-note" data-i="'+i+'" data-m="'+mIndex+'" placeholder="Note (required if Fail)">');
     if (metric && metric.note) $note.val(metric.note);
     if (requireNoteOnFail && metric && metric.result === 'fail') $note.attr('required','required');
+
+    // Photo evidence button (only on touch devices and not read-only)
+    if ('ontouchstart' in window && !readOnly) {
+      var hasPhoto = !!(metric && metric.photo);
+      var $photoBtn = $(
+        '<button type="button" class="sfa-qg-photo-btn' + (hasPhoto ? ' has-photo' : '') + '" ' +
+          'data-i="'+i+'" data-m="'+mIndex+'" title="Add photo evidence">' +
+          '<span class="dashicons ' + (hasPhoto ? 'dashicons-yes' : 'dashicons-camera') + '"></span>' +
+        '</button>'
+      );
+      $noteWrapper.append($note).append($photoBtn);
+    } else {
+      $noteWrapper.append($note);
+    }
+
     if (readOnly){
       $choices.find('input').prop('disabled', true);
       $note.prop('disabled', true);
       $row.addClass('sfa-qg-readonly');
     }
-    $row.append($note); // grid column 3
+    $row.append($noteWrapper); // grid column 3
 
     return $row;
   }
@@ -767,6 +783,126 @@ if (readOnly && initialStatus === 'pass') {
       });
     }
 
+    // Batch controls for quick operations
+    function addBatchControls() {
+      var $batchBar = $(
+        '<div class="sfa-qg-batch-controls">' +
+          '<button type="button" class="qg-batch-btn qg-batch-all-pass">✓ All Pass</button>' +
+          '<button type="button" class="qg-batch-btn qg-batch-all-clear">⟲ Clear All</button>' +
+          '<span class="qg-batch-info"></span>' +
+        '</div>'
+      );
+
+      $ui.prepend($batchBar);
+
+      // All Pass handler
+      $batchBar.find('.qg-batch-all-pass').on('click', function(e) {
+        e.preventDefault();
+
+        if (!confirm('Mark all metrics as PASS?')) return;
+
+        $ui.find('.sfa-qg-item').each(function() {
+          var $item = $(this);
+          if ($item.find('.sfa-qg-readonly').length) return; // Skip read-only items
+
+          $item.find('.sfa-qg-result[value="pass"]').each(function() {
+            if (!$(this).prop('disabled')) {
+              $(this).prop('checked', true).trigger('change');
+            }
+          });
+
+          setCollapseState($item, false); // Collapse after marking pass
+        });
+
+        $(this).blur();
+      });
+
+      // Clear All handler
+      $batchBar.find('.qg-batch-all-clear').on('click', function(e) {
+        e.preventDefault();
+
+        if (!confirm('Clear all selections?')) return;
+
+        $ui.find('.sfa-qg-result:checked').each(function() {
+          if (!$(this).prop('disabled')) {
+            $(this).prop('checked', false);
+            $(this).closest('.sfa-qg-radio').removeClass('is-checked is-pass is-fail');
+          }
+        });
+
+        $ui.find('.sfa-qg-note').each(function() {
+          if (!$(this).prop('disabled')) {
+            $(this).val('');
+          }
+        });
+
+        collectAndWrite();
+        $(this).blur();
+      });
+
+      updateBatchInfo();
+    }
+
+    function updateBatchInfo() {
+      var total = $ui.find('.sfa-qg-result').length / 2; // 2 radios per metric
+      var checked = $ui.find('.sfa-qg-result:checked').length;
+      var pct = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+      $ui.find('.qg-batch-info').text(checked + '/' + total + ' (' + pct + '%)');
+    }
+
+    // Add batch controls if not read-only
+    if (!readOnly) {
+      addBatchControls();
+    }
+
+    // Photo evidence handler
+    $wrap.on('click', '.sfa-qg-photo-btn', function(e) {
+      e.preventDefault();
+      var $btn = $(this);
+      var i = parseInt($btn.data('i'), 10);
+      var m = parseInt($btn.data('m'), 10);
+
+      // Create hidden file input for iPad camera
+      var $fileInput = $('<input type="file" accept="image/*" capture="environment" style="display:none;">');
+      $('body').append($fileInput);
+
+      $fileInput.on('change', function() {
+        if (this.files && this.files[0]) {
+          var file = this.files[0];
+          var reader = new FileReader();
+
+          reader.onload = function(ev) {
+            var photoData = ev.target.result; // base64 data URL
+
+            // Store photo in metric data
+            if (!items[i]) items[i] = { name: '', metrics: [] };
+            if (!items[i].metrics[m]) items[i].metrics[m] = { k: metricsDef[m].k, result: '', note: '' };
+            items[i].metrics[m].photo = photoData;
+            items[i].metrics[m].photoName = file.name;
+
+            // Update button appearance
+            $btn.addClass('has-photo');
+            $btn.find('.dashicons')
+              .removeClass('dashicons-camera')
+              .addClass('dashicons-yes');
+
+            qgDebug('[QG] Photo added', { item: i, metric: m, size: file.size });
+
+            collectAndWrite();
+          };
+
+          reader.readAsDataURL(file);
+        }
+
+        // Remove temporary input
+        $fileInput.remove();
+      });
+
+      // Trigger file picker
+      $fileInput.click();
+    });
+
     // listeners
     $wrap.off('change input', '.sfa-qg-result, .sfa-qg-note');
 
@@ -789,6 +925,7 @@ if (readOnly && initialStatus === 'pass') {
       if (val==='fail'){ setCollapseState($item, true); }
 
       collectAndWrite();
+      updateBatchInfo();
     });
 
     // Note typing — clear/add hint instantly, then save
