@@ -466,6 +466,9 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
 
     var $ui = $('<div class="sfa-qg-ui"></div>');
 
+    // Determine if we should show batch controls (global editability)
+    var showBatchControls = isQualityGate || isUserInput; // Show on both QC and rework steps
+
     // QG-205 — sort when returning after rework:
     if (isQualityGate || (Array.isArray(recheckOnly) && recheckOnly.length)) {
       items = qgSortItemsForQG205(items, recheckOnly, metricsDef);
@@ -851,9 +854,41 @@ if (readOnly && initialStatus === 'pass') {
       $ui.find('.qg-batch-info').text(checked + '/' + total + ' (' + pct + '%)');
     }
 
-    // Add batch controls if not read-only
-    if (!readOnly) {
+    function addExpandCollapseAll() {
+      var $controls = $ui.find('.sfa-qg-batch-controls');
+      if (!$controls.length) return;
+
+      var $expandBtn = $(
+        '<button type="button" class="qg-batch-btn qg-expand-all">▾ Expand All</button>'
+      );
+      var $collapseBtn = $(
+        '<button type="button" class="qg-batch-btn qg-collapse-all">▸ Collapse All</button>'
+      );
+
+      // Insert after batch info
+      $controls.find('.qg-batch-info').before($expandBtn).before($collapseBtn);
+
+      $expandBtn.on('click', function(e) {
+        e.preventDefault();
+        $ui.find('.sfa-qg-item').each(function() {
+          setCollapseState($(this), true); // true = expanded
+        });
+        $(this).blur();
+      });
+
+      $collapseBtn.on('click', function(e) {
+        e.preventDefault();
+        $ui.find('.sfa-qg-item').each(function() {
+          setCollapseState($(this), false); // false = collapsed
+        });
+        $(this).blur();
+      });
+    }
+
+    // Add batch controls and expand/collapse toggles
+    if (showBatchControls) {
       addBatchControls();
+      addExpandCollapseAll();
     }
 
     // Photo evidence handler

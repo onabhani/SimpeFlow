@@ -9,30 +9,75 @@
 
 /* ===== Items (card look) ===== */
 .sfa-qg-item{
-  border:1px solid #cbd5e1;
-  border-radius:10px;
-  padding:10px 14px 12px 14px; /* equal L/R + a little bottom breathing room */
-  margin:8px 0;
+  border:2px solid #e5e7eb;
+  border-radius:12px;
+  padding:0; /* padding now on header and body separately */
+  margin:10px 0;
   background:#fff;
   box-sizing:border-box;
+  overflow:hidden;
+  transition: all 0.2s ease;
 }
 
-/* Item head (name + status/badges + caret) — always one row */
-.sfa-qg-item-head{}
+.sfa-qg-item:hover{
+  border-color:#d1d5db;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+/* Item head (name + status/badges + caret) — cleaner design */
+.sfa-qg-item-head{
+  padding:14px 16px;
+  background:#f9fafb;
+  border-bottom:2px solid #e5e7eb;
+}
 .sfa-qg-item-head .sfa-qg-item-row{
   display:grid;
-  grid-template-columns: minmax(0,1fr) auto 20px; /* name | status | caret */
+  grid-template-columns: minmax(0,1fr) auto 24px; /* name | status | caret */
   align-items:center;
-  gap:8px;
+  gap:12px;
 }
 .sfa-qg-item-head .sfa-qg-item-row > *{ min-width:0; } /* long names can wrap within col */
 .sfa-qg-item-name{
-  font-size:13px; font-weight:600;
-  margin:0; padding:0; border:0;
+  font-size:15px;
+  font-weight:700;
+  margin:0;
+  padding:0;
+  border:0;
+  color:#111827;
 }
-.sfa-qg-item-label{ color:#6b7280; font-weight:600; margin-right:6px; }
-.sfa-qg-status{ display:inline-flex; gap:6px; align-items:center; flex-wrap:nowrap; justify-self:end; }
-.sfa-qg-caret{ display:inline-block; justify-self:end; }
+.sfa-qg-item-label{
+  color:#9ca3af;
+  font-weight:600;
+  margin-right:6px;
+  font-size:12px;
+  text-transform:uppercase;
+}
+.sfa-qg-status{
+  display:inline-flex;
+  gap:6px;
+  align-items:center;
+  flex-wrap:nowrap;
+  justify-self:end;
+}
+.sfa-qg-caret{
+  display:inline-block;
+  justify-self:end;
+  font-size:18px;
+  color:#6b7280;
+  transition: transform 0.2s ease;
+}
+
+.sfa-qg-item:not(.is-collapsed) .sfa-qg-caret{
+  transform: rotate(0deg);
+}
+.sfa-qg-item.is-collapsed .sfa-qg-caret{
+  transform: rotate(-90deg);
+}
+
+.sfa-qg-item-body{
+  padding:16px;
+  background:#fff;
+}
 
 /* Tag used for “Passed Previously” — DO NOT wrap */
 .sfa-qg-tag{
@@ -41,15 +86,22 @@
   white-space:nowrap; overflow-wrap:normal; line-height:1.15;
 }
 
-/* ===== Metric rows ===== */
+/* ===== Metric rows - cleaner, more spacious ===== */
 .sfa-qg-metric-row{
   display:grid;
   grid-template-columns: 220px auto 1fr;  /* label | radios | note */
-  gap:8px;
+  gap:12px;
   align-items:center;
-  padding:8px 14px;                        /* equal side padding */
-  border-top:1px solid #d1d5db;
+  padding:14px 0;
+  border-top:1px solid #e5e7eb;
   box-sizing:border-box;
+}
+.sfa-qg-metric-row:first-child{
+  border-top:0;
+  padding-top:0;
+}
+.sfa-qg-metric-row:last-child{
+  padding-bottom:0;
 }
 
 /* NEW — radios + note span columns 2 → last so the note can use full width */
@@ -68,9 +120,12 @@
   justify-self: stretch;
 }
 
-.sfa-qg-metric-row:first-child{ border-top:0; }
 .sfa-qg-metric-row > *{ min-width:0; }
-.sfa-qg-metric-label{ color:#111827; }
+.sfa-qg-metric-label{
+  color:#374151;
+  font-weight:600;
+  font-size:14px;
+}
 
 /* Group holding radios + note: 2-col grid so the note can expand */
 .sfa-qg-metric-inputs{
@@ -128,15 +183,34 @@
 .sfa-qg-report .qg-note{ display:block; font-size:12px; color:#6b7280; margin-top:2px; }
 .sfa-qg-report .qg-summary{ padding:8px 10px; background:#f9fafb; font-size:13px; border-top:1px solid #e5e7eb; }
 
-/* Badges used in report view */
+/* Badges - cleaner, less intrusive */
 .sfa-qg-badge{
-  display:inline-block; min-width:42px; text-align:center;
-  font-weight:700; font-size:11px; line-height:1;
-  padding:4px 6px; border-radius:4px; border:1px solid transparent;
+  display:inline-block;
+  min-width:50px;
+  text-align:center;
+  font-weight:700;
+  font-size:11px;
+  line-height:1;
+  padding:5px 10px;
+  border-radius:6px;
+  border:2px solid;
+  letter-spacing:0.3px;
 }
-.sfa-qg-badge.is-empty{ background:#f3f4f6; color:#6b7280; border-color:#e5e7eb; }
-.sfa-qg-badge.is-pass{  background:#ecfdf5; color:#065f46; border-color:#10b98133; }
-.sfa-qg-badge.is-fail{  background:#fef2f2; color:#991b1b; border-color:#ef444433; }
+.sfa-qg-badge.is-empty{
+  background:#fff;
+  color:#9ca3af;
+  border-color:#e5e7eb;
+}
+.sfa-qg-badge.is-pass{
+  background:#ecfdf5;
+  color:#047857;
+  border-color:#10b981;
+}
+.sfa-qg-badge.is-fail{
+  background:#fef2f2;
+  color:#dc2626;
+  border-color:#ef4444;
+}
 
 /* ===== Responsive tweaks ===== */
 @media (max-width:640px){
@@ -192,54 +266,71 @@
   50% { background: rgba(59, 130, 246, 0.1); }
 }
 
-/* Batch controls */
+/* Batch controls - cleaner, more compact */
 .sfa-qg-batch-controls{
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 2px solid #e5e7eb;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .qg-batch-btn{
-  padding: 8px 16px;
+  padding: 8px 14px;
   border: 1px solid #d1d5db;
-  border-radius: 6px;
+  border-radius: 8px;
   background: #fff;
   cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
+  font-size: 13px;
+  font-weight: 600;
   transition: all 0.2s ease;
-  min-height: 44px; /* iPad touch target */
+  min-height: 42px; /* iPad touch target */
+  white-space: nowrap;
 }
 
 .qg-batch-btn:hover{
-  background: #f3f4f6;
+  background: #f9fafb;
   border-color: #9ca3af;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
 }
 
 .qg-batch-btn:active{
-  transform: scale(0.98);
+  transform: scale(0.98) translateY(0);
 }
 
 .qg-batch-all-pass{
-  color: #065f46;
-  border-color: #10b981;
-  background: #ecfdf5;
+  color: #fff;
+  background: #10b981;
+  border-color: #059669;
 }
 
 .qg-batch-all-pass:hover{
-  background: #d1fae5;
+  background: #059669;
+  border-color: #047857;
+}
+
+.qg-expand-all,
+.qg-collapse-all{
+  color: #4b5563;
+  background: #f9fafb;
+  border-color: #d1d5db;
 }
 
 .qg-batch-info{
   margin-left: auto;
-  font-size: 13px;
-  color: #6b7280;
-  font-weight: 600;
+  font-size: 14px;
+  color: #111827;
+  font-weight: 700;
+  background: #f3f4f6;
+  padding: 8px 14px;
+  border-radius: 8px;
+  white-space: nowrap;
 }
 
 /* Photo button */
@@ -288,14 +379,33 @@
 
 @media (max-width: 640px){
   .sfa-qg-batch-controls{
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .qg-batch-btn{
+    width: 100%;
+    justify-content: center;
   }
 
   .qg-batch-info{
     width: 100%;
     text-align: center;
     margin-left: 0;
-    margin-top: 4px;
+    order: -1; /* Show progress at top on mobile */
+    margin-bottom: 8px;
+  }
+
+  .sfa-qg-item-head{
+    padding:12px;
+  }
+
+  .sfa-qg-item-body{
+    padding:12px;
+  }
+
+  .sfa-qg-metric-row{
+    padding:12px 0;
   }
 }
 
