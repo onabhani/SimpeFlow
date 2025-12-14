@@ -1,3 +1,4 @@
+/* Quality Gate CSS - Version 2.0 - Inline Layout Update */
 /* ===== Container & basics ===== */
 .sfa-qg-field{ border:1px solid #e5e7eb; padding:8px; border-radius:6px; background:#fff; }
 .sfa-qg-ui{ margin-top:6px; }
@@ -88,10 +89,10 @@
 
 /* ===== Metric rows - inline layout ===== */
 .sfa-qg-metric-row{
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 12px !important;
   padding: 14px 0;
   border-top:1px solid #e5e7eb;
   box-sizing:border-box;
@@ -116,15 +117,18 @@
 
 /* Radio choices inline */
 .sfa-qg-choice{
-  display: inline-flex;
-  gap: 8px;
-  flex: 0 0 auto;
+  display: inline-flex !important;
+  gap: 8px !important;
+  flex: 0 0 auto !important;
 }
 
 /* Note wrapper with photo button - takes remaining space */
 .sfa-qg-note-wrapper{
-  flex: 1 1 auto;
-  min-width: 200px;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  flex: 1 1 auto !important;
+  min-width: 200px !important;
 }
 
 /* Radio pills */
@@ -351,13 +355,6 @@
 }
 
 /* Photo button */
-.sfa-qg-note-wrapper{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-}
-
 .sfa-qg-photo-btn{
   flex-shrink: 0;
   width: 44px;

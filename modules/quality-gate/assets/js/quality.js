@@ -220,9 +220,9 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     if (metric && metric.note) $note.val(metric.note);
     if (requireNoteOnFail && metric && metric.result === 'fail') $note.attr('required','required');
 
-    // Photo evidence button (only on touch devices, not read-only)
+    // Photo evidence button (visible on all devices for testing, can be refined later)
     // Button is hidden by default, only shown when FAIL is explicitly selected
-    if ('ontouchstart' in window && !readOnly) {
+    if (!readOnly) {
       var hasPhoto = !!(metric && metric.photo);
       // Only show if result is explicitly 'fail', otherwise always hidden
       var shouldShow = (metric && metric.result === 'fail');
