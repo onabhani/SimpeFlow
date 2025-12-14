@@ -266,18 +266,22 @@
   50% { background: rgba(59, 130, 246, 0.1); }
 }
 
-/* Batch controls - cleaner, more compact */
+/* Batch controls - fixed layout, no overlap */
 .sfa-qg-batch-controls{
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: 8px;
-  padding: 10px 14px;
+  padding: 12px;
   background: #fff;
   border: 2px solid #e5e7eb;
   border-radius: 10px;
   margin-bottom: 16px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* Progress info takes full width on new row */
+.sfa-qg-batch-controls .qg-batch-info{
+  grid-column: 1 / -1;
 }
 
 .qg-batch-btn{
@@ -323,14 +327,14 @@
 }
 
 .qg-batch-info{
-  margin-left: auto;
-  font-size: 14px;
-  color: #111827;
-  font-weight: 700;
-  background: #f3f4f6;
-  padding: 8px 14px;
-  border-radius: 8px;
-  white-space: nowrap;
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 600;
+  background: #f9fafb;
+  padding: 8px;
+  border-radius: 6px;
+  text-align: center;
+  border: 1px solid #e5e7eb;
 }
 
 /* Photo button */
@@ -343,8 +347,8 @@
 
 .sfa-qg-photo-btn{
   flex-shrink: 0;
-  width: 44px;
-  height: 44px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border: 2px solid #d1d5db;
   border-radius: 8px;
@@ -354,6 +358,12 @@
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
+  font-size: 20px;
+  line-height: 1;
+}
+
+.sfa-qg-photo-btn.hidden{
+  display: none;
 }
 
 .sfa-qg-photo-btn:hover{
@@ -368,32 +378,17 @@
 .sfa-qg-photo-btn.has-photo{
   border-color: #10b981;
   background: #ecfdf5;
-  color: #065f46;
-}
-
-.sfa-qg-photo-btn .dashicons{
-  font-size: 20px;
-  width: 20px;
-  height: 20px;
+  font-weight: bold;
 }
 
 @media (max-width: 640px){
   .sfa-qg-batch-controls{
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 
   .qg-batch-btn{
     width: 100%;
-    justify-content: center;
-  }
-
-  .qg-batch-info{
-    width: 100%;
     text-align: center;
-    margin-left: 0;
-    order: -1; /* Show progress at top on mobile */
-    margin-bottom: 8px;
   }
 
   .sfa-qg-item-head{

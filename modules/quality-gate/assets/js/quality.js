@@ -220,13 +220,17 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     if (metric && metric.note) $note.val(metric.note);
     if (requireNoteOnFail && metric && metric.result === 'fail') $note.attr('required','required');
 
-    // Photo evidence button (only on touch devices and not read-only)
+    // Photo evidence button (only on touch devices, not read-only, and when FAIL is selected)
     if ('ontouchstart' in window && !readOnly) {
       var hasPhoto = !!(metric && metric.photo);
+      var isFail = !!(metric && metric.result === 'fail');
+
       var $photoBtn = $(
-        '<button type="button" class="sfa-qg-photo-btn' + (hasPhoto ? ' has-photo' : '') + '" ' +
+        '<button type="button" class="sfa-qg-photo-btn' +
+          (hasPhoto ? ' has-photo' : '') +
+          (isFail ? '' : ' hidden') + '" ' +
           'data-i="'+i+'" data-m="'+mIndex+'" title="Add photo evidence">' +
-          '<span class="dashicons ' + (hasPhoto ? 'dashicons-yes' : 'dashicons-camera') + '"></span>' +
+          '📷' +
         '</button>'
       );
       $noteWrapper.append($note).append($photoBtn);
@@ -918,9 +922,7 @@ if (readOnly && initialStatus === 'pass') {
 
             // Update button appearance
             $btn.addClass('has-photo');
-            $btn.find('.dashicons')
-              .removeClass('dashicons-camera')
-              .addClass('dashicons-yes');
+            $btn.text('✓');
 
             qgDebug('[QG] Photo added', { item: i, metric: m, size: file.size });
 
@@ -958,6 +960,16 @@ if (readOnly && initialStatus === 'pass') {
       var $note = $item.find('.sfa-qg-note[data-i="'+i+'"][data-m="'+m+'"]');
       qgApplyNoteRequiredUI($note, !!cfg.requireNoteOnFail && val==='fail');
       if (val==='fail'){ setCollapseState($item, true); }
+
+      // Show/hide photo button based on fail/pass selection
+      var $photoBtn = $item.find('.sfa-qg-photo-btn[data-i="'+i+'"][data-m="'+m+'"]');
+      if ($photoBtn.length) {
+        if (val === 'fail') {
+          $photoBtn.removeClass('hidden');
+        } else {
+          $photoBtn.addClass('hidden');
+        }
+      }
 
       collectAndWrite();
       updateBatchInfo();
