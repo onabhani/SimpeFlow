@@ -1,4 +1,4 @@
-/* Quality Gate CSS - Version 2.1 - Responsive Full Width Update */
+/* Quality Gate CSS - Version 3.0 - FORCED INLINE LAYOUT */
 /* ===== Container & basics ===== */
 .sfa-qg-field{
   border:1px solid #e5e7eb;
@@ -14,6 +14,11 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
+}
+
+/* VISUAL TEST MARKER - If you see red border, new CSS is loading */
+.sfa-qg-batch-controls{
+  border: 3px solid red !important;
 }
 
 /* Status summary in Workflow step box */
@@ -102,36 +107,41 @@
   white-space:nowrap; overflow-wrap:normal; line-height:1.15;
 }
 
-/* ===== Metric rows - inline layout ===== */
+/* ===== Metric rows - FORCED INLINE LAYOUT (DESKTOP + TABLET + MOBILE ALL) ===== */
+.gform_wrapper .sfa-qg-metric-row,
+.sfa-qg-ui .sfa-qg-metric-row,
 .sfa-qg-metric-row{
   display: flex !important;
+  flex-direction: row !important;
   flex-wrap: nowrap !important;
   align-items: center !important;
   gap: 16px !important;
-  padding: 20px 0;
-  border-top:1px solid #e5e7eb;
-  box-sizing:border-box;
+  padding: 20px 0 !important;
+  border-top:1px solid #e5e7eb !important;
+  box-sizing:border-box !important;
 }
 .sfa-qg-metric-row:first-child{
-  border-top:0;
-  padding-top:0;
+  border-top:0 !important;
+  padding-top:0 !important;
 }
 .sfa-qg-metric-row:last-child{
-  padding-bottom:0;
+  padding-bottom:0 !important;
 }
 
-.sfa-qg-metric-row > *{ min-width:0; }
+.sfa-qg-metric-row > *{ min-width:0 !important; }
 
+.gform_wrapper .sfa-qg-metric-label,
 .sfa-qg-metric-label{
-  color:#374151;
-  font-weight:600;
-  font-size:14px;
+  color:#374151 !important;
+  font-weight:600 !important;
+  font-size:14px !important;
   flex: 0 0 auto !important;
   min-width: 140px !important;
   max-width: 180px !important;
 }
 
 /* Radio choices inline */
+.gform_wrapper .sfa-qg-choice,
 .sfa-qg-choice{
   display: inline-flex !important;
   gap: 8px !important;
@@ -139,6 +149,7 @@
 }
 
 /* Note wrapper with photo button - takes remaining space */
+.gform_wrapper .sfa-qg-note-wrapper,
 .sfa-qg-note-wrapper{
   display: flex !important;
   align-items: center !important;
@@ -243,29 +254,13 @@
   border-color:#ef4444;
 }
 
-/* ===== Responsive tweaks ===== */
+/* ===== Responsive tweaks - DISABLED FOR TESTING ===== */
+/* ALL SCREENS USE INLINE LAYOUT */
 @media (max-width:480px){
-  /* On phones only, stack metric rows vertically */
+  /* KEEP INLINE LAYOUT EVEN ON PHONES */
   .sfa-qg-metric-row{
-    flex-direction: column !important;
-    align-items: flex-start !important;
-    gap: 12px !important;
-  }
-
-  .sfa-qg-metric-label{
-    width: 100% !important;
-    min-width: auto !important;
-    max-width: none !important;
-  }
-
-  .sfa-qg-choice{
-    width: 100% !important;
-    justify-content: flex-start !important;
-  }
-
-  .sfa-qg-note-wrapper{
-    width: 100% !important;
-    min-width: auto !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
   }
 
   .sfa-qg-item-head{
