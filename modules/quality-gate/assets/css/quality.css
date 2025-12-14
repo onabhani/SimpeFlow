@@ -10,10 +10,10 @@
 
 /* ===== Items (card look) ===== */
 .sfa-qg-item{
-  border:2px solid #d1d5db;
+  border:2px solid #d1d5db !important;
   border-radius:12px;
-  padding:0; /* padding now on header and body separately */
-  margin:20px 0;
+  padding:0;
+  margin:24px 0;
   background:#fff;
   box-sizing:border-box;
   overflow:hidden;
@@ -90,10 +90,10 @@
 /* ===== Metric rows - inline layout ===== */
 .sfa-qg-metric-row{
   display: flex !important;
-  flex-wrap: wrap !important;
+  flex-wrap: nowrap !important;
   align-items: center !important;
-  gap: 12px !important;
-  padding: 14px 0;
+  gap: 16px !important;
+  padding: 16px 0;
   border-top:1px solid #e5e7eb;
   box-sizing:border-box;
 }
@@ -111,8 +111,9 @@
   color:#374151;
   font-weight:600;
   font-size:14px;
-  flex: 0 0 auto;
-  min-width: 120px;
+  flex: 0 0 auto !important;
+  min-width: 140px !important;
+  max-width: 180px !important;
 }
 
 /* Radio choices inline */
@@ -126,9 +127,10 @@
 .sfa-qg-note-wrapper{
   display: flex !important;
   align-items: center !important;
-  gap: 10px !important;
+  gap: 12px !important;
   flex: 1 1 auto !important;
-  min-width: 200px !important;
+  min-width: 250px !important;
+  max-width: 100% !important;
 }
 
 /* Radio pills */
@@ -209,30 +211,34 @@
 }
 
 /* ===== Responsive tweaks ===== */
-@media (max-width:768px){
-  /* Header already single-line grid; add a subtle separator under it */
-  .sfa-qg-item-head{ padding-bottom:6px; border-bottom:1px dashed #d1d5db; margin-bottom:8px; }
-
-  /* On tablets/phones, stack metric label, choices, and note vertically */
+@media (max-width:480px){
+  /* On phones only, stack metric rows vertically */
   .sfa-qg-metric-row{
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 10px;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
   }
 
   .sfa-qg-metric-label{
-    width: 100%;
-    min-width: auto;
+    width: 100% !important;
+    min-width: auto !important;
+    max-width: none !important;
   }
 
   .sfa-qg-choice{
-    width: 100%;
-    justify-content: flex-start;
+    width: 100% !important;
+    justify-content: flex-start !important;
   }
 
   .sfa-qg-note-wrapper{
-    width: 100%;
-    min-width: auto;
+    width: 100% !important;
+    min-width: auto !important;
+  }
+
+  .sfa-qg-item-head{
+    padding-bottom:6px;
+    border-bottom:1px dashed #d1d5db;
+    margin-bottom:8px;
   }
 }
 
@@ -285,12 +291,12 @@
 .sfa-qg-batch-controls{
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
-  padding: 16px;
+  gap: 20px;
+  padding: 20px;
   background: #fff;
   border: 2px solid #e5e7eb;
   border-radius: 10px;
-  margin-bottom: 20px;
+  margin-bottom: 24px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
