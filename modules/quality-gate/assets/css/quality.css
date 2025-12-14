@@ -487,38 +487,7 @@
 @media (min-width:1200px){ .sfa-qg-ui{ display:block !important; gap:0 !important; } }
 @media (min-width:1600px){ .sfa-qg-ui{ display:block !important; } }
 
-/* === FIX: keep Pass/Fail on the left, full-width note, no clipping === */
-
-/* 1) Two-column row: [label | (pills + note)] */
-.sfa-qg-metric-row{
-  grid-template-columns: 220px 1fr !important;   /* label | inputs */
-  padding: 8px 14px !important;                  /* same both sides */
-}
-
-/* 2) Place both pills and note in the 2nd column */
-.sfa-qg-metric-row .sfa-qg-choice,
-.sfa-qg-metric-row .sfa-qg-note{
-  grid-column: 2 / 3 !important;
-}
-
-/* 3) Pills stay left; slightly tighter right margin */
-.sfa-qg-metric-row .sfa-qg-choice{
-  justify-content: flex-start !important;
-  margin-right: 6px !important;
-}
-
-/* 4) Note = true full width with compact height and full border */
-.sfa-qg-metric-row .sfa-qg-note{
-  width: 100% !important;
-  margin: 6px 0 6px 0 !important;
-  min-height: 36px !important;
-  padding: 6px 10px !important;
-  border: 1px solid #d1d5db !important;  /* ensure 4-side border */
-  border-radius: 8px !important;
-  box-sizing: border-box;
-}
-
-/* 5) Stop any clipping of rounded pills */
+/* === Overflow fix for rounded pills === */
 .sfa-qg .sfa-qg-item,
 .gform_wrapper .gfield--type-quality_checklist .sfa-qg,
 .gform_wrapper .gfield--type-quality_checklist .sfa-qg-ui{
