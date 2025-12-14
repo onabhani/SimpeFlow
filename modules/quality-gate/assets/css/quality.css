@@ -268,9 +268,9 @@
 
 /* Batch controls - fixed layout, no overlap */
 .sfa-qg-batch-controls{
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
   padding: 12px;
   background: #fff;
   border: 2px solid #e5e7eb;
@@ -281,10 +281,12 @@
 
 /* Progress info takes full width on new row */
 .sfa-qg-batch-controls .qg-batch-info{
-  grid-column: 1 / -1;
+  flex: 1 1 100%;
+  width: 100%;
 }
 
 .qg-batch-btn{
+  flex: 0 1 auto;
   padding: 8px 14px;
   border: 1px solid #d1d5db;
   border-radius: 8px;
@@ -363,7 +365,7 @@
 }
 
 .sfa-qg-photo-btn.hidden{
-  display: none;
+  display: none !important;
 }
 
 .sfa-qg-photo-btn:hover{
@@ -383,10 +385,11 @@
 
 @media (max-width: 640px){
   .sfa-qg-batch-controls{
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
 
   .qg-batch-btn{
+    flex: 1 1 auto;
     width: 100%;
     text-align: center;
   }

@@ -220,15 +220,17 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     if (metric && metric.note) $note.val(metric.note);
     if (requireNoteOnFail && metric && metric.result === 'fail') $note.attr('required','required');
 
-    // Photo evidence button (only on touch devices, not read-only, and when FAIL is selected)
+    // Photo evidence button (only on touch devices, not read-only)
+    // Button is hidden by default, only shown when FAIL is explicitly selected
     if ('ontouchstart' in window && !readOnly) {
       var hasPhoto = !!(metric && metric.photo);
-      var isFail = !!(metric && metric.result === 'fail');
+      // Only show if result is explicitly 'fail', otherwise always hidden
+      var shouldShow = (metric && metric.result === 'fail');
 
       var $photoBtn = $(
         '<button type="button" class="sfa-qg-photo-btn' +
           (hasPhoto ? ' has-photo' : '') +
-          (isFail ? '' : ' hidden') + '" ' +
+          (!shouldShow ? ' hidden' : '') + '" ' +
           'data-i="'+i+'" data-m="'+mIndex+'" title="Add photo evidence">' +
           '📷' +
         '</button>'
