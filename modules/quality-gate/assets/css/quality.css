@@ -9,10 +9,10 @@
 
 /* ===== Items (card look) ===== */
 .sfa-qg-item{
-  border:2px solid #e5e7eb;
+  border:2px solid #d1d5db;
   border-radius:12px;
   padding:0; /* padding now on header and body separately */
-  margin:10px 0;
+  margin:20px 0;
   background:#fff;
   box-sizing:border-box;
   overflow:hidden;
@@ -86,13 +86,13 @@
   white-space:nowrap; overflow-wrap:normal; line-height:1.15;
 }
 
-/* ===== Metric rows - cleaner, more spacious ===== */
+/* ===== Metric rows - inline layout ===== */
 .sfa-qg-metric-row{
-  display:grid;
-  grid-template-columns: 220px auto 1fr;  /* label | radios | note */
-  gap:12px;
-  align-items:center;
-  padding:14px 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
   border-top:1px solid #e5e7eb;
   box-sizing:border-box;
 }
@@ -104,42 +104,33 @@
   padding-bottom:0;
 }
 
-/* NEW — radios + note span columns 2 → last so the note can use full width */
-.sfa-qg-metric-row .sfa-qg-metric-inputs{
-  grid-column: 2 / -1;           /* occupy both the "pills" and "note" tracks */
-  display: grid;                  /* inner layout: pills | note */
-  grid-template-columns: auto 1fr;
-  gap: 8px;
-  width: 100%;
-}
-
-/* Ensure the note really stretches */
-.sfa-qg-metric-row .sfa-qg-note{
-  width: 100% !important;
-  max-width: none !important;
-  justify-self: stretch;
-}
-
 .sfa-qg-metric-row > *{ min-width:0; }
+
 .sfa-qg-metric-label{
   color:#374151;
   font-weight:600;
   font-size:14px;
+  flex: 0 0 auto;
+  min-width: 120px;
 }
 
-/* Group holding radios + note: 2-col grid so the note can expand */
-.sfa-qg-metric-inputs{
-  display:grid;
-  grid-template-columns: auto 1fr;         /* pills | note */
-  align-items:start;
-  gap:8px;
+/* Radio choices inline */
+.sfa-qg-choice{
+  display: inline-flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* Note wrapper with photo button - takes remaining space */
+.sfa-qg-note-wrapper{
+  flex: 1 1 auto;
+  min-width: 200px;
 }
 
 /* Radio pills */
-.sfa-qg-choice{ display:inline-flex; gap:8px; margin-right:8px; min-width:0; }
 .sfa-qg-radio{
   display:inline-flex; align-items:center; gap:8px;
-  border:1px solid #d7dde6; border-radius:999px; padding:4px 10px;
+  border:1px solid #d7dde6; border-radius:999px; padding:6px 14px;
   cursor:pointer; user-select:none; background:#f9fafb;
   transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
 }
@@ -157,18 +148,19 @@
   background:#fef2f2; border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.15); color:#991b1b;
 }
 
-/* Note field — full border on all sides, full width, compact height */
+/* Note field — full border on all sides */
 .gform_wrapper .sfa-qg-note,
 .sfa-qg-note{
-  margin:8px 0 6px 0 !important;   /* no left indent; span column */
+  margin:0 !important;
   width:100%; max-width:100%;
-  min-height:38px; height:auto;
+  min-height:40px; height:auto;
   box-sizing:border-box;
   background:#fff;
-  border:1px solid #d1d5db !important;
+  border:2px solid #d1d5db !important;
   border-radius:8px;
-  padding:4px 8px;
+  padding:8px 12px;
   box-shadow: inset 0 1px 2px rgba(0,0,0,.02);
+  font-size:14px;
 }
 
 .sfa-qg-readonly .sfa-qg-radio,
@@ -213,12 +205,31 @@
 }
 
 /* ===== Responsive tweaks ===== */
-@media (max-width:640px){
+@media (max-width:768px){
   /* Header already single-line grid; add a subtle separator under it */
   .sfa-qg-item-head{ padding-bottom:6px; border-bottom:1px dashed #d1d5db; margin-bottom:8px; }
 
-  /* On phones, stack pills over the note to make the note truly full width */
-  .sfa-qg-metric-inputs{ grid-template-columns: 1fr; }
+  /* On tablets/phones, stack metric label, choices, and note vertically */
+  .sfa-qg-metric-row{
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .sfa-qg-metric-label{
+    width: 100%;
+    min-width: auto;
+  }
+
+  .sfa-qg-choice{
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .sfa-qg-note-wrapper{
+    width: 100%;
+    min-width: auto;
+  }
 }
 
 /* Required-note visual hint */
@@ -270,12 +281,12 @@
 .sfa-qg-batch-controls{
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
-  padding: 12px;
+  gap: 16px;
+  padding: 16px;
   background: #fff;
   border: 2px solid #e5e7eb;
   border-radius: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
@@ -343,14 +354,14 @@
 .sfa-qg-note-wrapper{
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   width: 100%;
 }
 
 .sfa-qg-photo-btn{
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 2px solid #d1d5db;
   border-radius: 8px;
@@ -360,7 +371,7 @@
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  font-size: 20px;
+  font-size: 22px;
   line-height: 1;
 }
 
