@@ -16,9 +16,18 @@
   box-sizing: border-box;
 }
 
-/* VISUAL TEST MARKER - If you see red border, new CSS is loading */
+/* VISUAL TEST MARKER - RED BORDER VISIBLE = CSS IS LOADING */
 .sfa-qg-batch-controls{
   border: 3px solid red !important;
+}
+
+/* Force all parent containers to NOT interfere with flex layout */
+.sfa-qg-metrics,
+.sfa-qg-item-body,
+.gform_wrapper .sfa-qg-metrics,
+.gform_wrapper .sfa-qg-item-body{
+  display: block !important;
+  width: 100% !important;
 }
 
 /* Status summary in Workflow step box */
@@ -108,17 +117,23 @@
 }
 
 /* ===== Metric rows - FORCED INLINE LAYOUT (DESKTOP + TABLET + MOBILE ALL) ===== */
+.gform_wrapper .gfield--type-quality_checklist .sfa-qg-metric-row,
+.gform_wrapper .sfa-qg-metrics .sfa-qg-metric-row,
 .gform_wrapper .sfa-qg-metric-row,
 .sfa-qg-ui .sfa-qg-metric-row,
+.sfa-qg-metrics .sfa-qg-metric-row,
 .sfa-qg-metric-row{
   display: flex !important;
   flex-direction: row !important;
   flex-wrap: nowrap !important;
   align-items: center !important;
+  justify-content: flex-start !important;
   gap: 16px !important;
   padding: 20px 0 !important;
   border-top:1px solid #e5e7eb !important;
   box-sizing:border-box !important;
+  width: 100% !important;
+  background: rgba(255, 255, 0, 0.1) !important; /* YELLOW tint for testing */
 }
 .sfa-qg-metric-row:first-child{
   border-top:0 !important;
