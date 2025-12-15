@@ -1,4 +1,4 @@
-/* Quality Gate CSS - Version 3.0 - FORCED INLINE LAYOUT */
+/* Quality Gate CSS - Version 3.0 - Production Ready */
 /* ===== Container & basics ===== */
 .sfa-qg-field{
   border:1px solid #e5e7eb;
@@ -14,11 +14,6 @@
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-}
-
-/* VISUAL TEST MARKER - RED BORDER VISIBLE = CSS IS LOADING */
-.sfa-qg-batch-controls{
-  border: 3px solid red !important;
 }
 
 /* Force all parent containers to NOT interfere with flex layout */
@@ -40,7 +35,7 @@
   border:2px solid #d1d5db !important;
   border-radius:12px;
   padding:0;
-  margin:32px 0;
+  margin:36px 0;
   background:#fff;
   box-sizing:border-box;
   overflow:hidden;
@@ -105,7 +100,7 @@
 }
 
 .sfa-qg-item-body{
-  padding:20px;
+  padding:24px;
   background:#fff;
 }
 
@@ -116,7 +111,7 @@
   white-space:nowrap; overflow-wrap:normal; line-height:1.15;
 }
 
-/* ===== Metric rows - FORCED INLINE LAYOUT (DESKTOP + TABLET + MOBILE ALL) ===== */
+/* ===== Metric rows - INLINE LAYOUT ===== */
 .gform_wrapper .gfield--type-quality_checklist .sfa-qg-metric-row,
 .gform_wrapper .sfa-qg-metrics .sfa-qg-metric-row,
 .gform_wrapper .sfa-qg-metric-row,
@@ -128,12 +123,11 @@
   flex-wrap: nowrap !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  gap: 16px !important;
-  padding: 20px 0 !important;
+  gap: 20px !important;
+  padding: 24px 0 !important;
   border-top:1px solid #e5e7eb !important;
   box-sizing:border-box !important;
   width: 100% !important;
-  background: rgba(255, 255, 0, 0.1) !important; /* YELLOW tint for testing */
 }
 .sfa-qg-metric-row:first-child{
   border-top:0 !important;
@@ -330,16 +324,16 @@
   50% { background: rgba(59, 130, 246, 0.1); }
 }
 
-/* Batch controls - fixed layout, no overlap */
+/* Batch controls - with proper spacing */
 .sfa-qg-batch-controls{
   display: flex;
   flex-wrap: wrap;
-  gap: 24px;
-  padding: 24px;
+  gap: 28px;
+  padding: 28px;
   background: #fff;
   border: 2px solid #e5e7eb;
   border-radius: 10px;
-  margin-bottom: 32px;
+  margin-bottom: 36px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
@@ -348,8 +342,8 @@
   flex: 1 1 100% !important;
   width: 100% !important;
   order: 999 !important;
-  margin-top: 8px !important;
-  padding-top: 16px !important;
+  margin-top: 12px !important;
+  padding-top: 20px !important;
   border-top: 2px solid #e5e7eb !important;
   text-align: center !important;
 }

@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '0.3.2.0-DEBUG');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '1.0.0');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
