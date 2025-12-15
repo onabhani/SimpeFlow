@@ -16,13 +16,20 @@
   box-sizing: border-box;
 }
 
-/* Force all parent containers to NOT interfere with flex layout */
+/* Force metrics container to NOT interfere with flex layout */
 .sfa-qg-metrics,
-.sfa-qg-item-body,
-.gform_wrapper .sfa-qg-metrics,
-.gform_wrapper .sfa-qg-item-body{
+.gform_wrapper .sfa-qg-metrics{
   display: block !important;
   width: 100% !important;
+}
+
+/* Item body - allow collapse/expand to work */
+.sfa-qg-item-body,
+.gform_wrapper .sfa-qg-item-body{
+  width: 100% !important;
+}
+.sfa-qg-item.is-collapsed .sfa-qg-item-body{
+  display: none !important;
 }
 
 /* Status summary in Workflow step box */
