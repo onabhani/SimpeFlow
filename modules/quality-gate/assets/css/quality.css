@@ -118,22 +118,36 @@
   white-space:nowrap; overflow-wrap:normal; line-height:1.15;
 }
 
-/* ===== Metric rows - INLINE LAYOUT ===== */
+/* ===== Metric rows - NUCLEAR OPTION - Maximum specificity ===== */
+.gform_wrapper .gfield--type-quality_checklist .ginput_container .sfa-qg-ui .sfa-qg-item .sfa-qg-item-body .sfa-qg-metrics .sfa-qg-metric-row,
+.gfield--type-quality_checklist .ginput_container .sfa-qg-ui .sfa-qg-item .sfa-qg-metrics .sfa-qg-metric-row,
+.ginput_container .sfa-qg-ui .sfa-qg-metrics .sfa-qg-metric-row,
 .gform_wrapper .gfield--type-quality_checklist .sfa-qg-metric-row,
 .gform_wrapper .sfa-qg-metrics .sfa-qg-metric-row,
 .gform_wrapper .sfa-qg-metric-row,
+.sfa-qg-ui .sfa-qg-metrics .sfa-qg-metric-row,
 .sfa-qg-ui .sfa-qg-metric-row,
 .sfa-qg-metrics .sfa-qg-metric-row,
 .sfa-qg-metric-row{
+  display: -webkit-box !important;
+  display: -ms-flexbox !important;
   display: flex !important;
+  -webkit-box-orient: horizontal !important;
+  -webkit-box-direction: normal !important;
+  -ms-flex-direction: row !important;
   flex-direction: row !important;
+  -ms-flex-wrap: nowrap !important;
   flex-wrap: nowrap !important;
+  -webkit-box-align: center !important;
+  -ms-flex-align: center !important;
   align-items: center !important;
+  -webkit-box-pack: start !important;
+  -ms-flex-pack: start !important;
   justify-content: flex-start !important;
   gap: 20px !important;
   padding: 24px 0 !important;
-  border-top:1px solid #e5e7eb !important;
-  box-sizing:border-box !important;
+  border-top: 1px solid #e5e7eb !important;
+  box-sizing: border-box !important;
   width: 100% !important;
 }
 .sfa-qg-metric-row:first-child{
@@ -148,9 +162,12 @@
 
 .gform_wrapper .sfa-qg-metric-label,
 .sfa-qg-metric-label{
+  display: block !important;
   color:#374151 !important;
   font-weight:600 !important;
   font-size:14px !important;
+  -webkit-box-flex: 0 !important;
+  -ms-flex: 0 0 auto !important;
   flex: 0 0 auto !important;
   min-width: 140px !important;
   max-width: 180px !important;
@@ -159,17 +176,30 @@
 /* Radio choices inline */
 .gform_wrapper .sfa-qg-choice,
 .sfa-qg-choice{
+  display: -webkit-inline-box !important;
+  display: -ms-inline-flexbox !important;
   display: inline-flex !important;
+  -webkit-box-align: center !important;
+  -ms-flex-align: center !important;
+  align-items: center !important;
   gap: 8px !important;
+  -webkit-box-flex: 0 !important;
+  -ms-flex: 0 0 auto !important;
   flex: 0 0 auto !important;
 }
 
 /* Note wrapper with photo button - takes remaining space */
 .gform_wrapper .sfa-qg-note-wrapper,
 .sfa-qg-note-wrapper{
+  display: -webkit-box !important;
+  display: -ms-flexbox !important;
   display: flex !important;
+  -webkit-box-align: center !important;
+  -ms-flex-align: center !important;
   align-items: center !important;
   gap: 12px !important;
+  -webkit-box-flex: 1 !important;
+  -ms-flex: 1 1 auto !important;
   flex: 1 1 auto !important;
   min-width: 250px !important;
   max-width: 100% !important;
@@ -538,9 +568,7 @@
   max-width:100%; box-sizing:border-box; overflow-x:hidden;
 }
 
-/* Roll back any experimental multi-column layouts on wide screens */
-@media (min-width:1200px){ .sfa-qg-ui{ display:block !important; gap:0 !important; } }
-@media (min-width:1600px){ .sfa-qg-ui{ display:block !important; } }
+/* REMOVED: Legacy media queries that were breaking flex layout */
 
 /* === Overflow fix for rounded pills === */
 .sfa-qg .sfa-qg-item,
