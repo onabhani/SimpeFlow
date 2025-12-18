@@ -370,8 +370,9 @@
 .sfa-qg-batch-controls{
   display: flex;
   flex-wrap: wrap;
-  gap: 28px;
-  padding: 28px;
+  align-items: center;
+  gap: 12px;
+  padding: 20px;
   background: #fff;
   border: 2px solid #e5e7eb;
   border-radius: 10px;
@@ -381,68 +382,75 @@
 
 /* Progress info takes full width on new row - UNDER buttons */
 .sfa-qg-batch-controls .qg-batch-info{
-  flex: 1 1 100% !important;
+  flex-basis: 100% !important;
   width: 100% !important;
-  order: 999 !important;
-  margin-top: 12px !important;
-  padding-top: 20px !important;
-  border-top: 2px solid #e5e7eb !important;
-  text-align: center !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  text-align: left !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  color: #374151 !important;
 }
 
 .qg-batch-btn{
-  flex: 0 1 auto;
-  padding: 8px 14px;
-  border: 1px solid #d1d5db;
+  flex: 0 0 auto;
+  padding: 10px 18px;
+  margin: 0;
+  border: 2px solid #d1d5db;
   border-radius: 8px;
-  background: #fff;
+  background: #4f46e5;
+  color: #fff;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
-  transition: all 0.2s ease;
-  min-height: 42px; /* iPad touch target */
+  transition: all 0.15s ease;
+  min-height: 44px;
   white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .qg-batch-btn:hover{
-  background: #f9fafb;
-  border-color: #9ca3af;
+  background: #4338ca;
+  border-color: #4338ca;
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
 }
 
 .qg-batch-btn:active{
   transform: scale(0.98) translateY(0);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
 .qg-batch-all-pass{
-  color: #fff;
   background: #10b981;
-  border-color: #059669;
+  border-color: #10b981;
 }
 
 .qg-batch-all-pass:hover{
   background: #059669;
-  border-color: #047857;
+  border-color: #059669;
+  box-shadow: 0 2px 6px rgba(16, 185, 129, 0.3);
+}
+
+.qg-batch-all-clear{
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.qg-batch-all-clear:hover{
+  background: #2563eb;
+  border-color: #2563eb;
+  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.3);
 }
 
 .qg-expand-all,
 .qg-collapse-all{
-  color: #4b5563;
-  background: #f9fafb;
-  border-color: #d1d5db;
+  background: #6366f1;
+  border-color: #6366f1;
 }
 
-.qg-batch-info{
-  font-size: 13px;
-  color: #6b7280;
-  font-weight: 600;
-  background: #f9fafb;
-  padding: 8px;
-  border-radius: 6px;
-  text-align: center;
-  border: 1px solid #e5e7eb;
-}
+/* Removed: .qg-batch-info styles defined earlier in .sfa-qg-batch-controls section */
 
 /* Photo button */
 .sfa-qg-photo-btn{
