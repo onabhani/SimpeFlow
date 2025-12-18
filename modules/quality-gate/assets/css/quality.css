@@ -144,8 +144,8 @@
   -webkit-box-pack: start !important;
   -ms-flex-pack: start !important;
   justify-content: flex-start !important;
-  gap: 20px !important;
-  padding: 24px 0 !important;
+  gap: 12px !important;
+  padding: 20px 0 !important;
   border-top: 1px solid #e5e7eb !important;
   box-sizing: border-box !important;
   width: 100% !important;
@@ -169,8 +169,9 @@
   -webkit-box-flex: 0 !important;
   -ms-flex: 0 0 auto !important;
   flex: 0 0 auto !important;
-  min-width: 140px !important;
-  max-width: 180px !important;
+  width: 100px !important;
+  min-width: 100px !important;
+  max-width: 150px !important;
 }
 
 /* Radio choices inline */
@@ -197,11 +198,11 @@
   -webkit-box-align: center !important;
   -ms-flex-align: center !important;
   align-items: center !important;
-  gap: 12px !important;
+  gap: 8px !important;
   -webkit-box-flex: 1 !important;
   -ms-flex: 1 1 auto !important;
   flex: 1 1 auto !important;
-  min-width: 250px !important;
+  min-width: 0 !important;
   max-width: 100% !important;
 }
 
@@ -246,7 +247,11 @@
 .gform_wrapper .sfa-qg-note,
 .sfa-qg-note{
   margin:0 !important;
-  width:100% !important;
+  width: auto !important;
+  -webkit-box-flex: 1 !important;
+  -ms-flex: 1 1 auto !important;
+  flex: 1 1 auto !important;
+  min-width: 0 !important;
   max-width:100% !important;
   min-height:44px;
   height:auto;
