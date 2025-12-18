@@ -42,13 +42,23 @@
   border:2px solid #d1d5db !important;
   border-radius:12px;
   padding:0;
-  margin:36px 0;
+  margin: 24px 0;
   background:#fff;
   box-sizing:border-box;
   overflow:hidden;
   transition: all 0.2s ease;
   width: 100%;
   max-width: 100%;
+}
+
+/* First item - no top margin */
+.sfa-qg-item:first-child{
+  margin-top: 0;
+}
+
+/* Last item - no bottom margin */
+.sfa-qg-item:last-child{
+  margin-bottom: 0;
 }
 
 .sfa-qg-item:hover{
@@ -222,9 +232,12 @@
   min-width: 70px;
 }
 .sfa-qg-radio input{
-  position:absolute;
-  opacity:0;
-  pointer-events:none;
+  position: absolute !important;
+  left: -9999px !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }
 .sfa-qg-radio span{
   line-height:1;
