@@ -368,16 +368,16 @@
 
 /* Batch controls - with proper spacing */
 .sfa-qg-batch-controls{
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px;
-  padding: 20px;
-  background: #fff;
-  border: 2px solid #e5e7eb;
-  border-radius: 10px;
-  margin-bottom: 36px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  gap: 12px !important;
+  padding: 20px !important;
+  background: #fff !important;
+  border: 2px solid #e5e7eb !important;
+  border-radius: 10px !important;
+  margin-bottom: 36px !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
 }
 
 /* Progress info takes full width on new row - UNDER buttons */
@@ -394,20 +394,20 @@
 }
 
 .qg-batch-btn{
-  flex: 0 0 auto;
-  padding: 10px 18px;
-  margin: 0;
-  border: 2px solid #d1d5db;
-  border-radius: 8px;
-  background: #4f46e5;
-  color: #fff;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-  transition: all 0.15s ease;
-  min-height: 44px;
-  white-space: nowrap;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  flex: 0 0 auto !important;
+  padding: 10px 18px !important;
+  margin: 0 8px 8px 0 !important;
+  border: 2px solid #d1d5db !important;
+  border-radius: 8px !important;
+  background: #4f46e5 !important;
+  color: #fff !important;
+  cursor: pointer !important;
+  font-size: 14px !important;
+  font-weight: 600 !important;
+  transition: all 0.15s ease !important;
+  min-height: 44px !important;
+  white-space: nowrap !important;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05) !important;
 }
 
 .qg-batch-btn:hover{
