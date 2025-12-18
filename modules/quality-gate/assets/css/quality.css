@@ -67,10 +67,12 @@
 }
 
 /* Item head (name + status/badges + caret) — cleaner design */
-.sfa-qg-item-head{
+.sfa-qg-item-head,
+.gravityflow-field-value .sfa-qg-item-head,
+.gravityflow-step-field .sfa-qg-item-head{
   padding: 20px 24px !important;
-  background:#f9fafb;
-  border-bottom:2px solid #e5e7eb;
+  background:#f9fafb !important;
+  border-bottom:2px solid #e5e7eb !important;
 }
 .sfa-qg-item-head .sfa-qg-item-row{
   display:grid;
@@ -116,9 +118,11 @@
   transform: rotate(-90deg);
 }
 
-.sfa-qg-item-body{
+.sfa-qg-item-body,
+.gravityflow-field-value .sfa-qg-item-body,
+.gravityflow-step-field .sfa-qg-item-body{
   padding: 32px 24px !important;
-  background:#fff;
+  background:#fff !important;
 }
 
 /* Tag used for “Passed Previously” — DO NOT wrap */
@@ -217,7 +221,9 @@
 }
 
 /* Radio pills */
-.sfa-qg-radio{
+.sfa-qg-radio,
+.gravityflow-field-value .sfa-qg-radio,
+.gravityflow-step-field .sfa-qg-radio{
   display:inline-flex !important;
   align-items:center !important;
   justify-content: center !important;
