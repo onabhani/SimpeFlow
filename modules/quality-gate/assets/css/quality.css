@@ -369,7 +369,7 @@
 /* Batch controls - with proper spacing */
 .sfa-qg-batch-controls{
   display: flex !important;
-  flex-wrap: nowrap !important;
+  flex-wrap: wrap !important;
   align-items: center !important;
   gap: 6px !important;
   padding: 20px !important;
@@ -378,7 +378,6 @@
   border-radius: 10px !important;
   margin-bottom: 36px !important;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
-  overflow-x: auto !important;
 }
 
 /* Progress info takes full width on new row - UNDER buttons */
