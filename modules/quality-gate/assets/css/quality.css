@@ -1,19 +1,23 @@
 /* Quality Gate CSS - Version 3.0 - Production Ready */
 /* ===== Container & basics ===== */
-.sfa-qg-field{
+.sfa-qg-field,
+.gravityflow-field-value .sfa-qg-field,
+.gravityflow-step-field .sfa-qg-field{
   border:1px solid #e5e7eb;
   padding:8px;
   border-radius:6px;
   background:#fff;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
-.sfa-qg-ui{
+.sfa-qg-ui,
+.gravityflow-field-value .sfa-qg-ui,
+.gravityflow-step-field .sfa-qg-ui{
   margin-top:6px;
-  width: 100%;
-  max-width: 100%;
-  box-sizing: border-box;
+  width: 100% !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
 }
 
 /* Force metrics container to NOT interfere with flex layout */
@@ -38,17 +42,19 @@
 .sfa-qg-disabled{ opacity:.65; cursor:not-allowed!important; }
 
 /* ===== Items (card look) ===== */
-.sfa-qg-item{
+.sfa-qg-item,
+.gravityflow-field-value .sfa-qg-item,
+.gravityflow-step-field .sfa-qg-item{
   border:2px solid #d1d5db !important;
-  border-radius:12px;
-  padding:0;
-  margin: 24px 0;
-  background:#fff;
-  box-sizing:border-box;
-  overflow:hidden;
-  transition: all 0.2s ease;
-  width: 100%;
-  max-width: 100%;
+  border-radius:12px !important;
+  padding:0 !important;
+  margin: 24px 0 !important;
+  background:#fff !important;
+  box-sizing:border-box !important;
+  overflow:hidden !important;
+  transition: all 0.2s ease !important;
+  width: 100% !important;
+  max-width: 100% !important;
 }
 
 /* First item - no top margin */
