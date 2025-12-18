@@ -175,7 +175,9 @@
 .sfa-qg-metric-row > *{ min-width:0 !important; }
 
 .gform_wrapper .sfa-qg-metric-label,
-.sfa-qg-metric-label{
+.sfa-qg-metric-label,
+.gravityflow-field-value .sfa-qg-metric-label,
+.gravityflow-step-field .sfa-qg-metric-label{
   display: block !important;
   color:#374151 !important;
   font-weight:600 !important;
@@ -245,26 +247,45 @@
   width: 0 !important;
   height: 0 !important;
 }
-.sfa-qg-radio span{
+.sfa-qg-radio span,
+.gravityflow-field-value .sfa-qg-radio span,
+.gravityflow-step-field .sfa-qg-radio span{
   line-height:1;
   font-size: 14px;
   font-weight: 500;
+  color: #374151;
 }
 .sfa-qg-radio input:focus-visible + span{ outline:2px solid #2563eb; outline-offset:2px; border-radius:3px; }
 
 /* Selected pill colours */
 .sfa-qg-radio[data-value="pass"].is-checked,
-.sfa-qg-radio.is-pass{
-  background:#ecfdf5; border-color:#10b981; box-shadow:0 0 0 3px rgba(16,185,129,.15); color:#065f46;
+.sfa-qg-radio.is-pass,
+.gravityflow-field-value .sfa-qg-radio[data-value="pass"].is-checked,
+.gravityflow-field-value .sfa-qg-radio.is-pass,
+.gravityflow-step-field .sfa-qg-radio[data-value="pass"].is-checked,
+.gravityflow-step-field .sfa-qg-radio.is-pass{
+  background:#ecfdf5 !important;
+  border-color:#10b981 !important;
+  box-shadow:0 0 0 3px rgba(16,185,129,.15) !important;
+  color:#065f46 !important;
 }
 .sfa-qg-radio[data-value="fail"].is-checked,
-.sfa-qg-radio.is-fail{
-  background:#fef2f2; border-color:#ef4444; box-shadow:0 0 0 3px rgba(239,68,68,.15); color:#991b1b;
+.sfa-qg-radio.is-fail,
+.gravityflow-field-value .sfa-qg-radio[data-value="fail"].is-checked,
+.gravityflow-field-value .sfa-qg-radio.is-fail,
+.gravityflow-step-field .sfa-qg-radio[data-value="fail"].is-checked,
+.gravityflow-step-field .sfa-qg-radio.is-fail{
+  background:#fef2f2 !important;
+  border-color:#ef4444 !important;
+  box-shadow:0 0 0 3px rgba(239,68,68,.15) !important;
+  color:#991b1b !important;
 }
 
 /* Note field — full border on all sides */
 .gform_wrapper .sfa-qg-note,
-.sfa-qg-note{
+.sfa-qg-note,
+.gravityflow-field-value .sfa-qg-note,
+.gravityflow-step-field .sfa-qg-note{
   margin:0 !important;
   width: auto !important;
   -webkit-box-flex: 1 !important;
@@ -272,15 +293,16 @@
   flex: 1 1 auto !important;
   min-width: 0 !important;
   max-width:100% !important;
-  min-height:44px;
-  height:auto;
+  min-height:44px !important;
+  height:auto !important;
   box-sizing:border-box !important;
-  background:#fff;
+  background:#fff !important;
   border:2px solid #d1d5db !important;
-  border-radius:8px;
-  padding:10px 14px;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.02);
-  font-size:14px;
+  border-radius:8px !important;
+  padding:10px 14px !important;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,.02) !important;
+  font-size:14px !important;
+  color:#374151 !important;
 }
 
 .sfa-qg-readonly .sfa-qg-radio,
