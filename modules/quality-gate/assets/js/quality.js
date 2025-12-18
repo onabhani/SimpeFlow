@@ -865,10 +865,10 @@ if (readOnly && initialStatus === 'pass') {
       if (!$controls.length) return;
 
       var $expandBtn = $(
-        '<button type="button" class="qg-batch-btn qg-expand-all">▾ Expand All</button>'
+        '<button type="button" class="qg-batch-btn qg-expand-all">▾ Expand</button>'
       );
       var $collapseBtn = $(
-        '<button type="button" class="qg-batch-btn qg-collapse-all">▸ Collapse All</button>'
+        '<button type="button" class="qg-batch-btn qg-collapse-all">▸ Collapse</button>'
       );
 
       // Insert after batch info
