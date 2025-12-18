@@ -68,7 +68,7 @@
 
 /* Item head (name + status/badges + caret) — cleaner design */
 .sfa-qg-item-head{
-  padding: 20px 24px;
+  padding: 20px 24px !important;
   background:#f9fafb;
   border-bottom:2px solid #e5e7eb;
 }
@@ -117,7 +117,7 @@
 }
 
 .sfa-qg-item-body{
-  padding: 32px 24px;
+  padding: 32px 24px !important;
   background:#fff;
 }
 
@@ -218,18 +218,18 @@
 
 /* Radio pills */
 .sfa-qg-radio{
-  display:inline-flex;
-  align-items:center;
-  justify-content: center;
-  gap:10px;
-  border: 2px solid #9ca3af;
-  border-radius:999px;
-  padding:8px 16px;
-  cursor:pointer;
-  user-select:none;
-  background:#f9fafb;
-  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease;
-  min-width: 70px;
+  display:inline-flex !important;
+  align-items:center !important;
+  justify-content: center !important;
+  gap:10px !important;
+  border: 2px solid #9ca3af !important;
+  border-radius:999px !important;
+  padding:8px 16px !important;
+  cursor:pointer !important;
+  user-select:none !important;
+  background:#f9fafb !important;
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease, color .15s ease !important;
+  min-width: 70px !important;
 }
 .sfa-qg-radio input{
   position: absolute !important;
