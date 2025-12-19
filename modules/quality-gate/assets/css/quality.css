@@ -322,8 +322,7 @@
   flex: 1 1 auto !important;
   min-width: 0 !important;
   max-width:100% !important;
-  min-height:44px !important;
-  height:auto !important;
+  height:44px !important;
   box-sizing:border-box !important;
   background:#fff !important;
   border:2px solid #d1d5db !important;
@@ -385,33 +384,64 @@
 
 /* ===== Responsive tweaks for small screens ===== */
 @media (max-width:640px){
-  /* Allow metrics to wrap on small screens for better visibility */
+  /* Allow metrics to wrap on small screens for better visibility - use high specificity to override */
+  .gform_wrapper .gfield--type-quality_checklist .ginput_container .sfa-qg-ui .sfa-qg-item .sfa-qg-item-body .sfa-qg-metrics .sfa-qg-metric-row,
+  .gfield--type-quality_checklist .ginput_container .sfa-qg-ui .sfa-qg-item .sfa-qg-metrics .sfa-qg-metric-row,
+  .ginput_container .sfa-qg-ui .sfa-qg-metrics .sfa-qg-metric-row,
+  .gform_wrapper .gfield--type-quality_checklist .sfa-qg-metric-row,
+  .gform_wrapper .sfa-qg-metrics .sfa-qg-metric-row,
+  .gform_wrapper .sfa-qg-metric-row,
+  .sfa-qg-ui .sfa-qg-metrics .sfa-qg-metric-row,
+  .sfa-qg-ui .sfa-qg-metric-row,
+  .sfa-qg-metrics .sfa-qg-metric-row,
   .sfa-qg-metric-row{
+    -webkit-box-orient: vertical !important;
+    -webkit-box-direction: normal !important;
+    -ms-flex-direction: column !important;
     flex-direction: column !important;
+    -webkit-box-align: stretch !important;
+    -ms-flex-align: stretch !important;
     align-items: stretch !important;
     gap: 8px !important;
   }
 
-  .sfa-qg-metric-label{
+  .gform_wrapper .sfa-qg-metric-label,
+  .sfa-qg-metric-label,
+  .gravityflow-field-value .sfa-qg-metric-label,
+  .gravityflow-step-field .sfa-qg-metric-label{
     width: 100% !important;
     min-width: 100% !important;
     max-width: 100% !important;
+    -webkit-box-flex: 0 !important;
+    -ms-flex: 0 0 auto !important;
+    flex: 0 0 auto !important;
   }
 
+  .gform_wrapper .sfa-qg-choice,
   .sfa-qg-choice{
     width: 100% !important;
+    -webkit-box-pack: start !important;
+    -ms-flex-pack: start !important;
     justify-content: flex-start !important;
   }
 
+  .gform_wrapper .sfa-qg-note-wrapper,
   .sfa-qg-note-wrapper{
     width: 100% !important;
+    -webkit-box-flex: 1 !important;
+    -ms-flex: 1 1 auto !important;
+    flex: 1 1 auto !important;
   }
 
-  .sfa-qg-item-head{
+  .sfa-qg-item-head,
+  .gravityflow-field-value .sfa-qg-item-head,
+  .gravityflow-step-field .sfa-qg-item-head{
     padding: 14px 16px !important;
   }
 
-  .sfa-qg-item-body{
+  .sfa-qg-item-body,
+  .gravityflow-field-value .sfa-qg-item-body,
+  .gravityflow-step-field .sfa-qg-item-body{
     padding: 20px 16px !important;
   }
 }
