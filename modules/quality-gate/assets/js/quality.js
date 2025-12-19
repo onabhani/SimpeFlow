@@ -904,8 +904,8 @@ if (readOnly && initialStatus === 'pass') {
       var i = parseInt($btn.data('i'), 10);
       var m = parseInt($btn.data('m'), 10);
 
-      // Create hidden file input for iPad camera
-      var $fileInput = $('<input type="file" accept="image/*" capture="environment" style="display:none;">');
+      // Create hidden file input - camera only, no gallery
+      var $fileInput = $('<input type="file" accept="image/*" capture style="display:none;">');
       $('body').append($fileInput);
 
       $fileInput.on('change', function() {
