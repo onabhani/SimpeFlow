@@ -1,6 +1,15 @@
 /* Quality Gate CSS - Version 3.0 - Production Ready */
 /* ===== Container & basics ===== */
-/* Force full width on workflow pages */
+/* Force full width on workflow pages - override GravityForms width classes */
+.gravityflow-editable-field.gfield--type-quality_checklist,
+.gravityflow-editable-field.gfield--type-quality_checklist.gfield--width-half,
+.gravityflow-field-value .gfield--type-quality_checklist,
+.gravityflow-step-field .gfield--type-quality_checklist{
+  width: 100% !important;
+  max-width: 100% !important;
+  flex: 0 0 100% !important;
+}
+
 .gravityflow-field-value .ginput_container,
 .gravityflow-step-field .ginput_container{
   width: 100% !important;
@@ -374,19 +383,36 @@
   border-color:#ef4444 !important;
 }
 
-/* ===== Responsive tweaks - DISABLED FOR TESTING ===== */
-/* ALL SCREENS USE INLINE LAYOUT */
-@media (max-width:480px){
-  /* KEEP INLINE LAYOUT EVEN ON PHONES */
+/* ===== Responsive tweaks for small screens ===== */
+@media (max-width:640px){
+  /* Allow metrics to wrap on small screens for better visibility */
   .sfa-qg-metric-row{
-    flex-direction: row !important;
-    flex-wrap: nowrap !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .sfa-qg-metric-label{
+    width: 100% !important;
+    min-width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .sfa-qg-choice{
+    width: 100% !important;
+    justify-content: flex-start !important;
+  }
+
+  .sfa-qg-note-wrapper{
+    width: 100% !important;
   }
 
   .sfa-qg-item-head{
-    padding-bottom:6px;
-    border-bottom:1px dashed #d1d5db;
-    margin-bottom:8px;
+    padding: 14px 16px !important;
+  }
+
+  .sfa-qg-item-body{
+    padding: 20px 16px !important;
   }
 }
 
