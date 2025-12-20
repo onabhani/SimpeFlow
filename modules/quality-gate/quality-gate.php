@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.2.2');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.0');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1163,17 +1163,18 @@ function sfa_qg_find_quality_gate_step_id( $form ) {
 	return (int) apply_filters( 'sfa_qg/quality_gate_step_id', $step_id, $form );
 }
 
-// Locate the “Fixed items” checkbox reliably (no hard-coded IDs).
+// Locate the "Fixed items" checkbox/radio reliably (no hard-coded IDs).
 if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
 	function sfa_qg_find_fixed_checkbox_field_id( $form ) {
-		$single_fix = 0;   // a checkbox that has exactly one choice called "Fix"
-		$empty      = 0;   // a checkbox with no choices yet
-		$first      = 0;   // first checkbox id (for the 1-checkbox legacy case)
-		$count      = 0;   // number of checkbox fields
+		$single_fix = 0;   // a checkbox/radio that has exactly one choice called "Fix"
+		$empty      = 0;   // a checkbox/radio with no choices yet
+		$first      = 0;   // first checkbox/radio id (for the 1-field legacy case)
+		$count      = 0;   // number of checkbox/radio fields
 
 		foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
 			$fa = (array) $f;
-			if ( rgar( $fa, 'type' ) !== 'checkbox' ) {
+			$field_type = rgar( $fa, 'type' );
+			if ( $field_type !== 'checkbox' && $field_type !== 'radio' ) {
 				continue;
 			}
 			$count++;
@@ -1202,18 +1203,18 @@ if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
 				}
 			}
 
-			// 3) Heuristic: empty checkbox (no choices yet).
+			// 3) Heuristic: empty checkbox/radio (no choices yet).
 			if ( empty( $choices ) && ! $empty ) {
 				$empty = (int) rgar( $fa, 'id' );
 			}
 		}
 
-		// 4) Back-compat: if there is exactly one checkbox in the form, use it.
+		// 4) Back-compat: if there is exactly one checkbox/radio in the form, use it.
 		if ( $count === 1 && $first ) {
 			return $first;
 		}
 
-		// 5) Prefer our heuristics; do NOT pick a random checkbox.
+		// 5) Prefer our heuristics; do NOT pick a random checkbox/radio.
 		if ( $single_fix ) return $single_fix;
 		if ( $empty )      return $empty;
 
@@ -1371,7 +1372,7 @@ if ( ! function_exists( 'sfa_qg_is_field_editable_on_user_input' ) ) {
 add_filter( 'gform_pre_render',       'sfa_qg_populate_rework_choices', 9999 );
 add_filter( 'gform_pre_validation',   'sfa_qg_populate_rework_choices', 9999 );
 add_filter( 'gform_admin_pre_render', 'sfa_qg_populate_rework_choices', 9999 );
-// Helpers: build map Item => [failed metric labels] from the saved QC JSON/meta
+// Helpers: build map Item => ['labels' => [...], 'photos' => [...]] from the saved QC JSON/meta
 if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 	function sfa_qg_failed_metric_map( $entry_id, $form ) {
 		$map = array();
@@ -1391,13 +1392,27 @@ if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 						$name  = (string) rgar( $it, 'name' );
 						if ( $name === '' ) { continue; }
 						$fails = array();
+						$photos = array();
 						foreach ( (array) rgar( $it, 'metrics' ) as $m ) {
 							$label = trim( (string) rgar( $m, 'label' ) );
 							if ( rgar( $m, 'result' ) === 'fail' && $label !== '' ) {
 								$fails[] = $label;
+								// Collect photo if available
+								$photo = rgar( $m, 'photo' );
+								if ( $photo ) {
+									$photos[] = array(
+										'label' => $label,
+										'data' => $photo
+									);
+								}
 							}
 						}
-						if ( $fails ) { $map[ $name ] = array_values( array_unique( $fails ) ); }
+						if ( $fails ) {
+							$map[ $name ] = array(
+								'labels' => array_values( array_unique( $fails ) ),
+								'photos' => $photos
+							);
+						}
 					}
 				}
 			}
@@ -1408,7 +1423,9 @@ if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 		if ( is_array( $failed_items ) ) {
 			foreach ( $failed_items as $name ) {
 				$name = trim( (string) $name );
-				if ( $name !== '' && ! isset( $map[ $name ] ) ) { $map[ $name ] = array(); }
+				if ( $name !== '' && ! isset( $map[ $name ] ) ) {
+					$map[ $name ] = array('labels' => array(), 'photos' => array());
+				}
 			}
 		}
 
@@ -1432,9 +1449,13 @@ if ( ! function_exists( 'sfa_qg_render_failed_table' ) ) {
 		}
 
 $out  = '<table class="qg-rework-table widefat striped">';
-		$out .= '<thead><tr><th>' . esc_html__( 'Item', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Failed metrics', 'sfa-quality-gate' ) . '</th></tr></thead><tbody>';
+		$out .= '<thead><tr><th>' . esc_html__( 'Item', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Failed metrics', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Photos', 'sfa-quality-gate' ) . '</th></tr></thead><tbody>';
 
-		foreach ( $map as $name => $labels ) {
+		foreach ( $map as $name => $data ) {
+			// Support both old format (array of labels) and new format (array with 'labels' and 'photos')
+			$labels = is_array($data) && isset($data['labels']) ? $data['labels'] : (is_array($data) ? $data : array());
+			$photos = is_array($data) && isset($data['photos']) ? $data['photos'] : array();
+
 			$is_fixed = in_array( (string) $name, $fixed_list, true );
 			$badge = $is_fixed
 				? ' <span class="sfa-qg-badge is-fixed">' . esc_html__( 'Fixed', 'sfa-quality-gate' ) . '</span>'
@@ -1449,7 +1470,28 @@ if ( $editable ) {
     );
 }
 
-$out .= '<tr><td>' . $chk . esc_html( $name ) . $badge . '</td><td>' . ( $labels ? esc_html( implode( ', ', $labels ) ) : '&ndash;' ) . '</td></tr>';
+// Build photos HTML
+$photos_html = '';
+if ( ! empty( $photos ) ) {
+	$photos_html = '<div class="qg-fail-photos" style="display:flex;gap:8px;flex-wrap:wrap;">';
+	foreach ( $photos as $photo_data ) {
+		$label = isset($photo_data['label']) ? esc_attr($photo_data['label']) : '';
+		$data_url = isset($photo_data['data']) ? $photo_data['data'] : '';
+		if ( $data_url ) {
+			$photos_html .= sprintf(
+				'<div class="qg-photo-item" style="text-align:center;"><img src="%s" alt="%s" style="max-width:100px;max-height:100px;border:2px solid #d1d5db;border-radius:8px;cursor:pointer;" onclick="window.open(this.src)"><div style="font-size:11px;color:#6b7280;margin-top:4px;">%s</div></div>',
+				esc_attr( $data_url ),
+				$label,
+				esc_html( $label )
+			);
+		}
+	}
+	$photos_html .= '</div>';
+} else {
+	$photos_html = '&ndash;';
+}
+
+$out .= '<tr><td>' . $chk . esc_html( $name ) . $badge . '</td><td>' . ( $labels ? esc_html( implode( ', ', $labels ) ) : '&ndash;' ) . '</td><td>' . $photos_html . '</td></tr>';
 
 		}
 
