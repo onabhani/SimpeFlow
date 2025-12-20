@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.5');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.6');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1667,6 +1667,14 @@ if ( function_exists('gravity_flow') && $entry ) {
     $sid  = sfa_qg_current_step_id(); // may be 0 on first render after transition
     $step = $sid ? gravity_flow()->get_step($sid) : gravity_flow()->get_current_step($form, $entry);
 
+    sfa_qg_log('STEP DETECTION', [
+        'entry_id' => $entry_id,
+        'sid_from_url' => $sid,
+        'step_found' => $step ? 'yes' : 'no',
+        'step_id' => $step && method_exists($step, 'get_id') ? $step->get_id() : 'N/A',
+        'step_type' => $step && property_exists($step, '_step_type') ? $step->_step_type : 'N/A'
+    ]);
+
     if ( $step ) {
         $step_type = property_exists($step, '_step_type') ? (string) $step->_step_type : '';
 
@@ -1680,6 +1688,13 @@ if ( function_exists('gravity_flow') && $entry ) {
             ( class_exists('\SFA\QualityGate\Step_Quality_Gate') && $step instanceof \SFA\QualityGate\Step_Quality_Gate )
         );
 
+        sfa_qg_log('STEP CLASSIFICATION', [
+            'entry_id' => $entry_id,
+            'step_type' => $step_type,
+            'is_user_input' => $is_user_input,
+            'is_quality_gate' => $is_quality_gate
+        ]);
+
         if ( $is_user_input && ! $is_quality_gate ) {
             if ( function_exists('sfa_qg_is_field_editable_on_user_input') ) {
                 $editable_field = sfa_qg_is_field_editable_on_user_input($form, $entry, $field);
@@ -1690,12 +1705,18 @@ if ( function_exists('gravity_flow') && $entry ) {
                 $ids = apply_filters('gravityflow_editable_fields', $ids, $step, $form, $entry);
                 $editable_field = in_array((int)$field->id, array_map('intval', $ids), true);
             }
+
+            sfa_qg_log('EDITABILITY CHECK', [
+                'entry_id' => $entry_id,
+                'field_id' => $field->id,
+                'editable_field' => $editable_field
+            ]);
         }
     }
 }
 
 /* No extra guards here. $editable_field is final. */
-sfa_qg_log('REWORK controls state', ['entry_id'=>$entry_id,'step_type'=>$step_type,'editable_field'=>$editable_field]);
+sfa_qg_log('REWORK controls state', ['entry_id'=>$entry_id,'step_type'=>$step_type,'editable_field'=>$editable_field,'failed_count'=>count($failed)]);
 
 
 
