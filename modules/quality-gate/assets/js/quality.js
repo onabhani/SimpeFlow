@@ -617,12 +617,23 @@ if (readOnly && initialStatus === 'pass') {
           var note= $row.find('.sfa-qg-note').val();
 
           if (!items[i].metrics) items[i].metrics = [];
+
+          // Preserve existing photo data if it exists
+          var existingPhoto = items[i].metrics[m] && items[i].metrics[m].photo;
+          var existingPhotoName = items[i].metrics[m] && items[i].metrics[m].photoName;
+
           items[i].metrics[m] = {
             k: metricsDef[m].k,
             label: metricsDef[m].label,   // include label for reporting
             result: res,
             note: note
           };
+
+          // Restore photo data if it was present
+          if (existingPhoto) {
+            items[i].metrics[m].photo = existingPhoto;
+            items[i].metrics[m].photoName = existingPhotoName;
+          }
         });
 
         // update per-item badge every collect
