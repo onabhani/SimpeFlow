@@ -704,9 +704,11 @@ function sfa_qg_audit_log_fix( $form_id, $entry_id, $metric_key, $item_label = '
  *  Assets (registered once; enqueued where needed)
  * ----------------------------------------------------------------*/
 add_action( 'init', function () {
-	wp_register_script( 'sfa-qg', SFA_QG_URL . 'assets/js/quality.js', array( 'jquery' ), SFA_QG_VER, true );
-	wp_register_style( 'sfa-qg', SFA_QG_URL . 'assets/css/quality.css', array(), SFA_QG_VER );
-	sfa_qg_log( 'Assets registered' );
+	// Force cache bust with timestamp during development
+	$version = SFA_QG_VER . '.' . time();
+	wp_register_script( 'sfa-qg', SFA_QG_URL . 'assets/js/quality.js', array( 'jquery' ), $version, true );
+	wp_register_style( 'sfa-qg', SFA_QG_URL . 'assets/css/quality.css', array(), $version );
+	sfa_qg_log( 'Assets registered', array('version' => $version) );
 }, 5);
 
 /**
