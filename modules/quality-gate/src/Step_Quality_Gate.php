@@ -106,6 +106,18 @@ public function process() {
 		}
 	}
 	gform_update_meta( $entry_id, '_qc_failed_items', wp_json_encode( $failed_items ) );
+
+	// Force cache clear to ensure meta is immediately available for next step
+	if ( function_exists( 'wp_cache_delete' ) ) {
+		wp_cache_delete( $entry_id . '_qc_failed_items', 'gform_meta' );
+		wp_cache_delete( $entry_id, 'gform_entry_meta' );
+	}
+
+	sfa_qg_log('QG_STEP_PROCESS: Saved failed items', array(
+		'entry_id' => $entry_id,
+		'failed_count' => count($failed_items),
+		'failed_items' => $failed_items
+	));
 	// Collect failed metric labels (count duplicates; used for reporting)
     $failed_metrics = array();
         if ( is_array( $payload ) && ! empty( $payload['items'] ) && is_array( $payload['items'] ) ) {

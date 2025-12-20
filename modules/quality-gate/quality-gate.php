@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.4');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.5');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1567,6 +1567,17 @@ if ( class_exists( 'GFAPI' ) ) {
 	$failed = is_array( $failed )
 		? array_values( array_filter( array_map( static function( $v ){ return trim( (string) $v ); }, $failed ) ) )
 		: array();
+
+	// Debug: Track when button should appear
+	if ( function_exists('sfa_qg_log') ) {
+		sfa_qg_log('POPULATE_REWORK_CHOICES', array(
+			'entry_id' => $entry_id,
+			'failed_count' => count($failed),
+			'failed_items' => $failed,
+			'current_filter' => current_filter(),
+			'is_ajax' => defined('DOING_AJAX') && DOING_AJAX
+		));
+	}
 		
 // Stamp first-seen fail time for each failed item (once).
 if ( $entry_id && $failed ) {
