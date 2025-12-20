@@ -135,13 +135,22 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     return (chosen === total) ? 'pass' : 'pending';
   }
 
-  function badgeHtml(status){
+  function badgeHtml(status, customLabel){
     // reuse badge styles from quality.css (.sfa-qg-badge)
     var cls = 'sfa-qg-badge ';
     var text = '';
-    if (status==='pass'){ cls += 'is-pass'; text='PASS'; }
-    else if (status==='fail'){ cls += 'is-fail'; text='FAIL'; }
-    else { cls += 'is-empty'; text='PENDING'; }
+    if (customLabel) {
+      // Use custom label if provided
+      if (status==='pass'){ cls += 'is-pass'; }
+      else if (status==='fail'){ cls += 'is-fail'; }
+      else { cls += 'is-empty'; }
+      text = customLabel;
+    } else {
+      // Default labels
+      if (status==='pass'){ cls += 'is-pass'; text='PASS'; }
+      else if (status==='fail'){ cls += 'is-fail'; text='FAIL'; }
+      else { cls += 'is-empty'; text='PENDING'; }
+    }
     return '<span class="'+cls+'">'+text+'</span>';
   }
 
@@ -153,7 +162,7 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     $item.find('.sfa-qg-item-body').css('display', expanded ? '' : 'none');
   }
 
-  function buildItemHead(name, initialStatus){
+  function buildItemHead(name, initialStatus, customBadgeLabel){
     var safe = $('<div/>').text(name).html();
     return $(
       '<div class="sfa-qg-item-head" role="button" tabindex="0" aria-expanded="false" style="cursor:pointer;">' +
@@ -162,7 +171,7 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
             '<span class="sfa-qg-item-label">Item:</span> ' + safe +
           '</div>' +
           '<div class="sfa-qg-status" style="display:inline-flex;gap:6px;align-items:center;">' +
-            '<span class="sfa-qg-status-badge">' + badgeHtml(initialStatus) + '</span>' +
+            '<span class="sfa-qg-status-badge">' + badgeHtml(initialStatus, customBadgeLabel) + '</span>' +
             '<span class="sfa-qg-caret" aria-hidden="true">▸</span>' +
           '</div>' +
         '</div>' +
@@ -507,12 +516,9 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
         }
       }
 
-      var $head = buildItemHead(it.name, initialStatus);
-
-      // (readOnly) “Passed Previously” tag…
-if (readOnly && initialStatus === 'pass') {
-  $head.find('.sfa-qg-item-name').append(' <span class="sfa-qg-tag">Passed Previously</span>');
-}
+      // For readOnly items with pass status, show "PASSED PREVIOUSLY" in the badge
+      var customBadgeLabel = (readOnly && initialStatus === 'pass') ? 'PASSED PREVIOUSLY' : undefined;
+      var $head = buildItemHead(it.name, initialStatus, customBadgeLabel);
 
 
       // Persistent “Fixed” chip (from preferred fixedLookup)
