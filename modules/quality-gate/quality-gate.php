@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.0');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.1');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1563,7 +1563,8 @@ sfa_qg_log('READ _qc_recheck_items', [
 	$table_html = sfa_qg_render_failed_table( $failed_map, $fixed_union, $entry_id, $editable, $target_id );
 
 foreach ( $form['fields'] as &$field ) {
-	if ( (int) $field->id !== (int) $target_id || $field->type !== 'checkbox' ) { continue; }
+	$field_type = $field->type;
+	if ( (int) $field->id !== (int) $target_id || ($field_type !== 'checkbox' && $field_type !== 'radio') ) { continue; }
 
 	/* 1) Replace choices with the canonical failed list (keeps GF happy + POST fallback) */
 	$field->choices = array();
@@ -1689,9 +1690,6 @@ $desc  = '<div class="qg-rework-help"'
 	// Show controls ONLY when the field is editable on this step and there are failed items.
 	if ( $editable_field && ! empty( $failed ) ) {
 		$desc .= '<div class="qg-rework-controls" style="margin:0 0 8px 0;">'
-		       .   '<p class="qg-instruction" style="display:inline-block;margin:0 10px 0 0;">'
-		       .       esc_html__( 'Tick the items that have been fixed.', 'sfa-quality-gate' )
-		       .   '</p>'
 		       .   '<button type="button" class="button qg-select-all-fixed" data-field-id="' . esc_attr( $target_id ) . '">'
 		       .       esc_html__( 'Mark all fixed', 'sfa-quality-gate' )
 		       .   '</button>'
@@ -1750,7 +1748,8 @@ add_filter( 'gform_validation', function( $result ) {
 	// The required list = the choices we injected for the rework field (i.e., failed items).
 	$required = array();
 	foreach ( $form['fields'] as $f ) {
-		if ( (int) $f->id !== (int) $field_id || $f->type !== 'checkbox' ) { continue; }
+		$field_type = $f->type;
+		if ( (int) $f->id !== (int) $field_id || ($field_type !== 'checkbox' && $field_type !== 'radio') ) { continue; }
 		foreach ( (array) $f->choices as $c ) {
 			$val = trim( (string) rgar( (array) $c, 'value', rgar( (array) $c, 'text', '' ) ) );
 			if ( $val !== '' ) { $required[] = $val; }

@@ -493,13 +493,18 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
       // QG-021: Collapsible Head (with status badge + caret)
       var initialStatus = 'pending';
       if (it.metrics && it.metrics.length){
-        var anyFail=false, allChosen=true;
+        var anyFail=false, allChosen=true, anyPass=false;
         for (var k=0;k<it.metrics.length;k++){
           var r = it.metrics[k].result;
           if (r!=='pass' && r!=='fail') { allChosen=false; }
           if (r==='fail') anyFail=true;
+          if (r==='pass') anyPass=true;
         }
         initialStatus = anyFail ? 'fail' : (allChosen ? 'pass' : 'pending');
+        // For readOnly items, preserve "pass" status if any metric shows pass and no fails
+        if (readOnly && !anyFail && anyPass) {
+          initialStatus = 'pass';
+        }
       }
 
       var $head = buildItemHead(it.name, initialStatus);

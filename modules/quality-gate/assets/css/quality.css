@@ -461,6 +461,15 @@
   border-color:#93c5fd !important;
 }
 
+/* Responsive badge spacing on mobile */
+@media (max-width: 640px){
+  .sfa-qg-badge{
+    display: inline-block !important;
+    margin-left: 6px !important;
+    vertical-align: middle !important;
+  }
+}
+
 /* Rework: hide duplicate item names under the checkbox choices */
 .qg-rework-field .gchoice label{ font-size:0; }
 .qg-rework-field .gchoice .gform-field-label{ display:none; } /* covers newer GF markup */
