@@ -518,6 +518,17 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
 
       // For readOnly items with pass status, show "PASSED PREVIOUSLY" in the badge
       var customBadgeLabel = (readOnly && initialStatus === 'pass') ? 'PASSED PREVIOUSLY' : undefined;
+
+      // Debug logging for PASSED PREVIOUSLY
+      if (readOnly && initialStatus === 'pass') {
+        qgDebug('[QG] Item marked as PASSED PREVIOUSLY', {
+          name: it.name,
+          readOnly: readOnly,
+          initialStatus: initialStatus,
+          customBadgeLabel: customBadgeLabel
+        });
+      }
+
       var $head = buildItemHead(it.name, initialStatus, customBadgeLabel);
 
 
@@ -1078,6 +1089,13 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
     e.preventDefault();
 
     var $help   = $(this).closest('.qg-rework-help');
+
+    // Safety: Don't allow action if field is not editable
+    if ($help.attr('data-editable') === '0') {
+      console.warn('[QG] Mark all fixed button clicked but field is not editable');
+      return false;
+    }
+
     var $gfield = $help.closest('.gfield');
     if (!$gfield.length) return;
 
@@ -1143,6 +1161,12 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
     $(function () {
       qgEachReworkGfield(function($g){ qgUpdateFixedBadges($g); });
       qgSyncFixedBadgesIntoQC();
+
+      // Hide "Mark all fixed" button if field is not editable
+      $('.qg-rework-help[data-editable="0"] .qg-select-all-fixed').each(function() {
+        $(this).hide();
+        console.warn('[QG] Hiding Mark all fixed button - field not editable');
+      });
     });
   })(jQuery);
 
