@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.1');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.2');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1475,14 +1475,15 @@ $photos_html = '';
 if ( ! empty( $photos ) ) {
 	$photos_html = '<div class="qg-fail-photos" style="display:flex;gap:8px;flex-wrap:wrap;">';
 	foreach ( $photos as $photo_data ) {
-		$label = isset($photo_data['label']) ? esc_attr($photo_data['label']) : '';
+		$label = isset($photo_data['label']) ? esc_html($photo_data['label']) : '';
 		$data_url = isset($photo_data['data']) ? $photo_data['data'] : '';
 		if ( $data_url ) {
+			// Don't escape data URLs - they need to remain as-is for the browser
 			$photos_html .= sprintf(
 				'<div class="qg-photo-item" style="text-align:center;"><img src="%s" alt="%s" style="max-width:100px;max-height:100px;border:2px solid #d1d5db;border-radius:8px;cursor:pointer;" onclick="window.open(this.src)"><div style="font-size:11px;color:#6b7280;margin-top:4px;">%s</div></div>',
-				esc_attr( $data_url ),
-				$label,
-				esc_html( $label )
+				$data_url,
+				esc_attr( $label ),
+				$label
 			);
 		}
 	}

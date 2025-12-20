@@ -909,8 +909,12 @@ if (readOnly && initialStatus === 'pass') {
       var i = parseInt($btn.data('i'), 10);
       var m = parseInt($btn.data('m'), 10);
 
-      // Create hidden file input - camera only, no gallery
-      var $fileInput = $('<input type="file" accept="image/*" capture style="display:none;">');
+      // Detect mobile device
+      var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+      // Create hidden file input - use capture only on mobile devices
+      var captureAttr = isMobile ? ' capture' : '';
+      var $fileInput = $('<input type="file" accept="image/*"' + captureAttr + ' style="display:none;">');
       $('body').append($fileInput);
 
       $fileInput.on('change', function() {
