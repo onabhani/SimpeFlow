@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.2');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.3');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1387,6 +1387,17 @@ if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 			if ( ! is_wp_error( $entry ) ) {
 				$raw = rgar( $entry, (string) $qc_field_id );
 				$val = json_decode( (string) $raw, true );
+
+				// Debug: Log the raw data
+				if ( function_exists('sfa_qg_log') ) {
+					sfa_qg_log('QG Failed Metric Map - Raw Data', array(
+						'entry_id' => $entry_id,
+						'qc_field_id' => $qc_field_id,
+						'raw_length' => strlen($raw),
+						'decoded_items_count' => is_array($val) && isset($val['items']) ? count($val['items']) : 0
+					));
+				}
+
 				if ( is_array( $val ) && ! empty( $val['items'] ) ) {
 					foreach ( (array) $val['items'] as $it ) {
 						$name  = (string) rgar( $it, 'name' );
@@ -1395,10 +1406,23 @@ if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 						$photos = array();
 						foreach ( (array) rgar( $it, 'metrics' ) as $m ) {
 							$label = trim( (string) rgar( $m, 'label' ) );
-							if ( rgar( $m, 'result' ) === 'fail' && $label !== '' ) {
+							$result = rgar( $m, 'result' );
+							$photo = rgar( $m, 'photo' );
+
+							// Debug: Log metric details
+							if ( function_exists('sfa_qg_log') && $photo ) {
+								sfa_qg_log('QG Metric with Photo', array(
+									'item' => $name,
+									'label' => $label,
+									'result' => $result,
+									'has_photo' => !empty($photo),
+									'photo_length' => strlen($photo)
+								));
+							}
+
+							if ( $result === 'fail' && $label !== '' ) {
 								$fails[] = $label;
 								// Collect photo if available
-								$photo = rgar( $m, 'photo' );
 								if ( $photo ) {
 									$photos[] = array(
 										'label' => $label,
@@ -1412,6 +1436,15 @@ if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 								'labels' => array_values( array_unique( $fails ) ),
 								'photos' => $photos
 							);
+
+							// Debug: Log final map entry
+							if ( function_exists('sfa_qg_log') ) {
+								sfa_qg_log('QG Map Entry', array(
+									'item' => $name,
+									'labels' => $fails,
+									'photo_count' => count($photos)
+								));
+							}
 						}
 					}
 				}
