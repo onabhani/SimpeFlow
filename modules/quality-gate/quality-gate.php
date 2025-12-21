@@ -705,10 +705,16 @@ function sfa_qg_audit_log_fix( $form_id, $entry_id, $metric_key, $item_label = '
  * ----------------------------------------------------------------*/
 add_action( 'init', function () {
 	// Force cache bust with timestamp during development
-	$version = SFA_QG_VER . '.' . time();
-	wp_register_script( 'sfa-qg', SFA_QG_URL . 'assets/js/quality.js', array( 'jquery' ), $version, true );
-	wp_register_style( 'sfa-qg', SFA_QG_URL . 'assets/css/quality.css', array(), $version );
-	sfa_qg_log( 'Assets registered', array('version' => $version) );
+	$timestamp = time();
+	$version = SFA_QG_VER . '.' . $timestamp;
+
+	// Deregister first to ensure fresh registration
+	wp_deregister_script( 'sfa-qg' );
+	wp_deregister_style( 'sfa-qg' );
+
+	wp_register_script( 'sfa-qg', SFA_QG_URL . 'assets/js/quality.js?v=' . $timestamp, array( 'jquery' ), $version, true );
+	wp_register_style( 'sfa-qg', SFA_QG_URL . 'assets/css/quality.css?v=' . $timestamp, array(), $version );
+	sfa_qg_log( 'Assets registered', array('version' => $version, 'timestamp' => $timestamp) );
 }, 5);
 
 /**
