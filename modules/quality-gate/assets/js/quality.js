@@ -2,7 +2,7 @@ window.SFAQG_DEBUG = (typeof window.SFAQG_DEBUG === 'boolean') ? window.SFAQG_DE
 function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) { console.debug.apply(console, arguments); } }
 
 // Version marker to verify JavaScript is loading
-console.log('[SFA QG] JavaScript loaded - v2.3.13.1');
+console.log('[SFA QG] JavaScript loaded - v2.3.13.2');
 
 
 
@@ -185,7 +185,9 @@ console.log('[SFA QG] JavaScript loaded - v2.3.13.1');
 
   function updateItemBadge($item){
     var st = getItemStatusFromDOM($item);
-    $item.find('.sfa-qg-status-badge').html( badgeHtml(st) );
+    // Check if item has custom badge label (e.g., "PASSED PREVIOUSLY")
+    var customLabel = $item.attr('data-custom-badge-label');
+    $item.find('.sfa-qg-status-badge').html( badgeHtml(st, customLabel) );
   }
   // -------------------------------------------------------------------
 
@@ -545,8 +547,12 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
 
       var $head = buildItemHead(it.name, initialStatus, customBadgeLabel);
 
+      // Store customBadgeLabel in data attribute so updateItemBadge can preserve it
+      if (customBadgeLabel) {
+        $item.attr('data-custom-badge-label', customBadgeLabel);
+      }
 
-      // Persistent “Fixed” chip (from preferred fixedLookup)
+      // Persistent "Fixed" chip (from preferred fixedLookup)
       if (fixedLookup[it.name] && $head && typeof $head.find === 'function') {
         var $status = $head.find('.sfa-qg-status').first();
         if ($status && $status.length) {
