@@ -1560,6 +1560,25 @@ if ( class_exists( 'GFAPI' ) ) {
 	// Don't show on the Quality Gate step itself.
 	$curr_step = sfa_qg_current_step_id();
 	$qg_step   = sfa_qg_find_quality_gate_step_id( $form );
+
+	// Get workflow status for debugging
+	$workflow_status = '';
+	if ( function_exists('gravity_flow') && $entry ) {
+		$api = gravity_flow();
+		$current_step_obj = $api->get_current_step( $form, $entry );
+		$workflow_status = $current_step_obj && method_exists($current_step_obj, 'get_status')
+			? $current_step_obj->get_status()
+			: 'unknown';
+	}
+
+	sfa_qg_log('POPULATE_REWORK - Entry Context', [
+		'entry_id' => $entry_id,
+		'curr_step_id' => $curr_step,
+		'qg_step_id' => $qg_step,
+		'workflow_status' => $workflow_status,
+		'target_field_id' => $target_id
+	]);
+
 	if ( $curr_step && $qg_step && $curr_step === $qg_step ) {
 		return $form;
 	}
