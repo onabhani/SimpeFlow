@@ -4,6 +4,7 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
 
 
 
+
 (function($){
   // Build a metrics definition from labels (array of strings) or fall back to 10 defaults.
   function buildMetricsDef(labels){
@@ -135,13 +136,22 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     return (chosen === total) ? 'pass' : 'pending';
   }
 
-  function badgeHtml(status){
+  function badgeHtml(status, customLabel){
     // reuse badge styles from quality.css (.sfa-qg-badge)
     var cls = 'sfa-qg-badge ';
     var text = '';
-    if (status==='pass'){ cls += 'is-pass'; text='PASS'; }
-    else if (status==='fail'){ cls += 'is-fail'; text='FAIL'; }
-    else { cls += 'is-empty'; text='PENDING'; }
+    if (customLabel) {
+      // Use custom label if provided
+      if (status==='pass'){ cls += 'is-pass'; }
+      else if (status==='fail'){ cls += 'is-fail'; }
+      else { cls += 'is-empty'; }
+      text = customLabel;
+    } else {
+      // Default labels
+      if (status==='pass'){ cls += 'is-pass'; text='PASS'; }
+      else if (status==='fail'){ cls += 'is-fail'; text='FAIL'; }
+      else { cls += 'is-empty'; text='PENDING'; }
+    }
     return '<span class="'+cls+'">'+text+'</span>';
   }
 
@@ -153,7 +163,7 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     $item.find('.sfa-qg-item-body').css('display', expanded ? '' : 'none');
   }
 
-  function buildItemHead(name, initialStatus){
+  function buildItemHead(name, initialStatus, customBadgeLabel){
     var safe = $('<div/>').text(name).html();
     return $(
       '<div class="sfa-qg-item-head" role="button" tabindex="0" aria-expanded="false" style="cursor:pointer;">' +
@@ -162,7 +172,7 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
             '<span class="sfa-qg-item-label">Item:</span> ' + safe +
           '</div>' +
           '<div class="sfa-qg-status" style="display:inline-flex;gap:6px;align-items:center;">' +
-            '<span class="sfa-qg-status-badge">' + badgeHtml(initialStatus) + '</span>' +
+            '<span class="sfa-qg-status-badge">' + badgeHtml(initialStatus, customBadgeLabel) + '</span>' +
             '<span class="sfa-qg-caret" aria-hidden="true">▸</span>' +
           '</div>' +
         '</div>' +
@@ -172,7 +182,9 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
 
   function updateItemBadge($item){
     var st = getItemStatusFromDOM($item);
-    $item.find('.sfa-qg-status-badge').html( badgeHtml(st) );
+    // Check if item has custom badge label (e.g., "PASSED PREVIOUSLY")
+    var customLabel = $item.attr('data-custom-badge-label');
+    $item.find('.sfa-qg-status-badge').html( badgeHtml(st, customLabel) );
   }
   // -------------------------------------------------------------------
 
@@ -214,16 +226,38 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
     $choices.append($pass).append($fail);
     $row.append($choices); // grid column 2
 
-    // Col 3: note
+    // Col 3: note + photo button wrapper
+    var $noteWrapper = $('<div class="sfa-qg-note-wrapper"></div>');
     var $note = $('<input type="text" class="sfa-qg-note" data-i="'+i+'" data-m="'+mIndex+'" placeholder="Note (required if Fail)">');
     if (metric && metric.note) $note.val(metric.note);
     if (requireNoteOnFail && metric && metric.result === 'fail') $note.attr('required','required');
+
+    // Photo evidence button (visible on all devices for testing, can be refined later)
+    // Button is hidden by default, only shown when FAIL is explicitly selected
+    if (!readOnly) {
+      var hasPhoto = !!(metric && metric.photo);
+      // Only show if result is explicitly 'fail', otherwise always hidden
+      var shouldShow = (metric && metric.result === 'fail');
+
+      var $photoBtn = $(
+        '<button type="button" class="sfa-qg-photo-btn' +
+          (hasPhoto ? ' has-photo' : '') +
+          (!shouldShow ? ' hidden' : '') + '" ' +
+          'data-i="'+i+'" data-m="'+mIndex+'" title="Add photo evidence">' +
+          '📷' +
+        '</button>'
+      );
+      $noteWrapper.append($note).append($photoBtn);
+    } else {
+      $noteWrapper.append($note);
+    }
+
     if (readOnly){
       $choices.find('input').prop('disabled', true);
       $note.prop('disabled', true);
       $row.addClass('sfa-qg-readonly');
     }
-    $row.append($note); // grid column 3
+    $row.append($noteWrapper); // grid column 3
 
     return $row;
   }
@@ -326,7 +360,9 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
         try{
           var arr = JSON.parse(raw);
           if (Array.isArray(arr)){ arr.forEach(function(n){ if (n) fixed[String(n)] = 1; }); }
-        }catch(e){}
+        }catch(e){
+          qgDebug('[QG] Failed to parse data-fixed JSON', raw, e);
+        }
       }
 
       // live checked inputs (if present)
@@ -400,7 +436,16 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
   }
 
   function renderField(cfg){
-    var $wrap = $('.sfa-qg-field[data-form="'+cfg.formId+'"][data-field="'+cfg.fieldId+'"]');
+    // Validate formId and fieldId are numeric to prevent selector injection
+    if (!cfg || !cfg.formId || !cfg.fieldId) return;
+    var formId = parseInt(cfg.formId, 10);
+    var fieldId = parseInt(cfg.fieldId, 10);
+    if (isNaN(formId) || isNaN(fieldId)) {
+      qgDebug('[QG] Invalid formId or fieldId', cfg);
+      return;
+    }
+
+    var $wrap = $('.sfa-qg-field[data-form="'+formId+'"][data-field="'+fieldId+'"]');
     if (!$wrap.length) return;
 
     var metricsDef = buildMetricsDef(cfg.metricLabels);
@@ -439,13 +484,15 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
 
     var $ui = $('<div class="sfa-qg-ui"></div>');
 
+    // Determine if we should show batch controls (global editability)
+    var showBatchControls = isQualityGate || isUserInput; // Show on both QC and rework steps
+
     // QG-205 — sort when returning after rework:
     if (isQualityGate || (Array.isArray(recheckOnly) && recheckOnly.length)) {
       items = qgSortItemsForQG205(items, recheckOnly, metricsDef);
     }
 
-    // Prefer existing.fixedItems -> cfg.fixedItems -> DOM/global
-    var fixedLookup = qgBuildFixedLookup(cfg, existing);
+    // fixedLookup already built above (line 417), no need to rebuild
 
     items.forEach(function(it, idx){
       var isFixedTarget = !!(recheckOnly && isRecheckTarget[it.name]); // items coordinator marked to recheck
@@ -458,24 +505,37 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
       // QG-021: Collapsible Head (with status badge + caret)
       var initialStatus = 'pending';
       if (it.metrics && it.metrics.length){
-        var anyFail=false, allChosen=true;
+        var anyFail=false, allChosen=true, anyPass=false;
         for (var k=0;k<it.metrics.length;k++){
           var r = it.metrics[k].result;
           if (r!=='pass' && r!=='fail') { allChosen=false; }
           if (r==='fail') anyFail=true;
+          if (r==='pass') anyPass=true;
         }
         initialStatus = anyFail ? 'fail' : (allChosen ? 'pass' : 'pending');
+        // For readOnly items, preserve "pass" status if any metric shows pass and no fails
+        if (readOnly && !anyFail && anyPass) {
+          initialStatus = 'pass';
+        }
       }
 
-      var $head = buildItemHead(it.name, initialStatus);
+      // Determine if item should show "PASSED PREVIOUSLY"
+      // 1. readOnly items with pass status (original logic)
+      // 2. Items NOT in failedItems list with pass status (re-check context)
+      var failedItemsList = (cfg && cfg.failedItems && Array.isArray(cfg.failedItems)) ? cfg.failedItems : [];
+      var isNotInFailedList = failedItemsList.indexOf(it.name) === -1;
+      var shouldShowPassedPreviously = (readOnly && initialStatus === 'pass') ||
+                                       (isNotInFailedList && initialStatus === 'pass');
 
-      // (readOnly) “Passed Previously” tag…
-if (readOnly && initialStatus === 'pass') {
-  $head.find('.sfa-qg-item-name').append(' <span class="sfa-qg-tag">Passed Previously</span>');
-}
+      var customBadgeLabel = shouldShowPassedPreviously ? 'PASSED PREVIOUSLY' : undefined;
+      var $head = buildItemHead(it.name, initialStatus, customBadgeLabel);
 
+      // Store customBadgeLabel in data attribute so updateItemBadge can preserve it
+      if (customBadgeLabel) {
+        $item.attr('data-custom-badge-label', customBadgeLabel);
+      }
 
-      // Persistent “Fixed” chip (from preferred fixedLookup)
+      // Persistent "Fixed" chip (from preferred fixedLookup)
       if (fixedLookup[it.name] && $head && typeof $head.find === 'function') {
         var $status = $head.find('.sfa-qg-status').first();
         if ($status && $status.length) {
@@ -520,6 +580,46 @@ if (readOnly && initialStatus === 'pass') {
     // Remove the placeholder once UI exists
     $wrap.find('.sfa-qg-placeholder').remove();
 
+    // LocalStorage backup helpers
+    var backupKey = 'qg_backup_' + formId + '_' + fieldId;
+    var backupTimer;
+
+    function saveToLocalStorage() {
+      try {
+        var backup = {
+          timestamp: Date.now(),
+          items: items,
+          formId: formId,
+          fieldId: fieldId,
+          entryId: getParam('lid') || getParam('entry_id') || 0
+        };
+        localStorage.setItem(backupKey, JSON.stringify(backup));
+        qgDebug('[QG] Auto-saved to localStorage', backupKey);
+      } catch(e) {
+        qgDebug('[QG] Failed to save to localStorage', e);
+      }
+    }
+
+    function scheduleAutoSave() {
+      clearTimeout(backupTimer);
+      backupTimer = setTimeout(saveToLocalStorage, 2000); // 2 second debounce
+    }
+
+    function clearLocalStorageBackup() {
+      try {
+        localStorage.removeItem(backupKey);
+        qgDebug('[QG] Cleared localStorage backup', backupKey);
+      } catch(e) {}
+    }
+
+    function getParam(name) {
+      try {
+        return new URLSearchParams(window.location.search).get(name);
+      } catch(e) {
+        return null;
+      }
+    }
+
     function collectAndWrite(){
       // sync metrics from DOM into items
       qgSyncFixedBadgesIntoQC();
@@ -537,12 +637,23 @@ if (readOnly && initialStatus === 'pass') {
           var note= $row.find('.sfa-qg-note').val();
 
           if (!items[i].metrics) items[i].metrics = [];
+
+          // Preserve existing photo data if it exists
+          var existingPhoto = items[i].metrics[m] && items[i].metrics[m].photo;
+          var existingPhotoName = items[i].metrics[m] && items[i].metrics[m].photoName;
+
           items[i].metrics[m] = {
             k: metricsDef[m].k,
             label: metricsDef[m].label,   // include label for reporting
             result: res,
             note: note
           };
+
+          // Restore photo data if it was present
+          if (existingPhoto) {
+            items[i].metrics[m].photo = existingPhoto;
+            items[i].metrics[m].photoName = existingPhotoName;
+          }
         });
 
         // update per-item badge every collect
@@ -576,9 +687,42 @@ if (readOnly && initialStatus === 'pass') {
 
       if (complete){
         $input.val(JSON.stringify(payload)).trigger('change');
+        clearLocalStorageBackup(); // Clear backup on successful completion
       } else {
         // Not complete → keep input empty (legacy behavior) but still updated data-config lets the UI show badges
         $input.val('').trigger('change');
+      }
+
+      // Schedule auto-save to localStorage
+      scheduleAutoSave();
+    }
+
+    // Try to restore from localStorage backup if no existing data
+    if (!existing || !existing.items) {
+      try {
+        var backupData = localStorage.getItem(backupKey);
+        if (backupData) {
+          var backup = JSON.parse(backupData);
+          var age = Date.now() - backup.timestamp;
+
+          // Only restore if backup is less than 4 hours old
+          if (age < 4 * 60 * 60 * 1000 && backup.items && backup.items.length) {
+            var ageMinutes = Math.round(age / 60000);
+            var restoreMsg = 'Found unsaved work from ' + ageMinutes + ' minutes ago. Restore it?';
+
+            if (confirm(restoreMsg)) {
+              existing = { items: backup.items };
+              qgDebug('[QG] Restored from localStorage backup', backup);
+            } else {
+              clearLocalStorageBackup();
+            }
+          } else if (age >= 4 * 60 * 60 * 1000) {
+            // Clear old backups
+            clearLocalStorageBackup();
+          }
+        }
+      } catch(e) {
+        qgDebug('[QG] Failed to restore from localStorage', e);
       }
     }
 
@@ -600,7 +744,8 @@ if (readOnly && initialStatus === 'pass') {
                     .addClass('is-checked ' + (val==='pass' ? 'is-pass' : 'is-fail'));
               }
               var note = (m.note||'');
-              var $note = $row.find('.sfa-qg-note').val(note);
+              var $note = $row.find('.sfa-qg-note');
+              $note.val(note);
               qgApplyNoteRequiredUI($note, !!cfg.requireNoteOnFail && val==='fail');
             }
           });
@@ -621,6 +766,221 @@ if (readOnly && initialStatus === 'pass') {
     }else{
       $input.val('');
     }
+
+    // Swipe gestures for iPad: left = fail, right = pass
+    if ('ontouchstart' in window) {
+      var touchStartX = 0;
+      var touchStartY = 0;
+
+      $wrap.on('touchstart', '.sfa-qg-metric-row', function(e) {
+        touchStartX = e.originalEvent.touches[0].clientX;
+        touchStartY = e.originalEvent.touches[0].clientY;
+      });
+
+      $wrap.on('touchend', '.sfa-qg-metric-row', function(e) {
+        if (!touchStartX || !touchStartY) return;
+
+        var touchEndX = e.originalEvent.changedTouches[0].clientX;
+        var touchEndY = e.originalEvent.changedTouches[0].clientY;
+        var deltaX = touchEndX - touchStartX;
+        var deltaY = Math.abs(touchEndY - touchStartY);
+
+        // Require 80px horizontal swipe and less than 30px vertical (prevent accidental swipes during scroll)
+        if (Math.abs(deltaX) > 80 && deltaY < 30) {
+          var $row = $(this);
+          var $radio;
+
+          if (deltaX > 0) {
+            // Swipe right = Pass
+            $radio = $row.find('.sfa-qg-result[value="pass"]');
+          } else {
+            // Swipe left = Fail
+            $radio = $row.find('.sfa-qg-result[value="fail"]');
+          }
+
+          if ($radio.length && !$radio.prop('disabled')) {
+            $radio.prop('checked', true).trigger('change');
+
+            // Visual feedback: brief highlight
+            $row.addClass('sfa-qg-swipe-feedback');
+            setTimeout(function() {
+              $row.removeClass('sfa-qg-swipe-feedback');
+            }, 300);
+          }
+        }
+
+        touchStartX = 0;
+        touchStartY = 0;
+      });
+
+      $wrap.on('touchmove', '.sfa-qg-metric-row', function(e) {
+        // Allow scrolling, but reset if significant movement
+        var currentX = e.originalEvent.touches[0].clientX;
+        var currentY = e.originalEvent.touches[0].clientY;
+        var deltaX = Math.abs(currentX - touchStartX);
+        var deltaY = Math.abs(currentY - touchStartY);
+
+        // If vertical scroll is detected, cancel swipe
+        if (deltaY > deltaX) {
+          touchStartX = 0;
+          touchStartY = 0;
+        }
+      });
+    }
+
+    // Batch controls for quick operations
+    function addBatchControls() {
+      var $batchBar = $(
+        '<div class="sfa-qg-batch-controls">' +
+          '<button type="button" class="qg-batch-btn qg-batch-all-pass">✓ All Pass</button>' +
+          '<button type="button" class="qg-batch-btn qg-batch-all-clear">⟲ Clear All</button>' +
+          '<span class="qg-batch-info"></span>' +
+        '</div>'
+      );
+
+      $ui.prepend($batchBar);
+
+      // All Pass handler
+      $batchBar.find('.qg-batch-all-pass').on('click', function(e) {
+        e.preventDefault();
+
+        if (!confirm('Mark all metrics as PASS?')) return;
+
+        $ui.find('.sfa-qg-item').each(function() {
+          var $item = $(this);
+          if ($item.find('.sfa-qg-readonly').length) return; // Skip read-only items
+
+          $item.find('.sfa-qg-result[value="pass"]').each(function() {
+            if (!$(this).prop('disabled')) {
+              $(this).prop('checked', true).trigger('change');
+            }
+          });
+
+          setCollapseState($item, false); // Collapse after marking pass
+        });
+
+        $(this).blur();
+      });
+
+      // Clear All handler
+      $batchBar.find('.qg-batch-all-clear').on('click', function(e) {
+        e.preventDefault();
+
+        if (!confirm('Clear all selections?')) return;
+
+        $ui.find('.sfa-qg-result:checked').each(function() {
+          if (!$(this).prop('disabled')) {
+            $(this).prop('checked', false);
+            $(this).closest('.sfa-qg-radio').removeClass('is-checked is-pass is-fail');
+          }
+        });
+
+        $ui.find('.sfa-qg-note').each(function() {
+          if (!$(this).prop('disabled')) {
+            $(this).val('');
+          }
+        });
+
+        collectAndWrite();
+        $(this).blur();
+      });
+
+      updateBatchInfo();
+    }
+
+    function updateBatchInfo() {
+      var total = $ui.find('.sfa-qg-result').length / 2; // 2 radios per metric
+      var checked = $ui.find('.sfa-qg-result:checked').length;
+      var pct = total > 0 ? Math.round((checked / total) * 100) : 0;
+
+      $ui.find('.qg-batch-info').text(checked + '/' + total + ' (' + pct + '%)');
+    }
+
+    function addExpandCollapseAll() {
+      var $controls = $ui.find('.sfa-qg-batch-controls');
+      if (!$controls.length) return;
+
+      var $expandBtn = $(
+        '<button type="button" class="qg-batch-btn qg-expand-all">▾ Expand</button>'
+      );
+      var $collapseBtn = $(
+        '<button type="button" class="qg-batch-btn qg-collapse-all">▸ Collapse</button>'
+      );
+
+      // Insert after batch info
+      $controls.find('.qg-batch-info').before($expandBtn).before($collapseBtn);
+
+      $expandBtn.on('click', function(e) {
+        e.preventDefault();
+        $ui.find('.sfa-qg-item').each(function() {
+          setCollapseState($(this), true); // true = expanded
+        });
+        $(this).blur();
+      });
+
+      $collapseBtn.on('click', function(e) {
+        e.preventDefault();
+        $ui.find('.sfa-qg-item').each(function() {
+          setCollapseState($(this), false); // false = collapsed
+        });
+        $(this).blur();
+      });
+    }
+
+    // Add batch controls and expand/collapse toggles
+    if (showBatchControls) {
+      addBatchControls();
+      addExpandCollapseAll();
+    }
+
+    // Photo evidence handler
+    $wrap.on('click', '.sfa-qg-photo-btn', function(e) {
+      e.preventDefault();
+      var $btn = $(this);
+      var i = parseInt($btn.data('i'), 10);
+      var m = parseInt($btn.data('m'), 10);
+
+      // Detect mobile device
+      var isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+      // Create hidden file input - use capture only on mobile devices
+      var captureAttr = isMobile ? ' capture' : '';
+      var $fileInput = $('<input type="file" accept="image/*"' + captureAttr + ' style="display:none;">');
+      $('body').append($fileInput);
+
+      $fileInput.on('change', function() {
+        if (this.files && this.files[0]) {
+          var file = this.files[0];
+          var reader = new FileReader();
+
+          reader.onload = function(ev) {
+            var photoData = ev.target.result; // base64 data URL
+
+            // Store photo in metric data
+            if (!items[i]) items[i] = { name: '', metrics: [] };
+            if (!items[i].metrics[m]) items[i].metrics[m] = { k: metricsDef[m].k, result: '', note: '' };
+            items[i].metrics[m].photo = photoData;
+            items[i].metrics[m].photoName = file.name;
+
+            // Update button appearance
+            $btn.addClass('has-photo');
+            $btn.text('✓');
+
+            qgDebug('[QG] Photo added', { item: i, metric: m, size: file.size });
+
+            collectAndWrite();
+          };
+
+          reader.readAsDataURL(file);
+        }
+
+        // Remove temporary input
+        $fileInput.remove();
+      });
+
+      // Trigger file picker
+      $fileInput.click();
+    });
 
     // listeners
     $wrap.off('change input', '.sfa-qg-result, .sfa-qg-note');
@@ -643,7 +1003,18 @@ if (readOnly && initialStatus === 'pass') {
       qgApplyNoteRequiredUI($note, !!cfg.requireNoteOnFail && val==='fail');
       if (val==='fail'){ setCollapseState($item, true); }
 
+      // Show/hide photo button based on fail/pass selection
+      var $photoBtn = $item.find('.sfa-qg-photo-btn[data-i="'+i+'"][data-m="'+m+'"]');
+      if ($photoBtn.length) {
+        if (val === 'fail') {
+          $photoBtn.removeClass('hidden');
+        } else {
+          $photoBtn.addClass('hidden');
+        }
+      }
+
       collectAndWrite();
+      updateBatchInfo();
     });
 
     // Note typing — clear/add hint instantly, then save
@@ -662,8 +1033,10 @@ if (readOnly && initialStatus === 'pass') {
     // Ensure we capture fixedItems & metrics before submit as well
     var $form = $wrap.closest('form');
     if ($form.length){
-      $form.off('submit.qg'+cfg.formId+'_'+cfg.fieldId).on('submit.qg'+cfg.formId+'_'+cfg.fieldId, function(){
+      $form.off('submit.qg'+formId+'_'+fieldId).on('submit.qg'+formId+'_'+fieldId, function(){
         collectAndWrite();
+        // Clear localStorage backup on submit (assuming successful save to server)
+        setTimeout(clearLocalStorageBackup, 1000); // Delay to ensure submission completes
       });
     }
 
@@ -691,8 +1064,16 @@ if (readOnly && initialStatus === 'pass') {
     var cfg = d.config || {};
     if (!cfg.formId || !cfg.fieldId) return;
 
+    // Validate formId and fieldId
+    var formId = parseInt(cfg.formId, 10);
+    var fieldId = parseInt(cfg.fieldId, 10);
+    if (isNaN(formId) || isNaN(fieldId)) {
+      qgDebug('[QG] Invalid formId or fieldId in items-loaded event', cfg);
+      return;
+    }
+
     // Re-read data-config (it was updated by the lazy-loader) and render
-    var sel = '.sfa-qg-field[data-form="' + cfg.formId + '"][data-field="' + cfg.fieldId + '"]';
+    var sel = '.sfa-qg-field[data-form="' + formId + '"][data-field="' + fieldId + '"]';
     var $wrap = jQuery(sel);
     if (!$wrap.length) return;
 
@@ -711,6 +1092,13 @@ if (readOnly && initialStatus === 'pass') {
     e.preventDefault();
 
     var $help   = $(this).closest('.qg-rework-help');
+
+    // Safety: Don't allow action if field is not editable
+    if ($help.attr('data-editable') === '0') {
+      console.warn('[QG] Mark all fixed button clicked but field is not editable');
+      return false;
+    }
+
     var $gfield = $help.closest('.gfield');
     if (!$gfield.length) return;
 
@@ -776,6 +1164,12 @@ if (readOnly && initialStatus === 'pass') {
     $(function () {
       qgEachReworkGfield(function($g){ qgUpdateFixedBadges($g); });
       qgSyncFixedBadgesIntoQC();
+
+      // Hide "Mark all fixed" button if field is not editable
+      $('.qg-rework-help[data-editable="0"] .qg-select-all-fixed').each(function() {
+        $(this).hide();
+        console.warn('[QG] Hiding Mark all fixed button - field not editable');
+      });
     });
   })(jQuery);
 
@@ -886,7 +1280,9 @@ var formIdGuess = _id.replace(/\D/g,'') || '';
       var r = await fetch(SFA_QG_AJAX.url, {method:'POST', credentials:'same-origin', body:fd});
       var j = await r.json();
       if (j && j.success && j.data && Array.isArray(j.data.items)) return j.data.items;
-    }catch(e){}
+    }catch(e){
+      qgDebug('[QG] Failed to fetch items', e);
+    }
     return null;
   }
 

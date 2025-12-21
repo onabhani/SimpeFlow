@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 0.1.9a7.6
+ * Version: 2.3.14
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -40,9 +40,6 @@ if ( ! function_exists( 'sfa_qg_current_entry_id' ) ) {
 
 if ( ! function_exists( 'sfa_qg_report_collect' ) ) {
 	function sfa_qg_report_collect( $range = 'today', $form_id = 0, $ym = '' ) {
-	    
-	    if ( function_exists('sfa_qg_log') ) sfa_qg_log('REPORT v2: collector active', ['range'=>$range,'form_id'=>$form_id]);
-
 		global $wpdb;
 
 list( $start_local, $end_local ) = sfa_qg_report_range_bounds( $range, $ym );
@@ -121,47 +118,53 @@ $e  = $wpdb->prefix . 'gf_entry';
 		}
 
 		if ( $entry_ids ) {
-			$in = implode( ',', array_map( 'intval', array_slice( $entry_ids, 0, 1000 ) ) );
+			// Process entries in batches to avoid query length limits
+			$batch_size = 1000;
+			$batches = array_chunk( $entry_ids, $batch_size );
 
-			// Attach failed items to those entries
-			$q2 = "SELECT entry_id, meta_value FROM $em WHERE meta_key = '_qc_failed_items' AND entry_id IN ($in)";
-			foreach ( (array) $wpdb->get_results( $q2, ARRAY_A ) as $r2 ) {
-				$list = json_decode( (string) $r2['meta_value'], true );
-				if ( is_array( $list ) ) {
-					$eid = (int) $r2['entry_id'];
-					foreach ( $list as $name ) {
-						$name = trim( (string) $name );
-						if ( $name === '' ) continue;
-						$top_failed[ $name ] = ( $top_failed[ $name ] ?? 0 ) + 1;
+			foreach ( $batches as $batch ) {
+				$in = implode( ',', array_map( 'intval', $batch ) );
+
+				// Attach failed items to those entries
+				$q2 = "SELECT entry_id, meta_value FROM $em WHERE meta_key = '_qc_failed_items' AND entry_id IN ($in)";
+				foreach ( (array) $wpdb->get_results( $q2, ARRAY_A ) as $r2 ) {
+					$list = json_decode( (string) $r2['meta_value'], true );
+					if ( is_array( $list ) ) {
+						$eid = (int) $r2['entry_id'];
+						foreach ( $list as $name ) {
+							$name = trim( (string) $name );
+							if ( $name === '' ) continue;
+							$top_failed[ $name ] = ( $top_failed[ $name ] ?? 0 ) + 1;
+							if ( isset( $failed_entries_map[ $eid ] ) ) {
+								$failed_entries_map[ $eid ]['items'][] = $name;
+							}
+						}
 						if ( isset( $failed_entries_map[ $eid ] ) ) {
-							$failed_entries_map[ $eid ]['items'][] = $name;
+							$failed_entries_map[ $eid ]['items'] = array_values( array_unique( $failed_entries_map[ $eid ]['items'] ) );
 						}
 					}
-					if ( isset( $failed_entries_map[ $eid ] ) ) {
-						$failed_entries_map[ $eid ]['items'] = array_values( array_unique( $failed_entries_map[ $eid ]['items'] ) );
-					}
 				}
-			}
 
-			// Attach failing metric labels
-			$q3 = "SELECT entry_id, meta_value FROM $em WHERE meta_key = '_qc_failed_metrics' AND entry_id IN ($in)";
-			foreach ( (array) $wpdb->get_results( $q3, ARRAY_A ) as $r3 ) {
-				$list = json_decode( (string) $r3['meta_value'], true );
-				if ( is_array( $list ) ) {
-					$eid = (int) $r3['entry_id'];
-					foreach ( $list as $label ) {
-						$label = trim( (string) $label );
-						if ( $label === '' ) continue;
-						$top_failed_metrics[ $label ] = ( $top_failed_metrics[ $label ] ?? 0 ) + 1;
+				// Attach failing metric labels
+				$q3 = "SELECT entry_id, meta_value FROM $em WHERE meta_key = '_qc_failed_metrics' AND entry_id IN ($in)";
+				foreach ( (array) $wpdb->get_results( $q3, ARRAY_A ) as $r3 ) {
+					$list = json_decode( (string) $r3['meta_value'], true );
+					if ( is_array( $list ) ) {
+						$eid = (int) $r3['entry_id'];
+						foreach ( $list as $label ) {
+							$label = trim( (string) $label );
+							if ( $label === '' ) continue;
+							$top_failed_metrics[ $label ] = ( $top_failed_metrics[ $label ] ?? 0 ) + 1;
+							if ( isset( $failed_entries_map[ $eid ] ) ) {
+								$failed_entries_map[ $eid ]['metrics_labels'][] = $label;
+							}
+						}
 						if ( isset( $failed_entries_map[ $eid ] ) ) {
-							$failed_entries_map[ $eid ]['metrics_labels'][] = $label;
+							$failed_entries_map[ $eid ]['metrics_labels'] = array_values( array_unique( $failed_entries_map[ $eid ]['metrics_labels'] ) );
 						}
 					}
-					if ( isset( $failed_entries_map[ $eid ] ) ) {
-						$failed_entries_map[ $eid ]['metrics_labels'] = array_values( array_unique( $failed_entries_map[ $eid ]['metrics_labels'] ) );
-					}
 				}
-			}
+			} // End batch processing loop
 		}
 
 		arsort( $top_failed );
@@ -310,18 +313,7 @@ $params2 = array( $start_utc, $end_utc );
     usort( $latest_failed, static function( $a, $b ) {
         return strcmp( (string) $b['date_created'], (string) $a['date_created'] );
     } );
-
-    if ( function_exists('sfa_qg_log') ) {
-        sfa_qg_log('REPORT JSON sweep used (no _qc_summary)', array(
-            'range'   => $range,
-            'form_id' => (int) $form_id,
-            'totals'  => $totals,
-        ));
-    }
 }
-
-
-
 
 // --- Recompute KPI from QC JSON if summary didn't include it (robust) ---
 if ( (!empty($entry_ids)) && class_exists('GFAPI') &&
@@ -389,12 +381,6 @@ if ( (!empty($entry_ids)) && class_exists('GFAPI') &&
     if ( $calc_items_total > 0 )     { $totals['items_total']    = (int) $calc_items_total; }
     if ( $calc_total_metrics > 0 )   { $totals['metrics_total']  = (int) $calc_total_metrics; }
     if ( $calc_failed > 0 )          { $totals['metrics_failed'] = (int) $calc_failed; }
-
-    sfa_qg_log('REPORT KPI recompute (totals rebuilt from QC JSON)', array(
-        'range'   => $range,
-        'form_id' => (int) $form_id,
-        'totals'  => $totals,
-    ));
 }
 
 
@@ -558,14 +544,6 @@ foreach ( $audit_rows as $r ) {
 		$result['latest_failed']      = $latest_failed_audit;
 		$result['failed_entries']     = $failed_entries_audit;
 
-		if ( function_exists( 'sfa_qg_log' ) ) {
-			sfa_qg_log( 'REPORT fallback to audit (fail panels filled by events)', array(
-				'range'   => $range,
-				'form_id' => (int) $form_id,
-				'rows'    => count( $audit_rows ),
-			) );
-		}
-
 		return $result;
 	}
 }
@@ -574,7 +552,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '0.2.5.7x');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.14');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -672,13 +650,6 @@ function sfa_qg_audit_log( $type, $args ) {
 
 	if ( false === $ok ) {
 		// Surface the actual DB error in debug.log
-		if ( function_exists( 'sfa_qg_log' ) ) {
-			sfa_qg_log( 'AUDIT insert failed', array(
-				'error' => $wpdb->last_error,
-				'sql'   => $wpdb->last_query,
-				'data'  => $ins,
-			) );
-		}
 		return false;
 	}
 
@@ -698,9 +669,16 @@ function sfa_qg_audit_log_fix( $form_id, $entry_id, $metric_key, $item_label = '
  *  Assets (registered once; enqueued where needed)
  * ----------------------------------------------------------------*/
 add_action( 'init', function () {
-	wp_register_script( 'sfa-qg', SFA_QG_URL . 'assets/js/quality.js', array( 'jquery' ), SFA_QG_VER, true );
-	wp_register_style( 'sfa-qg', SFA_QG_URL . 'assets/css/quality.css', array(), SFA_QG_VER );
-	sfa_qg_log( 'Assets registered' );
+	// Force cache bust with timestamp during development
+	$timestamp = time();
+	$version = SFA_QG_VER . '.' . $timestamp;
+
+	// Deregister first to ensure fresh registration
+	wp_deregister_script( 'sfa-qg' );
+	wp_deregister_style( 'sfa-qg' );
+
+	wp_register_script( 'sfa-qg', SFA_QG_URL . 'assets/js/quality.js?v=' . $timestamp, array( 'jquery' ), $version, true );
+	wp_register_style( 'sfa-qg', SFA_QG_URL . 'assets/css/quality.css?v=' . $timestamp, array(), $version );
 }, 5);
 
 /**
@@ -749,7 +727,6 @@ add_action( 'admin_enqueue_scripts', function () {
 		wp_enqueue_script( 'sfa-qg' );
 		wp_enqueue_style( 'sfa-qg' );
 		sfa_qg_localize_ajax();
-		sfa_qg_log( 'Admin enqueue on screen', array( 'screen' => $screen->id ) );
 	}
 }, 20 );
 
@@ -760,7 +737,6 @@ add_action( 'admin_enqueue_scripts', function () {
 add_action( 'gform_loaded', function () {
 	// Bail early if GF core classes aren’t ready.
 	if ( ! class_exists( '\GF_Fields' ) ) {
-		sfa_qg_log( 'GF_Fields not available on gform_loaded' );
 		return;
 	}
 
@@ -768,32 +744,27 @@ add_action( 'gform_loaded', function () {
 	if ( method_exists( '\GF_Fields', 'get' ) ) {
 		$existing = \GF_Fields::get( 'quality_checklist' );
 		if ( $existing ) {
-			sfa_qg_log( 'GF Field already registered, skipping.' );
 			return;
 		}
 	}
 
 	$file = SFA_QG_DIR . 'src/Field_Quality_Checklist.php';
 	if ( ! file_exists( $file ) ) {
-		sfa_qg_log( 'GF Field file not found', array( 'path' => $file ) );
 		return;
 	}
 
 	require_once $file;
 
 	if ( ! class_exists( '\SFA\QualityGate\Field_Quality_Checklist' ) ) {
-		sfa_qg_log( 'GF Field class missing after include' );
 		return;
 	}
 
 	// Double-check again in case something registered during include.
 	if ( method_exists( '\GF_Fields', 'get' ) && \GF_Fields::get( 'quality_checklist' ) ) {
-		sfa_qg_log( 'GF Field present after include, skipping register.' );
 		return;
 	}
 
 	\GF_Fields::register( new \SFA\QualityGate\Field_Quality_Checklist() );
-	sfa_qg_log( 'GF Field registered' );
 }, 5 );
 
 
@@ -801,7 +772,6 @@ add_action( 'gravityflow_loaded', function () {
 	$file = SFA_QG_DIR . 'src/Step_Quality_Gate.php';
 	if ( class_exists( 'Gravity_Flow_Step' ) && file_exists( $file ) ) {
 		require_once $file;
-		sfa_qg_log( 'Step class included' );
 	}
 }, 1 );
 
@@ -847,7 +817,6 @@ add_filter( 'gform_add_field_buttons', function ( $groups ) {
 add_filter('gform_validation', function($result){
 	$entry_id = function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0;
 	if ( $entry_id ) {
-		sfa_qg_log('HOOK gform_validation', ['entry_id'=>$entry_id, 'is_valid'=>$result['is_valid']]);
 		sfa_qg_save_recheck_items_from_post($result['form'], (int)$entry_id);
 	}
 	return $result;
@@ -997,7 +966,6 @@ function sfa_qg_ajax_items() {
 
 	$items = sfa_qg_normalize_files( $raw );
 
-	sfa_qg_log( 'AJAX items', array( 'eid' => $eid, 'source_id' => $source_id, 'count' => count( $items ) ) );
 	wp_send_json_success( array( 'items' => $items ) );
 }
 add_action( 'wp_ajax_sfa_qg_items',        'sfa_qg_ajax_items' );
@@ -1157,17 +1125,18 @@ function sfa_qg_find_quality_gate_step_id( $form ) {
 	return (int) apply_filters( 'sfa_qg/quality_gate_step_id', $step_id, $form );
 }
 
-// Locate the “Fixed items” checkbox reliably (no hard-coded IDs).
+// Locate the "Fixed items" checkbox/radio reliably (no hard-coded IDs).
 if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
 	function sfa_qg_find_fixed_checkbox_field_id( $form ) {
-		$single_fix = 0;   // a checkbox that has exactly one choice called "Fix"
-		$empty      = 0;   // a checkbox with no choices yet
-		$first      = 0;   // first checkbox id (for the 1-checkbox legacy case)
-		$count      = 0;   // number of checkbox fields
+		$single_fix = 0;   // a checkbox/radio that has exactly one choice called "Fix"
+		$empty      = 0;   // a checkbox/radio with no choices yet
+		$first      = 0;   // first checkbox/radio id (for the 1-field legacy case)
+		$count      = 0;   // number of checkbox/radio fields
 
 		foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
 			$fa = (array) $f;
-			if ( rgar( $fa, 'type' ) !== 'checkbox' ) {
+			$field_type = rgar( $fa, 'type' );
+			if ( $field_type !== 'checkbox' && $field_type !== 'radio' ) {
 				continue;
 			}
 			$count++;
@@ -1196,18 +1165,18 @@ if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
 				}
 			}
 
-			// 3) Heuristic: empty checkbox (no choices yet).
+			// 3) Heuristic: empty checkbox/radio (no choices yet).
 			if ( empty( $choices ) && ! $empty ) {
 				$empty = (int) rgar( $fa, 'id' );
 			}
 		}
 
-		// 4) Back-compat: if there is exactly one checkbox in the form, use it.
+		// 4) Back-compat: if there is exactly one checkbox/radio in the form, use it.
 		if ( $count === 1 && $first ) {
 			return $first;
 		}
 
-		// 5) Prefer our heuristics; do NOT pick a random checkbox.
+		// 5) Prefer our heuristics; do NOT pick a random checkbox/radio.
 		if ( $single_fix ) return $single_fix;
 		if ( $empty )      return $empty;
 
@@ -1216,9 +1185,20 @@ if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
 	}
 }
 
-/** Collect ONLY the selected values from the rework checkbox field (supports input_X_Y and input_X[]). */
+/**
+ * Collect ONLY the selected values from the rework checkbox field (supports input_X_Y and input_X[]).
+ *
+ * SECURITY NOTE: This function accesses $_POST data but is designed to be called only within
+ * Gravity Forms hooks (gform_pre_render, gform_validation, etc.) which already perform
+ * nonce verification. Do not call this function outside of validated GF contexts.
+ */
 if ( ! function_exists( 'sfa_qg_collect_rework_values_from_post' ) ) {
 	function sfa_qg_collect_rework_values_from_post( $form, $field_id ) {
+		// Defensive check: ensure we're in a Gravity Forms context
+		if ( ! is_array( $form ) || ! isset( $form['fields'] ) ) {
+			return array();
+		}
+
 		$selected = array();
 
 		// Standard GF style: input_5_1, input_5_2, ...
@@ -1353,7 +1333,7 @@ if ( ! function_exists( 'sfa_qg_is_field_editable_on_user_input' ) ) {
 add_filter( 'gform_pre_render',       'sfa_qg_populate_rework_choices', 9999 );
 add_filter( 'gform_pre_validation',   'sfa_qg_populate_rework_choices', 9999 );
 add_filter( 'gform_admin_pre_render', 'sfa_qg_populate_rework_choices', 9999 );
-// Helpers: build map Item => [failed metric labels] from the saved QC JSON/meta
+// Helpers: build map Item => ['labels' => [...], 'photos' => [...]] from the saved QC JSON/meta
 if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 	function sfa_qg_failed_metric_map( $entry_id, $form ) {
 		$map = array();
@@ -1368,18 +1348,35 @@ if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 			if ( ! is_wp_error( $entry ) ) {
 				$raw = rgar( $entry, (string) $qc_field_id );
 				$val = json_decode( (string) $raw, true );
+
 				if ( is_array( $val ) && ! empty( $val['items'] ) ) {
 					foreach ( (array) $val['items'] as $it ) {
 						$name  = (string) rgar( $it, 'name' );
 						if ( $name === '' ) { continue; }
 						$fails = array();
+						$photos = array();
 						foreach ( (array) rgar( $it, 'metrics' ) as $m ) {
 							$label = trim( (string) rgar( $m, 'label' ) );
-							if ( rgar( $m, 'result' ) === 'fail' && $label !== '' ) {
+							$result = rgar( $m, 'result' );
+							$photo = rgar( $m, 'photo' );
+
+							if ( $result === 'fail' && $label !== '' ) {
 								$fails[] = $label;
+								// Collect photo if available
+								if ( $photo ) {
+									$photos[] = array(
+										'label' => $label,
+										'data' => $photo
+									);
+								}
 							}
 						}
-						if ( $fails ) { $map[ $name ] = array_values( array_unique( $fails ) ); }
+						if ( $fails ) {
+							$map[ $name ] = array(
+								'labels' => array_values( array_unique( $fails ) ),
+								'photos' => $photos
+							);
+						}
 					}
 				}
 			}
@@ -1390,7 +1387,9 @@ if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
 		if ( is_array( $failed_items ) ) {
 			foreach ( $failed_items as $name ) {
 				$name = trim( (string) $name );
-				if ( $name !== '' && ! isset( $map[ $name ] ) ) { $map[ $name ] = array(); }
+				if ( $name !== '' && ! isset( $map[ $name ] ) ) {
+					$map[ $name ] = array('labels' => array(), 'photos' => array());
+				}
 			}
 		}
 
@@ -1414,9 +1413,13 @@ if ( ! function_exists( 'sfa_qg_render_failed_table' ) ) {
 		}
 
 $out  = '<table class="qg-rework-table widefat striped">';
-		$out .= '<thead><tr><th>' . esc_html__( 'Item', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Failed metrics', 'sfa-quality-gate' ) . '</th></tr></thead><tbody>';
+		$out .= '<thead><tr><th>' . esc_html__( 'Item', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Failed metrics', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Photos', 'sfa-quality-gate' ) . '</th></tr></thead><tbody>';
 
-		foreach ( $map as $name => $labels ) {
+		foreach ( $map as $name => $data ) {
+			// Support both old format (array of labels) and new format (array with 'labels' and 'photos')
+			$labels = is_array($data) && isset($data['labels']) ? $data['labels'] : (is_array($data) ? $data : array());
+			$photos = is_array($data) && isset($data['photos']) ? $data['photos'] : array();
+
 			$is_fixed = in_array( (string) $name, $fixed_list, true );
 			$badge = $is_fixed
 				? ' <span class="sfa-qg-badge is-fixed">' . esc_html__( 'Fixed', 'sfa-quality-gate' ) . '</span>'
@@ -1431,7 +1434,29 @@ if ( $editable ) {
     );
 }
 
-$out .= '<tr><td>' . $chk . esc_html( $name ) . $badge . '</td><td>' . ( $labels ? esc_html( implode( ', ', $labels ) ) : '&ndash;' ) . '</td></tr>';
+// Build photos HTML
+$photos_html = '';
+if ( ! empty( $photos ) ) {
+	$photos_html = '<div class="qg-fail-photos" style="display:flex;gap:8px;flex-wrap:wrap;">';
+	foreach ( $photos as $photo_data ) {
+		$label = isset($photo_data['label']) ? esc_html($photo_data['label']) : '';
+		$data_url = isset($photo_data['data']) ? $photo_data['data'] : '';
+		if ( $data_url ) {
+			// Don't escape data URLs - they need to remain as-is for the browser
+			$photos_html .= sprintf(
+				'<div class="qg-photo-item" style="text-align:center;"><img src="%s" alt="%s" style="max-width:100px;max-height:100px;border:2px solid #d1d5db;border-radius:8px;cursor:pointer;" onclick="window.open(this.src)"><div style="font-size:11px;color:#6b7280;margin-top:4px;">%s</div></div>',
+				$data_url,
+				esc_attr( $label ),
+				$label
+			);
+		}
+	}
+	$photos_html .= '</div>';
+} else {
+	$photos_html = '&ndash;';
+}
+
+$out .= '<tr><td>' . $chk . esc_html( $name ) . $badge . '</td><td>' . ( $labels ? esc_html( implode( ', ', $labels ) ) : '&ndash;' ) . '</td><td>' . $photos_html . '</td></tr>';
 
 		}
 
@@ -1464,6 +1489,7 @@ if ( class_exists( 'GFAPI' ) ) {
 	// Don't show on the Quality Gate step itself.
 	$curr_step = sfa_qg_current_step_id();
 	$qg_step   = sfa_qg_find_quality_gate_step_id( $form );
+
 	if ( $curr_step && $qg_step && $curr_step === $qg_step ) {
 		return $form;
 	}
@@ -1473,8 +1499,8 @@ if ( class_exists( 'GFAPI' ) ) {
 	$failed = is_array( $failed )
 		? array_values( array_filter( array_map( static function( $v ){ return trim( (string) $v ); }, $failed ) ) )
 		: array();
-		
-// Stamp first-seen fail time for each failed item (once).
+
+	// Stamp first-seen fail time for each failed item (once).
 if ( $entry_id && $failed ) {
 	sfa_qg_stamp_fail_times_if_missing( $entry_id, $failed );
 }
@@ -1490,12 +1516,13 @@ if ( $entry_id && $failed ) {
 
 	$fixed_now   = sfa_qg_collect_rework_values_from_post( $form, $target_id );
 	$fixed_union = array_values( array_unique( array_filter( array_map( 'strval', array_merge( $fixed_saved, $fixed_now ) ) ) ) );
-	
-sfa_qg_log('READ _qc_recheck_items', [
-  'entry_id' => $entry_id,
-  'raw'      => gform_get_meta($entry_id, '_qc_recheck_items'),
-  'saved'    => $fixed_saved,
-]);
+
+	// Check if all failed items have been marked as fixed (re-check context)
+	$all_failed_items_fixed = false;
+	if ( ! empty( $failed ) && ! empty( $fixed_union ) ) {
+		$all_failed_items_fixed = empty( array_diff( $failed, $fixed_union ) );
+	}
+
 	// Are we on the rework (User Input) step?
 	$editable = sfa_qg_is_rework_context( $form );
 
@@ -1503,7 +1530,8 @@ sfa_qg_log('READ _qc_recheck_items', [
 	$table_html = sfa_qg_render_failed_table( $failed_map, $fixed_union, $entry_id, $editable, $target_id );
 
 foreach ( $form['fields'] as &$field ) {
-	if ( (int) $field->id !== (int) $target_id || $field->type !== 'checkbox' ) { continue; }
+	$field_type = $field->type;
+	if ( (int) $field->id !== (int) $target_id || ($field_type !== 'checkbox' && $field_type !== 'radio') ) { continue; }
 
 	/* 1) Replace choices with the canonical failed list (keeps GF happy + POST fallback) */
 	$field->choices = array();
@@ -1515,23 +1543,6 @@ foreach ( $form['fields'] as &$field ) {
 			'isSelected' => in_array( $name, $fixed_union, true ),
 		);
 	}
-	
-	
-			if ( function_exists('sfa_qg_log') ) {
-    sfa_qg_log('QG rework populate',
-        array(
-            'entry_id'         => sfa_qg_current_entry_id(),
-            'target_field_id'  => $target_id,
-            'is_user_input'    => sfa_qg_is_rework_context($form),
-            'failed_items'     => $failed,
-            'failed_map'       => $failed_map,
-            'fixed_saved_meta' => $fixed_saved,
-            'fixed_now_post'   => $fixed_now,
-            'fixed_union_used' => $fixed_union,
-        )
-    );
-}
-
 	/* 1b) Rebuild inputs to match choices */
 	$field->inputs = array();
 	$idx = 1;
@@ -1557,6 +1568,12 @@ foreach ( $form['fields'] as &$field ) {
 $editable_field = false;
 $step_type      = '';
 
+// Additional safety: Never make rework field editable on the QC step itself
+$on_qc_step = false;
+if ( $curr_step && $qg_step && $curr_step === $qg_step ) {
+    $on_qc_step = true;
+}
+
 if ( function_exists('gravity_flow') && $entry ) {
     $sid  = sfa_qg_current_step_id(); // may be 0 on first render after transition
     $step = $sid ? gravity_flow()->get_step($sid) : gravity_flow()->get_current_step($form, $entry);
@@ -1574,7 +1591,48 @@ if ( function_exists('gravity_flow') && $entry ) {
             ( class_exists('\SFA\QualityGate\Step_Quality_Gate') && $step instanceof \SFA\QualityGate\Step_Quality_Gate )
         );
 
-        if ( $is_user_input && ! $is_quality_gate ) {
+        // CRITICAL: Check if this is a QC context (QC field is editable on this step)
+        // If QC field is editable, we're doing inspection, so fixing field must be read-only
+        $qc_field_editable = false;
+        if ( $is_user_input ) {
+            // Find the QC field ID
+            $qc_field_id = 0;
+            foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
+                if ( rgar( (array) $f, 'type' ) === 'quality_checklist' ) {
+                    $qc_field_id = (int) rgar( (array) $f, 'id' );
+                    break;
+                }
+            }
+
+            if ( $qc_field_id ) {
+                // Check if QC field is in the editable fields list for this step
+                if ( method_exists($step, 'is_editable_field') ) {
+                    // Find the QC field object
+                    $qc_field_obj = null;
+                    foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
+                        if ( (int) rgar( (array) $f, 'id' ) === $qc_field_id ) {
+                            $qc_field_obj = $f;
+                            break;
+                        }
+                    }
+                    if ( $qc_field_obj ) {
+                        $qc_field_editable = (bool) $step->is_editable_field($qc_field_obj, $form, $entry);
+                    }
+                } else {
+                    $ids = method_exists($step, 'get_editable_fields') ? (array) $step->get_editable_fields() : array();
+                    $ids = apply_filters('gravityflow_editable_fields', $ids, $step, $form, $entry);
+                    $qc_field_editable = in_array($qc_field_id, array_map('intval', $ids), true);
+                }
+            }
+        }
+
+        // CRITICAL: The "Quality Fixing" field should NEVER be editable when:
+        // 1. QC field is editable (QC context)
+        // 2. All failed items have been marked as fixed (re-check context)
+        if ( $is_quality_gate || $on_qc_step || $qc_field_editable || $all_failed_items_fixed ) {
+            // Force $editable_field to remain false - don't check editable fields list
+        } elseif ( $is_user_input ) {
+            // Only on user_input steps (fixing/rework step), check if field is editable
             if ( function_exists('sfa_qg_is_field_editable_on_user_input') ) {
                 $editable_field = sfa_qg_is_field_editable_on_user_input($form, $entry, $field);
             } elseif ( method_exists($step, 'is_editable_field') ) {
@@ -1589,10 +1647,6 @@ if ( function_exists('gravity_flow') && $entry ) {
 }
 
 /* No extra guards here. $editable_field is final. */
-sfa_qg_log('REWORK controls state', ['entry_id'=>$entry_id,'step_type'=>$step_type,'editable_field'=>$editable_field]);
-
-
-
 
 	/* Build the helper table (row checkboxes appear only when $editable_field is true) */
 	$table_html_local = sfa_qg_render_failed_table( $failed_map, $fixed_union, $entry_id, $editable_field, $target_id );
@@ -1629,9 +1683,6 @@ $desc  = '<div class="qg-rework-help"'
 	// Show controls ONLY when the field is editable on this step and there are failed items.
 	if ( $editable_field && ! empty( $failed ) ) {
 		$desc .= '<div class="qg-rework-controls" style="margin:0 0 8px 0;">'
-		       .   '<p class="qg-instruction" style="display:inline-block;margin:0 10px 0 0;">'
-		       .       esc_html__( 'Tick the items that have been fixed.', 'sfa-quality-gate' )
-		       .   '</p>'
 		       .   '<button type="button" class="button qg-select-all-fixed" data-field-id="' . esc_attr( $target_id ) . '">'
 		       .       esc_html__( 'Mark all fixed', 'sfa-quality-gate' )
 		       .   '</button>'
@@ -1690,7 +1741,8 @@ add_filter( 'gform_validation', function( $result ) {
 	// The required list = the choices we injected for the rework field (i.e., failed items).
 	$required = array();
 	foreach ( $form['fields'] as $f ) {
-		if ( (int) $f->id !== (int) $field_id || $f->type !== 'checkbox' ) { continue; }
+		$field_type = $f->type;
+		if ( (int) $f->id !== (int) $field_id || ($field_type !== 'checkbox' && $field_type !== 'radio') ) { continue; }
 		foreach ( (array) $f->choices as $c ) {
 			$val = trim( (string) rgar( (array) $c, 'value', rgar( (array) $c, 'text', '' ) ) );
 			if ( $val !== '' ) { $required[] = $val; }
@@ -1733,11 +1785,19 @@ add_filter( 'gform_validation', function( $result ) {
 
 
 
+/**
+ * Get current Gravity Flow step ID from request parameters.
+ *
+ * SECURITY NOTE: Uses absint() to sanitize all input. This is safe for reading
+ * step IDs which are always integers. Gravity Flow performs its own authorization
+ * checks to ensure users can only access steps they have permission for.
+ */
 if ( ! function_exists( 'sfa_qg_current_step_id' ) ) {
 	function sfa_qg_current_step_id() {
 		// Gravity Flow sometimes uses different keys or none at all.
 		$keys = array( 'step', 'step_id', 'gflow_step', 'workflow_step', 'current_step' );
 		foreach ( $keys as $k ) {
+			// Using absint() ensures we only get positive integers, preventing injection
 			if ( isset( $_GET[ $k ] ) && $_GET[ $k ] !== '' ) return absint( $_GET[ $k ] );
 			if ( isset( $_POST[ $k ] ) && $_POST[ $k ] !== '' ) return absint( $_POST[ $k ] );
 		}
@@ -2002,30 +2062,15 @@ if ( ! $field_id && class_exists('\GFAPI') && ! empty($form['id']) ) {
     $full = \GFAPI::get_form( (int) $form['id'] );
     if ( is_array( $full ) ) {
         $field_id = sfa_qg_find_fixed_checkbox_field_id( $full );
-        sfa_qg_log('SAVE fallback resolved rework field', [
-            'entry_id' => (int)$entry_id,
-            'form_id'  => (int)$form['id'],
-            'field_id' => (int)$field_id,
-        ]);
     }
 }
 if ( ! $field_id ) {
-    sfa_qg_log('SAVE abort: no rework field (after fallback)', [
-        'entry_id'=>(int)$entry_id,
-        'form_id' => isset($form['id']) ? (int)$form['id'] : 0,
-    ]);
     return;
 }
 
 
 	// 1) Try POST (supports input_X_Y and input_X[])
 	$selected = sfa_qg_collect_rework_values_from_post( $form, $field_id );
-	sfa_qg_log('SAVE collect POST', [
-		'entry_id'=>(int)$entry_id,
-		'field_id'=>(int)$field_id,
-		'selected'=>$selected,
-		'post_keys'=>array_keys($_POST),
-	]);
 
 	// 2) Fallback: read labels from UPDATED entry
 	if ( empty($selected) && class_exists('\GFAPI') ) {
@@ -2051,16 +2096,10 @@ if ( ! $field_id ) {
 				}
 			}
 		}
-		sfa_qg_log('SAVE collect ENTRY fallback', [
-			'entry_id'=>(int)$entry_id,
-			'field_id'=>(int)$field_id,
-			'selected'=>$selected,
-		]);
 	}
 
 	$selected = array_values( array_unique( array_filter( array_map('strval', $selected) ) ) );
 	gform_update_meta( $entry_id, '_qc_recheck_items', wp_json_encode( $selected ) );
-	sfa_qg_log('SAVE wrote _qc_recheck_items', ['entry_id'=>(int)$entry_id,'count'=>count($selected),'items'=>$selected]);
 
 	sfa_qg_history_push( $entry_id, 'REWORK_MARKED', ['items'=>$selected,'user'=>get_current_user_id()] );
 	
@@ -2088,13 +2127,9 @@ try {
     if ( $to_add ) {
         $step_id = function_exists( 'sfa_qg_current_step_id' ) ? sfa_qg_current_step_id() : 0;
         $added   = sfa_qg_fixed_log_append_items( $form_id, (int) $entry_id, $to_add, $step_id );
-        sfa_qg_log( 'FIXED appended (save handler)', array(
-            'entry_id' => (int) $entry_id,
-            'added'    => wp_list_pluck( $added, 'item' ),
-        ) );
     }
 } catch ( \Throwable $t ) {
-    sfa_qg_log( 'FIXED append error (save handler): ' . $t->getMessage(), array( 'entry_id' => (int) $entry_id ) );
+    // Error handling
 }
 
 }
@@ -2105,17 +2140,11 @@ try {
 
 // Fires when a Gravity Flow User Input step is saved (rework screen)
 add_action('gravityflow_post_update_user_input', function( $step, $entry_id, $form ) {
-	sfa_qg_log('HOOK gravityflow_post_update_user_input', [
-		'entry_id' => (int)$entry_id,
-		'step_id'  => method_exists($step,'get_id') ? (int)$step->get_id() : 0,
-		'step_type'=> property_exists($step,'_step_type') ? $step->_step_type : '',
-	]);
 	// persist ticks
 	if ( function_exists('sfa_qg_collect_rework_values_from_post') ) {
 		$field_id = sfa_qg_find_fixed_checkbox_field_id($form);
 		$vals = sfa_qg_collect_rework_values_from_post($form, $field_id);
 		gform_update_meta( (int)$entry_id, '_qc_recheck_items', wp_json_encode(array_values(array_unique(array_filter(array_map('strval',$vals))))) );
-		sfa_qg_log('SAVE_RECHECK via GF User Input', ['entry_id'=>(int)$entry_id,'saved'=>$vals]);
 		
 		// === Fixed logging: add new events for items that weren't logged before ===
 try {
@@ -2138,10 +2167,9 @@ try {
 	if ( $new ) {
 		$step_id = method_exists( $step, 'get_id' ) ? (int) $step->get_id() : 0;
 		$added   = sfa_qg_fixed_log_append_items( $form_id, (int) $entry_id, $new, $step_id );
-		sfa_qg_log( 'FIXED appended', array( 'entry_id' => (int) $entry_id, 'added' => wp_list_pluck( $added, 'item' ) ) );
 	}
 } catch ( \Throwable $t ) {
-	sfa_qg_log( 'FIXED append error: ' . $t->getMessage(), array( 'entry_id' => (int) $entry_id ) );
+	// Error handling
 }
 
 	}
@@ -2223,13 +2251,6 @@ if ( ! function_exists( 'sfa_qg_persist_fails_from_qc' ) ) {
 			}
 		}
 
-		if ( function_exists( 'sfa_qg_log' ) ) {
-			sfa_qg_log( 'SNAPSHOT: qc fails persisted', array(
-				'entry_id' => (int) $entry_id,
-				'items'    => $failed_items,
-				'metrics'  => $failed_metrics,
-			) );
-		}
 	}
 }
 
@@ -2246,14 +2267,12 @@ add_action( 'gform_after_update_entry', function( $form, $entry_id ) {
 
 
 add_action('gform_after_submission', function($entry, $form){
-	sfa_qg_log('HOOK gform_after_submission', ['entry_id'=>(int)$entry['id']]);
 	sfa_qg_save_recheck_items_from_post($form, (int)$entry['id']);
 }, 10, 2);
 
 
 
 add_action('gform_after_update_entry', function($form, $entry_id){
-	sfa_qg_log('HOOK gform_after_update_entry', ['entry_id'=>(int)$entry_id,'form_id'=>(int)$form['id']]);
 	sfa_qg_save_recheck_items_from_post($form, (int)$entry_id);
 }, 10, 2);
 

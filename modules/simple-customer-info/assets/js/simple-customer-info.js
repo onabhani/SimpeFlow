@@ -64,100 +64,84 @@
 // Targeted field hiding for entry-details-table structure
   function hideFieldsByLabels(labels) {
     var hiddenCount = 0;
-    
-    console.log('Looking for entry table with class "entry-details-table"');
-    
+
     // Target the specific table structure found in diagnostic
     var entryTable = document.querySelector('table.entry-details-table');
     if (!entryTable) {
-      console.log('entry-details-table not found, trying fallbacks...');
       // Fallback options
       var fallbacks = [
         'table[class*="entry-details"]',
         'table[class*="entry"]',
         'table.widefat'
       ];
-      
+
       for (var i = 0; i < fallbacks.length; i++) {
         entryTable = document.querySelector(fallbacks[i]);
         if (entryTable) {
-          console.log('Found table with fallback selector:', fallbacks[i]);
           break;
         }
       }
-    } else {
-      console.log('Found entry-details-table');
     }
-    
+
     if (!entryTable) {
-      console.log('No suitable entry table found');
       return 0;
     }
-    
-    console.log('Table found with', entryTable.rows.length, 'rows');
-    
+
     // Look for field name cells and hide their rows + value rows
     labels.forEach(function(label) {
       var normalizedLabel = norm(label);
-      console.log('Looking for field label:', normalizedLabel);
-      
+
       // Find all field name cells
       var fieldNameCells = entryTable.querySelectorAll('td.entry-view-field-name');
-      console.log('Found', fieldNameCells.length, 'field name cells');
-      
+
       fieldNameCells.forEach(function(cell) {
         var cellText = norm(cell.textContent);
         if (cellText === normalizedLabel) {
           var row = cell.closest('tr');
           if (row) {
-            console.log('Hiding name row for field:', normalizedLabel);
             row.style.display = 'none';
             hiddenCount++;
-            
+
             // Also hide the next row (which should contain the field value)
             var nextRow = row.nextElementSibling;
             if (nextRow && nextRow.tagName === 'TR') {
-              console.log('Hiding value row for field:', normalizedLabel);
               nextRow.style.display = 'none';
               hiddenCount++;
             }
-            
+
             // Alternative approach: look for value cell in the same row
             var valueCell = row.querySelector('td.entry-view-field-value');
             if (valueCell) {
-              console.log('Found value cell in same row for field:', normalizedLabel);
               // Value is in the same row, already hidden
             }
           }
         }
       });
     });
-    
+
     return hiddenCount;
   }
 
   // Also try to hide by field IDs (for standard GF structures)
   function hideFieldsByIds(ids) {
     var hiddenCount = 0;
-    
+
     // Try standard GF selectors first
     var tables = [
       document.querySelector('table.entry-detail-view'),
       document.querySelector('table.entry-view'),
       document.querySelector('table.widefat')
     ];
-    
+
     var entryTable = null;
     for (var i = 0; i < tables.length; i++) {
       if (tables[i]) {
         entryTable = tables[i];
-        console.log('Found standard GF table for ID-based hiding');
         break;
       }
     }
-    
+
     if (!entryTable) {
-      console.log('No standard GF table found for ID-based hiding');
       return 0;
     }
     
@@ -189,57 +173,41 @@
   // Main field hiding function
   function performFieldHiding() {
     try {
-      console.log('=== SFA SCI FIELD HIDING (TARGETED) ===');
-      
       if (window.SFA_SCI_SKIP_HIDE || window.SFA_SCI_HIDE_ENABLED === false) {
-        console.log('Field hiding disabled');
         return;
       }
-      
+
       var labels = Array.isArray(window.SFA_SCI_HIDE_LABELS) ? window.SFA_SCI_HIDE_LABELS : [];
       var ids = Array.isArray(window.SFA_SCI_HIDE_IDS) ? window.SFA_SCI_HIDE_IDS : [];
-      
-      console.log('Labels to hide:', labels);
-      console.log('IDs to hide:', ids);
-      
+
       var totalHidden = 0;
-      
+
       // Try label-based hiding first (for custom table structures)
       if (labels.length > 0) {
-        console.log('Attempting label-based hiding...');
         totalHidden += hideFieldsByLabels(labels);
       }
-      
+
       // Try ID-based hiding as fallback (for standard GF structures)
       if (ids.length > 0 && totalHidden === 0) {
-        console.log('Attempting ID-based hiding as fallback...');
         totalHidden += hideFieldsByIds(ids);
       }
-      
-      console.log('Total fields hidden:', totalHidden);
-      
+
       // Simple retry if no fields were hidden
       if (totalHidden === 0) {
-        console.log('No fields hidden, retrying in 500ms...');
         setTimeout(function() {
-          console.log('=== RETRY ATTEMPT ===');
           var retryHidden = 0;
-          
+
           if (labels.length > 0) {
             retryHidden += hideFieldsByLabels(labels);
           }
           if (ids.length > 0 && retryHidden === 0) {
             retryHidden += hideFieldsByIds(ids);
           }
-          
-          console.log('SFA SCI: Hidden ' + retryHidden + ' field elements (retry)');
         }, 500);
-      } else {
-        console.log('SFA SCI: Hidden ' + totalHidden + ' field elements');
       }
-      
+
     } catch(e) {
-      console.error('SFA SCI: Error hiding fields:', e);
+      // Error handling
     }
   }
 
