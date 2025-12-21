@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.11');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.12');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1622,6 +1622,20 @@ if ( $entry_id && $failed ) {
 
 	$fixed_now   = sfa_qg_collect_rework_values_from_post( $form, $target_id );
 	$fixed_union = array_values( array_unique( array_filter( array_map( 'strval', array_merge( $fixed_saved, $fixed_now ) ) ) ) );
+
+	// Check if all failed items have been marked as fixed (re-check context)
+	$all_failed_items_fixed = false;
+	if ( ! empty( $failed ) && ! empty( $fixed_union ) ) {
+		$all_failed_items_fixed = empty( array_diff( $failed, $fixed_union ) );
+	}
+
+	sfa_qg_log('REWORK CONTEXT CHECK', [
+		'entry_id' => $entry_id,
+		'failed_items' => $failed,
+		'fixed_items' => $fixed_union,
+		'all_failed_items_fixed' => $all_failed_items_fixed,
+		'reason' => $all_failed_items_fixed ? 'All failed items marked as fixed - re-check context' : 'Items still need fixing'
+	]);
 	
 sfa_qg_log('READ _qc_recheck_items', [
   'entry_id' => $entry_id,
@@ -1775,16 +1789,20 @@ if ( function_exists('gravity_flow') && $entry ) {
             }
         }
 
-        // CRITICAL: The "Quality Fixing" field should NEVER be editable when QC field is editable
-        // It's only for display/context during QC re-inspection
-        if ( $is_quality_gate || $on_qc_step || $qc_field_editable ) {
-            sfa_qg_log('QG CONTEXT - Rework field forced to read-only', [
+        // CRITICAL: The "Quality Fixing" field should NEVER be editable when:
+        // 1. QC field is editable (QC context)
+        // 2. All failed items have been marked as fixed (re-check context)
+        if ( $is_quality_gate || $on_qc_step || $qc_field_editable || $all_failed_items_fixed ) {
+            sfa_qg_log('QG/RE-CHECK CONTEXT - Rework field forced to read-only', [
                 'entry_id' => $entry_id,
                 'field_id' => $field->id,
                 'is_quality_gate' => $is_quality_gate,
                 'on_qc_step' => $on_qc_step,
                 'qc_field_editable' => $qc_field_editable,
-                'reason' => 'Quality Fixing field should not be editable when QC field is editable (QC context)'
+                'all_failed_items_fixed' => $all_failed_items_fixed,
+                'reason' => $all_failed_items_fixed
+                    ? 'All failed items marked as fixed - re-check context'
+                    : 'Quality Fixing field should not be editable when QC field is editable (QC context)'
             ]);
             // Force $editable_field to remain false - don't check editable fields list
         } elseif ( $is_user_input ) {
