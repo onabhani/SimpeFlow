@@ -1,6 +1,10 @@
 window.SFAQG_DEBUG = (typeof window.SFAQG_DEBUG === 'boolean') ? window.SFAQG_DEBUG : false;
 function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) { console.debug.apply(console, arguments); } }
 
+// Version marker to verify JavaScript is loading
+console.log('[SFA QG] JavaScript loaded - v2.3.13.1');
+
+
 
 
 
@@ -455,6 +459,7 @@ function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) {
 
 qgDebug('[QG] render cfg', cfg);
 qgDebug('[QG] existing fixedItems', existing && existing.fixedItems);
+console.log('[QG] failedItems from config', cfg.failedItems);
 
 var fixedLookup = qgBuildFixedLookup(cfg, existing);
 qgDebug('[QG] fixed lookup used', fixedLookup);
@@ -528,7 +533,7 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
 
       // Debug logging for PASSED PREVIOUSLY
       if (shouldShowPassedPreviously) {
-        qgDebug('[QG] Item marked as PASSED PREVIOUSLY', {
+        console.log('[QG] Item marked as PASSED PREVIOUSLY', {
           name: it.name,
           readOnly: readOnly,
           isNotInFailedList: isNotInFailedList,
