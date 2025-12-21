@@ -516,14 +516,23 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
         }
       }
 
-      // For readOnly items with pass status, show "PASSED PREVIOUSLY" in the badge
-      var customBadgeLabel = (readOnly && initialStatus === 'pass') ? 'PASSED PREVIOUSLY' : undefined;
+      // Determine if item should show "PASSED PREVIOUSLY"
+      // 1. readOnly items with pass status (original logic)
+      // 2. Items NOT in failedItems list with pass status (re-check context)
+      var failedItemsList = (cfg && cfg.failedItems && Array.isArray(cfg.failedItems)) ? cfg.failedItems : [];
+      var isNotInFailedList = failedItemsList.indexOf(it.name) === -1;
+      var shouldShowPassedPreviously = (readOnly && initialStatus === 'pass') ||
+                                       (isNotInFailedList && initialStatus === 'pass');
+
+      var customBadgeLabel = shouldShowPassedPreviously ? 'PASSED PREVIOUSLY' : undefined;
 
       // Debug logging for PASSED PREVIOUSLY
-      if (readOnly && initialStatus === 'pass') {
+      if (shouldShowPassedPreviously) {
         qgDebug('[QG] Item marked as PASSED PREVIOUSLY', {
           name: it.name,
           readOnly: readOnly,
+          isNotInFailedList: isNotInFailedList,
+          failedItemsList: failedItemsList,
           initialStatus: initialStatus,
           customBadgeLabel: customBadgeLabel
         });

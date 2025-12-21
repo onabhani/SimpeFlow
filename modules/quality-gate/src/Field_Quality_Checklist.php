@@ -69,16 +69,24 @@ public function get_field_input( $form, $value = '', $entry = null ) {
 	
 
 
-// Before echoing HTML, extend $cfg with fixedItems from meta
+// Before echoing HTML, extend $cfg with fixedItems and failedItems from meta
 $entry_id = function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0;
 $fixed_from_meta = array();
+$failed_from_meta = array();
 if ( $entry_id ) {
     $tmp = json_decode( (string) gform_get_meta( $entry_id, '_qc_recheck_items' ), true );
     if ( is_array( $tmp ) ) {
         $fixed_from_meta = array_values( array_unique( array_filter( array_map( 'strval', $tmp ) ) ) );
     }
+
+    // Load failed items so JS can show "PASSED PREVIOUSLY" for non-failed items
+    $tmp_failed = json_decode( (string) gform_get_meta( $entry_id, '_qc_failed_items' ), true );
+    if ( is_array( $tmp_failed ) ) {
+        $failed_from_meta = array_values( array_unique( array_filter( array_map( 'strval', $tmp_failed ) ) ) );
+    }
 }
 $cfg['fixedItems'] = $fixed_from_meta;
+$cfg['failedItems'] = $failed_from_meta;
 
 
 
@@ -309,13 +317,15 @@ if ( $entry_id ) {
 	
 	if ( function_exists('sfa_qg_log') ) {
     sfa_qg_log('QG field render cfg', array(
-        'entry_id'    => (int) $cfg['entryId'],
-        'form_id'     => (int) $form_id,
-        'field_id'    => (int) $field_id,
-        'context'     => (string) ($cfg['context'] ?? ''),
-        'items_count' => isset($cfg['items']) && is_array($cfg['items']) ? count($cfg['items']) : 0,
-        'fixed_count' => isset($cfg['fixedItems']) && is_array($cfg['fixedItems']) ? count($cfg['fixedItems']) : 0,
-        'fixedItems'  => isset($cfg['fixedItems']) ? $cfg['fixedItems'] : array(),
+        'entry_id'     => (int) $cfg['entryId'],
+        'form_id'      => (int) $form_id,
+        'field_id'     => (int) $field_id,
+        'context'      => (string) ($cfg['context'] ?? ''),
+        'items_count'  => isset($cfg['items']) && is_array($cfg['items']) ? count($cfg['items']) : 0,
+        'fixed_count'  => isset($cfg['fixedItems']) && is_array($cfg['fixedItems']) ? count($cfg['fixedItems']) : 0,
+        'failed_count' => isset($cfg['failedItems']) && is_array($cfg['failedItems']) ? count($cfg['failedItems']) : 0,
+        'fixedItems'   => isset($cfg['fixedItems']) ? $cfg['fixedItems'] : array(),
+        'failedItems'  => isset($cfg['failedItems']) ? $cfg['failedItems'] : array(),
     ));
 }
 
