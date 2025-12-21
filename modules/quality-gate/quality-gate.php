@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.10');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.11');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1733,15 +1733,58 @@ if ( function_exists('gravity_flow') && $entry ) {
             'is_quality_gate' => $is_quality_gate
         ]);
 
-        // CRITICAL: The "Quality Fixing" field should NEVER be editable on quality_gate steps
+        // CRITICAL: Check if this is a QC context (QC field is editable on this step)
+        // If QC field is editable, we're doing inspection, so fixing field must be read-only
+        $qc_field_editable = false;
+        if ( $is_user_input ) {
+            // Find the QC field ID
+            $qc_field_id = 0;
+            foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
+                if ( rgar( (array) $f, 'type' ) === 'quality_checklist' ) {
+                    $qc_field_id = (int) rgar( (array) $f, 'id' );
+                    break;
+                }
+            }
+
+            if ( $qc_field_id ) {
+                // Check if QC field is in the editable fields list for this step
+                if ( method_exists($step, 'is_editable_field') ) {
+                    // Find the QC field object
+                    $qc_field_obj = null;
+                    foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
+                        if ( (int) rgar( (array) $f, 'id' ) === $qc_field_id ) {
+                            $qc_field_obj = $f;
+                            break;
+                        }
+                    }
+                    if ( $qc_field_obj ) {
+                        $qc_field_editable = (bool) $step->is_editable_field($qc_field_obj, $form, $entry);
+                    }
+                } else {
+                    $ids = method_exists($step, 'get_editable_fields') ? (array) $step->get_editable_fields() : array();
+                    $ids = apply_filters('gravityflow_editable_fields', $ids, $step, $form, $entry);
+                    $qc_field_editable = in_array($qc_field_id, array_map('intval', $ids), true);
+                }
+
+                sfa_qg_log('QC FIELD EDITABILITY', [
+                    'entry_id' => $entry_id,
+                    'qc_field_id' => $qc_field_id,
+                    'qc_field_editable' => $qc_field_editable,
+                    'rework_field_id' => $field->id
+                ]);
+            }
+        }
+
+        // CRITICAL: The "Quality Fixing" field should NEVER be editable when QC field is editable
         // It's only for display/context during QC re-inspection
-        if ( $is_quality_gate || $on_qc_step ) {
-            sfa_qg_log('QG STEP - Rework field forced to read-only', [
+        if ( $is_quality_gate || $on_qc_step || $qc_field_editable ) {
+            sfa_qg_log('QG CONTEXT - Rework field forced to read-only', [
                 'entry_id' => $entry_id,
                 'field_id' => $field->id,
                 'is_quality_gate' => $is_quality_gate,
                 'on_qc_step' => $on_qc_step,
-                'reason' => 'Quality Fixing field should not be editable on Quality Control steps'
+                'qc_field_editable' => $qc_field_editable,
+                'reason' => 'Quality Fixing field should not be editable when QC field is editable (QC context)'
             ]);
             // Force $editable_field to remain false - don't check editable fields list
         } elseif ( $is_user_input ) {
