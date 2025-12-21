@@ -3,6 +3,7 @@ namespace SFA\ProductionScheduling\GravityForms;
 
 use SFA\ProductionScheduling\Engine\Scheduler;
 use SFA\ProductionScheduling\Database\CapacityRepository;
+use SFA\ProductionScheduling\Admin\FormSettings;
 
 /**
  * Billing Step Preview Handler
@@ -12,51 +13,44 @@ use SFA\ProductionScheduling\Database\CapacityRepository;
 class BillingStepPreview {
 
 	public function __construct() {
-		add_action( 'gform_enqueue_scripts', [ $this, 'enqueue_scripts' ] );
+		add_action( 'gform_enqueue_scripts', [ $this, 'enqueue_scripts' ], 10, 2 );
 	}
 
 	/**
 	 * Enqueue scripts on form pages
 	 */
-	public function enqueue_scripts( $form ) {
-		// TODO: Add form ID check - only load on forms with production scheduling
+	public function enqueue_scripts( $form, $is_ajax ) {
+		// Only load if production scheduling is enabled for this form
+		if ( ! FormSettings::is_enabled( $form ) ) {
+			return;
+		}
+
+		$lm_field_id = FormSettings::get_lm_field_id( $form );
+		$install_field_id = FormSettings::get_install_field_id( $form );
+
+		if ( ! $lm_field_id || ! $install_field_id ) {
+			return;
+		}
 
 		wp_enqueue_script( 'sfa-prod-billing' );
 
 		wp_localize_script( 'sfa-prod-billing', 'sfaProdConfig', [
-			'ajaxurl' => admin_url( 'admin-ajax.php' ),
-			'nonce'   => wp_create_nonce( 'sfa_prod_preview' ),
-			'lm_field_id' => $this->get_lm_field_id( $form ),
-			'install_field_id' => $this->get_install_field_id( $form ),
+			'ajaxurl'          => admin_url( 'admin-ajax.php' ),
+			'nonce'            => wp_create_nonce( 'sfa_prod_preview' ),
+			'formId'           => $form['id'],
+			'lmFieldId'        => $lm_field_id,
+			'installFieldId'   => $install_field_id,
 		] );
-	}
-
-	/**
-	 * Get LM field ID from form
-	 * TODO: Make configurable per form
-	 */
-	private function get_lm_field_id( $form ) {
-		// For now, return placeholder
-		// Will be configured in form settings
-		return 0;
-	}
-
-	/**
-	 * Get installation date field ID from form
-	 * TODO: Make configurable per form
-	 */
-	private function get_install_field_id( $form ) {
-		// For now, return placeholder
-		return 0;
 	}
 
 	/**
 	 * Calculate schedule for given LM
 	 *
 	 * @param int $lm_required
-	 * @return array|WP_Error
+	 * @param int|null $entry_id Entry ID to exclude from bookings (for edit mode)
+	 * @return array|\WP_Error
 	 */
-	public static function calculate_schedule( int $lm_required ) {
+	public static function calculate_schedule( int $lm_required, $entry_id = null ) {
 		if ( $lm_required <= 0 ) {
 			return new \WP_Error( 'invalid_lm', 'LM must be greater than 0' );
 		}
@@ -97,10 +91,11 @@ class BillingStepPreview {
 			$end_date->format( 'Y-m-d' )
 		);
 
-		// Load existing bookings
+		// Load existing bookings (exclude current entry if editing)
 		$existing_bookings = self::load_existing_bookings(
 			$earliest_start->format( 'Y-m-d' ),
-			$end_date->format( 'Y-m-d' )
+			$end_date->format( 'Y-m-d' ),
+			$entry_id
 		);
 
 		// Calculate schedule
@@ -127,12 +122,19 @@ class BillingStepPreview {
 	/**
 	 * Load existing bookings from entry meta
 	 *
-	 * @param string $start_date
-	 * @param string $end_date
+	 * @param string   $start_date
+	 * @param string   $end_date
+	 * @param int|null $exclude_entry_id Entry ID to exclude (for edit mode)
 	 * @return array [date => total_lm_used]
 	 */
-	private static function load_existing_bookings( string $start_date, string $end_date ): array {
+	private static function load_existing_bookings( string $start_date, string $end_date, $exclude_entry_id = null ): array {
 		global $wpdb;
+
+		// Build exclude condition
+		$exclude_sql = '';
+		if ( $exclude_entry_id ) {
+			$exclude_sql = $wpdb->prepare( ' AND entry_id != %d', $exclude_entry_id );
+		}
 
 		// Query all entries with production bookings in date range
 		$results = $wpdb->get_results(
@@ -140,7 +142,7 @@ class BillingStepPreview {
 				"SELECT meta_value
 				FROM {$wpdb->prefix}gf_entry_meta
 				WHERE meta_key = '_prod_slots_allocation'
-				AND meta_value LIKE %s",
+				AND meta_value LIKE %s" . $exclude_sql,
 				'%' . $wpdb->esc_like( substr( $start_date, 0, 7 ) ) . '%'
 			),
 			ARRAY_A

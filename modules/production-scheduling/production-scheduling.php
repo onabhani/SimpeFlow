@@ -2,14 +2,14 @@
 /**
  * SFA Production Scheduling
  * Schedule factory production capacity and calculate installation dates
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Omar Alnabhani (hdqah.com)
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 // Module constants
-if ( ! defined( 'SFA_PROD_VER' ) ) define( 'SFA_PROD_VER', '1.0.0' );
+if ( ! defined( 'SFA_PROD_VER' ) ) define( 'SFA_PROD_VER', '1.1.0' );
 if ( ! defined( 'SFA_PROD_DIR' ) ) define( 'SFA_PROD_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_PROD_URL' ) ) define( 'SFA_PROD_URL', plugin_dir_url( __FILE__ ) );
 
@@ -51,10 +51,16 @@ add_action( 'plugins_loaded', function () {
 		update_option( 'sfa_prod_db_version', SFA_PROD_VER );
 	}
 
-	// Initialize settings page
+	// Initialize admin pages
 	if ( is_admin() ) {
 		require_once SFA_PROD_DIR . 'src/Admin/SettingsPage.php';
 		new SFA\ProductionScheduling\Admin\SettingsPage();
+
+		require_once SFA_PROD_DIR . 'src/Admin/FormSettings.php';
+		new SFA\ProductionScheduling\Admin\FormSettings();
+
+		require_once SFA_PROD_DIR . 'src/Admin/ScheduleView.php';
+		new SFA\ProductionScheduling\Admin\ScheduleView();
 	}
 
 	// Initialize GF integration
