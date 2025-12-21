@@ -580,7 +580,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.8');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.10');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1684,6 +1684,17 @@ foreach ( $form['fields'] as &$field ) {
 $editable_field = false;
 $step_type      = '';
 
+// Additional safety: Never make rework field editable on the QC step itself
+$on_qc_step = false;
+if ( $curr_step && $qg_step && $curr_step === $qg_step ) {
+    $on_qc_step = true;
+    sfa_qg_log('ON QC STEP - Rework field will be read-only', [
+        'entry_id' => $entry_id,
+        'curr_step_id' => $curr_step,
+        'qg_step_id' => $qg_step
+    ]);
+}
+
 if ( function_exists('gravity_flow') && $entry ) {
     $sid  = sfa_qg_current_step_id(); // may be 0 on first render after transition
     $step = $sid ? gravity_flow()->get_step($sid) : gravity_flow()->get_current_step($form, $entry);
@@ -1716,7 +1727,19 @@ if ( function_exists('gravity_flow') && $entry ) {
             'is_quality_gate' => $is_quality_gate
         ]);
 
-        if ( $is_user_input && ! $is_quality_gate ) {
+        // CRITICAL: The "Quality Fixing" field should NEVER be editable on quality_gate steps
+        // It's only for display/context during QC re-inspection
+        if ( $is_quality_gate || $on_qc_step ) {
+            sfa_qg_log('QG STEP - Rework field forced to read-only', [
+                'entry_id' => $entry_id,
+                'field_id' => $field->id,
+                'is_quality_gate' => $is_quality_gate,
+                'on_qc_step' => $on_qc_step,
+                'reason' => 'Quality Fixing field should not be editable on Quality Control steps'
+            ]);
+            // Force $editable_field to remain false - don't check editable fields list
+        } elseif ( $is_user_input ) {
+            // Only on user_input steps (fixing/rework step), check if field is editable
             if ( function_exists('sfa_qg_is_field_editable_on_user_input') ) {
                 $editable_field = sfa_qg_is_field_editable_on_user_input($form, $entry, $field);
             } elseif ( method_exists($step, 'is_editable_field') ) {
