@@ -1,9 +1,6 @@
 window.SFAQG_DEBUG = (typeof window.SFAQG_DEBUG === 'boolean') ? window.SFAQG_DEBUG : false;
 function qgDebug(){ if (window.SFAQG_DEBUG && window.console && console.debug) { console.debug.apply(console, arguments); } }
 
-// Version marker to verify JavaScript is loading
-console.log('[SFA QG] JavaScript loaded - v2.3.13.2');
-
 
 
 
@@ -461,7 +458,6 @@ console.log('[SFA QG] JavaScript loaded - v2.3.13.2');
 
 qgDebug('[QG] render cfg', cfg);
 qgDebug('[QG] existing fixedItems', existing && existing.fixedItems);
-console.log('[QG] failedItems from config', cfg.failedItems);
 
 var fixedLookup = qgBuildFixedLookup(cfg, existing);
 qgDebug('[QG] fixed lookup used', fixedLookup);
@@ -532,19 +528,6 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
                                        (isNotInFailedList && initialStatus === 'pass');
 
       var customBadgeLabel = shouldShowPassedPreviously ? 'PASSED PREVIOUSLY' : undefined;
-
-      // Debug logging for PASSED PREVIOUSLY
-      if (shouldShowPassedPreviously) {
-        console.log('[QG] Item marked as PASSED PREVIOUSLY', {
-          name: it.name,
-          readOnly: readOnly,
-          isNotInFailedList: isNotInFailedList,
-          failedItemsList: failedItemsList,
-          initialStatus: initialStatus,
-          customBadgeLabel: customBadgeLabel
-        });
-      }
-
       var $head = buildItemHead(it.name, initialStatus, customBadgeLabel);
 
       // Store customBadgeLabel in data attribute so updateItemBadge can preserve it

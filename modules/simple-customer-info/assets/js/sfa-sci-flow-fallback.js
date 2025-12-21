@@ -83,7 +83,6 @@
       var d = deriveFromCardSafe();
       if (!labels.length) labels = d.labels;
       if (!ids.length)    ids    = d.ids;
-      if (window.console && console.debug){ console.debug('SFA SCI Flow fallback: from card', labels, ids); }
     }
 
     var total = 0;
@@ -93,7 +92,6 @@
       var d2 = deriveFromCardSafe();
       total += hidePairsByCardValuesSafe(d2.values || {});
     }
-    if (window.console && console.debug){ console.debug('SFA SCI Flow fallback hidden:', total); }
   }
 
   function schedule(){
