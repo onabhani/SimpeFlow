@@ -19,14 +19,13 @@ class ScheduleView {
 	 * Add schedule view page to admin menu
 	 */
 	public function add_menu_page() {
-		add_menu_page(
+		add_submenu_page(
+			'simpleflow', // Parent slug
 			'Production Schedule',
 			'Production Schedule',
 			'edit_forms', // Capability (same as Gravity Forms)
 			'sfa-production-schedule',
-			[ $this, 'render_schedule_page' ],
-			'dashicons-calendar-alt',
-			30
+			[ $this, 'render_schedule_page' ]
 		);
 	}
 

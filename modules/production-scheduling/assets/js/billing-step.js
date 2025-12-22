@@ -149,11 +149,12 @@
         }
 
         // Populate production date fields if they exist
+        // Use DD/MM/YYYY format for better readability
         if ($prodStartField && $prodStartField.length) {
-            $prodStartField.val(schedule.production_start);
+            $prodStartField.val(formatDateDisplay(schedule.production_start));
         }
         if ($prodEndField && $prodEndField.length) {
-            $prodEndField.val(schedule.production_end);
+            $prodEndField.val(formatDateDisplay(schedule.production_end));
         }
     }
 

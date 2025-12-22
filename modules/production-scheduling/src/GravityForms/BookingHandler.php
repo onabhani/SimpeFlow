@@ -69,10 +69,12 @@ class BookingHandler {
 		$prod_end_date = $schedule['production_end'];
 
 		if ( $prod_start_field_id && isset( $entry[ $prod_start_field_id ] ) && $entry[ $prod_start_field_id ] ) {
-			$prod_start_date = $entry[ $prod_start_field_id ];
+			// Convert DD/MM/YYYY to YYYY-MM-DD if needed
+			$prod_start_date = $this->normalize_date( $entry[ $prod_start_field_id ] );
 		}
 		if ( $prod_end_field_id && isset( $entry[ $prod_end_field_id ] ) && $entry[ $prod_end_field_id ] ) {
-			$prod_end_date = $entry[ $prod_end_field_id ];
+			// Convert DD/MM/YYYY to YYYY-MM-DD if needed
+			$prod_end_date = $this->normalize_date( $entry[ $prod_end_field_id ] );
 		}
 
 		// Save to entry meta
@@ -96,5 +98,35 @@ class BookingHandler {
 
 		// Allow other plugins to react to booking
 		do_action( 'sfa_production_booking_saved', $entry_id, $schedule, $installation_date );
+	}
+
+	/**
+	 * Normalize date format from DD/MM/YYYY or YYYY-MM-DD to YYYY-MM-DD
+	 *
+	 * @param string $date_str
+	 * @return string
+	 */
+	private function normalize_date( $date_str ) {
+		$date_str = trim( $date_str );
+
+		// Check if already in YYYY-MM-DD format
+		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_str ) ) {
+			return $date_str;
+		}
+
+		// Check if in DD/MM/YYYY format
+		if ( preg_match( '/^(\d{2})\/(\d{2})\/(\d{4})$/', $date_str, $matches ) ) {
+			// Convert DD/MM/YYYY to YYYY-MM-DD
+			return $matches[3] . '-' . $matches[2] . '-' . $matches[1];
+		}
+
+		// Try to parse with strtotime as fallback
+		$timestamp = strtotime( $date_str );
+		if ( $timestamp !== false ) {
+			return date( 'Y-m-d', $timestamp );
+		}
+
+		// Return as-is if we can't parse it
+		return $date_str;
 	}
 }
