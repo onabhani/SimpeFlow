@@ -23,7 +23,7 @@ class ScheduleView {
 			'simpleflow', // Parent slug
 			'Production Schedule',
 			'Production Schedule',
-			'edit_forms', // Capability (same as Gravity Forms)
+			'manage_options', // Match parent menu capability
 			'sfa-production-schedule',
 			[ $this, 'render_schedule_page' ]
 		);
@@ -46,7 +46,7 @@ class ScheduleView {
 	 * Render schedule page
 	 */
 	public function render_schedule_page() {
-		if ( ! current_user_can( 'edit_forms' ) ) {
+		if ( ! current_user_can( 'manage_options' ) ) {
 			wp_die( 'You do not have permission to access this page.' );
 		}
 

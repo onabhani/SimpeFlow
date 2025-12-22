@@ -140,12 +140,18 @@
         $container.html(html).show();
 
         // Set installation date field minimum and value
+        // Note: GF date fields may be configured for dd/mm/yyyy format
         $installField.attr('min', schedule.installation_minimum);
 
-        // Auto-fill installation date if empty or less than minimum
+        // Auto-fill installation date in dd/mm/yyyy format (GF date field format)
         var currentValue = $installField.val();
-        if (!currentValue || currentValue < schedule.installation_minimum) {
-            $installField.val(schedule.installation_minimum);
+        var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
+
+        // Check if we need to update the value
+        // Compare in YYYY-MM-DD format for consistency
+        var currentValueNormalized = normalizeDateToISO(currentValue);
+        if (!currentValueNormalized || currentValueNormalized < schedule.installation_minimum) {
+            $installField.val(installDateFormatted);
         }
 
         // Populate production date fields if they exist
@@ -173,6 +179,24 @@
             return parts[2] + '/' + parts[1] + '/' + parts[0];
         }
         return dateStr;
+    }
+
+    function normalizeDateToISO(dateStr) {
+        // Convert DD/MM/YYYY to YYYY-MM-DD for comparison
+        if (!dateStr) return '';
+
+        // Check if already in YYYY-MM-DD format
+        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+            return dateStr;
+        }
+
+        // Check if in DD/MM/YYYY format
+        var match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+        if (match) {
+            return match[3] + '-' + match[2] + '-' + match[1];
+        }
+
+        return '';
     }
 
     function formatDate(dateStr) {
