@@ -8,16 +8,53 @@ namespace SFA\ProductionScheduling\Admin;
  */
 class FormSettings {
 
+	const SLUG = 'sfa-production-scheduling';
+
 	public function __construct() {
-		add_filter( 'gform_form_settings', [ $this, 'add_form_settings' ], 10, 2 );
-		add_filter( 'gform_pre_form_settings_save', [ $this, 'save_form_settings' ] );
+		add_filter( 'gform_form_settings_menu', [ $this, 'add_settings_tab' ], 10 );
+		add_action( 'gform_form_settings_page_' . self::SLUG, [ $this, 'render_settings_page' ] );
+		add_action( 'admin_post_sfa_prod_save_form_settings', [ $this, 'save_form_settings' ] );
 	}
 
 	/**
-	 * Add production scheduling settings to form settings page
+	 * Add Production Scheduling tab to form settings
 	 */
-	public function add_form_settings( $settings, $form ) {
-		$form_id = $form['id'];
+	public function add_settings_tab( $tabs ) {
+		// Check if tab already exists
+		foreach ( (array) $tabs as $tab ) {
+			if ( ( isset( $tab['name'] ) && $tab['name'] === self::SLUG ) ||
+			     ( isset( $tab['label'] ) && $tab['label'] === 'Production Scheduling' ) ) {
+				return $tabs;
+			}
+		}
+
+		$tabs[] = [
+			'name'  => self::SLUG,
+			'label' => 'Production Scheduling',
+			'icon'  => 'gform-icon--calendar',
+		];
+
+		return $tabs;
+	}
+
+	/**
+	 * Render settings page
+	 */
+	public function render_settings_page() {
+		// Get form ID
+		$form_id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
+
+		if ( ! $form_id ) {
+			echo '<div class="notice notice-error"><p>Invalid form ID.</p></div>';
+			return;
+		}
+
+		$form = \GFAPI::get_form( $form_id );
+
+		if ( ! $form ) {
+			echo '<div class="notice notice-error"><p>Form not found.</p></div>';
+			return;
+		}
 
 		// Get current settings
 		$enabled = (bool) rgar( $form, 'sfa_prod_enabled' );
@@ -43,97 +80,173 @@ class FormSettings {
 			}
 		}
 
-		$settings['Production Scheduling'] = '
-			<tr>
-				<th colspan="2" style="padding-top: 20px;">
-					<h3 style="margin: 0;">Production Scheduling</h3>
-				</th>
-			</tr>
-			<tr>
-				<th><label for="sfa_prod_enabled">Enable Production Scheduling</label></th>
-				<td>
-					<input type="checkbox" name="sfa_prod_enabled" id="sfa_prod_enabled" value="1" ' . checked( $enabled, true, false ) . '>
-					<span class="description">Enable automatic production scheduling for this form</span>
-				</td>
-			</tr>';
-
-		if ( ! empty( $number_fields ) ) {
-			$settings['Production Scheduling'] .= '
-			<tr id="sfa_prod_lm_field_row" style="' . ( ! $enabled ? 'display:none;' : '' ) . '">
-				<th><label for="sfa_prod_lm_field">Linear Meters Field</label></th>
-				<td>
-					<select name="sfa_prod_lm_field" id="sfa_prod_lm_field">
-						<option value="">Select a field...</option>';
-
-			foreach ( $number_fields as $field ) {
-				$settings['Production Scheduling'] .= '<option value="' . $field['value'] . '" ' . selected( $lm_field_id, $field['value'], false ) . '>' . esc_html( $field['label'] ) . '</option>';
-			}
-
-			$settings['Production Scheduling'] .= '
-					</select>
-					<span class="description">Number field where sales enters LM required</span>
-				</td>
-			</tr>';
-		} else {
-			$settings['Production Scheduling'] .= '
-			<tr id="sfa_prod_lm_field_row" style="' . ( ! $enabled ? 'display:none;' : '' ) . '">
-				<td colspan="2" style="color: red;">
-					⚠️ No number fields found in this form. Please add a number field for LM entry.
-				</td>
-			</tr>';
+		// Show success message
+		if ( isset( $_GET['updated'] ) && $_GET['updated'] === '1' ) {
+			echo '<div class="notice notice-success is-dismissible"><p>Settings saved successfully.</p></div>';
 		}
 
-		if ( ! empty( $date_fields ) ) {
-			$settings['Production Scheduling'] .= '
-			<tr id="sfa_prod_install_field_row" style="' . ( ! $enabled ? 'display:none;' : '' ) . '">
-				<th><label for="sfa_prod_install_field">Installation Date Field</label></th>
-				<td>
-					<select name="sfa_prod_install_field" id="sfa_prod_install_field">
-						<option value="">Select a field...</option>';
-
-			foreach ( $date_fields as $field ) {
-				$settings['Production Scheduling'] .= '<option value="' . $field['value'] . '" ' . selected( $install_field_id, $field['value'], false ) . '>' . esc_html( $field['label'] ) . '</option>';
+		?>
+		<style>
+			.sfa-prod-settings-wrap {
+				max-width: 800px;
+				margin: 20px 0;
 			}
+			.sfa-prod-settings-wrap h3 {
+				margin-top: 0;
+			}
+			.sfa-prod-field-row {
+				margin: 20px 0;
+				padding: 15px;
+				background: #f9f9f9;
+				border-left: 3px solid #0073aa;
+			}
+			.sfa-prod-field-row label {
+				display: block;
+				font-weight: bold;
+				margin-bottom: 8px;
+			}
+			.sfa-prod-field-row select {
+				width: 100%;
+				max-width: 400px;
+			}
+			.sfa-prod-field-row .description {
+				margin-top: 5px;
+				color: #666;
+				font-size: 13px;
+			}
+		</style>
 
-			$settings['Production Scheduling'] .= '
-					</select>
-					<span class="description">Date field for installation date (will be auto-filled with minimum date)</span>
-				</td>
-			</tr>';
-		} else {
-			$settings['Production Scheduling'] .= '
-			<tr id="sfa_prod_install_field_row" style="' . ( ! $enabled ? 'display:none;' : '' ) . '">
-				<td colspan="2" style="color: red;">
-					⚠️ No date fields found in this form. Please add a date field for installation date.
-				</td>
-			</tr>';
-		}
+		<div class="sfa-prod-settings-wrap">
+			<h3>Production Scheduling Settings</h3>
+			<p>Configure production scheduling for this form.</p>
 
-		$settings['Production Scheduling'] .= '
-			<script>
-			jQuery(document).ready(function($) {
-				$("#sfa_prod_enabled").on("change", function() {
-					if ($(this).is(":checked")) {
-						$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row").show();
-					} else {
-						$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row").hide();
-					}
-				});
-			});
-			</script>';
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'sfa_prod_save_' . $form_id, 'sfa_prod_nonce' ); ?>
+				<input type="hidden" name="action" value="sfa_prod_save_form_settings">
+				<input type="hidden" name="form_id" value="<?php echo esc_attr( $form_id ); ?>">
 
-		return $settings;
+				<table class="form-table">
+					<tr>
+						<th scope="row">
+							<label for="sfa_prod_enabled">Enable Production Scheduling</label>
+						</th>
+						<td>
+							<input type="checkbox" name="sfa_prod_enabled" id="sfa_prod_enabled" value="1" <?php checked( $enabled, true ); ?>>
+							<span class="description">Enable automatic production scheduling for this form</span>
+						</td>
+					</tr>
+
+					<?php if ( ! empty( $number_fields ) ): ?>
+					<tr id="sfa_prod_lm_field_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<th scope="row">
+							<label for="sfa_prod_lm_field">Linear Meters Field</label>
+						</th>
+						<td>
+							<select name="sfa_prod_lm_field" id="sfa_prod_lm_field" class="widefat">
+								<option value="">Select a field...</option>
+								<?php foreach ( $number_fields as $field ): ?>
+									<option value="<?php echo esc_attr( $field['value'] ); ?>" <?php selected( $lm_field_id, $field['value'] ); ?>>
+										<?php echo esc_html( $field['label'] ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description">Number field where sales enters LM required</p>
+						</td>
+					</tr>
+					<?php else: ?>
+					<tr id="sfa_prod_lm_field_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<td colspan="2">
+							<div class="notice notice-error inline">
+								<p>⚠️ No number fields found in this form. Please add a number field for LM entry.</p>
+							</div>
+						</td>
+					</tr>
+					<?php endif; ?>
+
+					<?php if ( ! empty( $date_fields ) ): ?>
+					<tr id="sfa_prod_install_field_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<th scope="row">
+							<label for="sfa_prod_install_field">Installation Date Field</label>
+						</th>
+						<td>
+							<select name="sfa_prod_install_field" id="sfa_prod_install_field" class="widefat">
+								<option value="">Select a field...</option>
+								<?php foreach ( $date_fields as $field ): ?>
+									<option value="<?php echo esc_attr( $field['value'] ); ?>" <?php selected( $install_field_id, $field['value'] ); ?>>
+										<?php echo esc_html( $field['label'] ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description">Date field for installation date (will be auto-filled with minimum date)</p>
+						</td>
+					</tr>
+					<?php else: ?>
+					<tr id="sfa_prod_install_field_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<td colspan="2">
+							<div class="notice notice-error inline">
+								<p>⚠️ No date fields found in this form. Please add a date field for installation date.</p>
+							</div>
+						</td>
+					</tr>
+					<?php endif; ?>
+				</table>
+
+				<?php submit_button( 'Save Production Scheduling Settings' ); ?>
+			</form>
+		</div>
+
+		<script>
+		jQuery(document).ready(function($) {
+			$("#sfa_prod_enabled").on("change", function() {
+				if ($(this).is(":checked")) {
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row").show();
+				} else {
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row").hide();
+				}
+			}).trigger("change");
+		});
+		</script>
+		<?php
 	}
 
 	/**
 	 * Save form settings
 	 */
-	public function save_form_settings( $form ) {
-		$form['sfa_prod_enabled'] = (bool) rgpost( 'sfa_prod_enabled' );
-		$form['sfa_prod_lm_field'] = absint( rgpost( 'sfa_prod_lm_field' ) );
-		$form['sfa_prod_install_field'] = absint( rgpost( 'sfa_prod_install_field' ) );
+	public function save_form_settings() {
+		// Get form ID
+		$form_id = isset( $_POST['form_id'] ) ? absint( $_POST['form_id'] ) : 0;
 
-		return $form;
+		// Verify nonce
+		if ( ! wp_verify_nonce( $_POST['sfa_prod_nonce'], 'sfa_prod_save_' . $form_id ) ) {
+			wp_die( 'Security check failed.' );
+		}
+
+		// Get form
+		$form = \GFAPI::get_form( $form_id );
+
+		if ( ! $form ) {
+			wp_die( 'Form not found.' );
+		}
+
+		// Update form meta
+		$form['sfa_prod_enabled'] = isset( $_POST['sfa_prod_enabled'] ) ? true : false;
+		$form['sfa_prod_lm_field'] = isset( $_POST['sfa_prod_lm_field'] ) ? absint( $_POST['sfa_prod_lm_field'] ) : 0;
+		$form['sfa_prod_install_field'] = isset( $_POST['sfa_prod_install_field'] ) ? absint( $_POST['sfa_prod_install_field'] ) : 0;
+
+		// Save form
+		\GFAPI::update_form( $form );
+
+		// Redirect back with success message
+		$redirect_url = add_query_arg( [
+			'page'    => 'gf_edit_forms',
+			'view'    => 'settings',
+			'subview' => self::SLUG,
+			'id'      => $form_id,
+			'updated' => '1',
+		], admin_url( 'admin.php' ) );
+
+		wp_safe_redirect( $redirect_url );
+		exit;
 	}
 
 	/**
