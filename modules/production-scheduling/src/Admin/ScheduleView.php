@@ -11,7 +11,7 @@ use SFA\ProductionScheduling\Database\CapacityRepository;
 class ScheduleView {
 
 	public function __construct() {
-		add_action( 'admin_menu', [ $this, 'add_menu_page' ] );
+		add_action( 'admin_menu', [ $this, 'add_menu_page' ], 100 ); // Load after SimpleFlow parent menu
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
 	}
 
@@ -33,7 +33,8 @@ class ScheduleView {
 	 * Enqueue assets for schedule page
 	 */
 	public function enqueue_assets( $hook ) {
-		if ( $hook !== 'toplevel_page_sfa-production-schedule' ) {
+		// Hook name for submenu page: {parent_slug}_page_{menu_slug}
+		if ( $hook !== 'simpleflow_page_sfa-production-schedule' ) {
 			return;
 		}
 
