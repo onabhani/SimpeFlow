@@ -35,32 +35,42 @@ class ValidationHandler {
 			return $validation_result;
 		}
 
-		// Get LM and installation date from submitted form
-		$lm_required = 0;
-		$installation_date = '';
+		// Check if fields are visible (not hidden by conditional logic or other modules)
+		$lm_field = null;
+		$install_field = null;
 
-		foreach ( $form['fields'] as &$field ) {
+		foreach ( $form['fields'] as $field ) {
 			if ( $field->id == $lm_field_id ) {
-				$lm_required = absint( rgpost( 'input_' . $lm_field_id ) );
+				$lm_field = $field;
 			}
 			if ( $field->id == $install_field_id ) {
-				$installation_date = rgpost( 'input_' . $install_field_id );
+				$install_field = $field;
 			}
 		}
 
-		// Validate LM is greater than 0
+		// Skip validation if fields are not found
+		if ( ! $lm_field || ! $install_field ) {
+			return $validation_result;
+		}
+
+		// Skip validation if LM field is hidden by conditional logic
+		if ( \GFFormsModel::is_field_hidden( $form, $lm_field, array(), null ) ) {
+			return $validation_result;
+		}
+
+		// Skip validation if Installation Date field is hidden by conditional logic
+		if ( \GFFormsModel::is_field_hidden( $form, $install_field, array(), null ) ) {
+			return $validation_result;
+		}
+
+		// Get LM and installation date from submitted form
+		$lm_required = absint( rgpost( 'input_' . $lm_field_id ) );
+		$installation_date = rgpost( 'input_' . $install_field_id );
+
+		// Skip validation if LM field has no value (might be hidden by other means)
 		if ( $lm_required <= 0 ) {
-			$validation_result['is_valid'] = false;
-
-			foreach ( $form['fields'] as &$field ) {
-				if ( $field->id == $lm_field_id ) {
-					$field->failed_validation = true;
-					$field->validation_message = 'Please enter a valid number of linear meters (greater than 0)';
-					break;
-				}
-			}
-
-			$validation_result['form'] = $form;
+			// Don't fail validation, just skip production scheduling validation
+			// The field itself may have its own required validation if needed
 			return $validation_result;
 		}
 
