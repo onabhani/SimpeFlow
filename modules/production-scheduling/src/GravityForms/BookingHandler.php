@@ -28,6 +28,8 @@ class BookingHandler {
 
 		$lm_field_id = FormSettings::get_lm_field_id( $form );
 		$install_field_id = FormSettings::get_install_field_id( $form );
+		$prod_start_field_id = FormSettings::get_prod_start_field_id( $form );
+		$prod_end_field_id = FormSettings::get_prod_end_field_id( $form );
 
 		if ( ! $lm_field_id || ! $install_field_id ) {
 			return;
@@ -35,7 +37,7 @@ class BookingHandler {
 
 		$entry_id = (int) $entry['id'];
 
-		// Get LM from entry
+		// Get values from entry
 		$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
 		$installation_date = isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '';
 
@@ -61,11 +63,23 @@ class BookingHandler {
 			$installation_date = $schedule['installation_minimum'];
 		}
 
+		// Get production dates from form fields if they were submitted
+		// (JavaScript should have populated these, but we verify against calculated schedule)
+		$prod_start_date = $schedule['production_start'];
+		$prod_end_date = $schedule['production_end'];
+
+		if ( $prod_start_field_id && isset( $entry[ $prod_start_field_id ] ) && $entry[ $prod_start_field_id ] ) {
+			$prod_start_date = $entry[ $prod_start_field_id ];
+		}
+		if ( $prod_end_field_id && isset( $entry[ $prod_end_field_id ] ) && $entry[ $prod_end_field_id ] ) {
+			$prod_end_date = $entry[ $prod_end_field_id ];
+		}
+
 		// Save to entry meta
 		gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
 		gform_update_meta( $entry_id, '_prod_slots_allocation', wp_json_encode( $schedule['allocation'] ) );
-		gform_update_meta( $entry_id, '_prod_start_date', $schedule['production_start'] );
-		gform_update_meta( $entry_id, '_prod_end_date', $schedule['production_end'] );
+		gform_update_meta( $entry_id, '_prod_start_date', $prod_start_date );
+		gform_update_meta( $entry_id, '_prod_end_date', $prod_end_date );
 		gform_update_meta( $entry_id, '_install_date', $installation_date );
 		gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
 		gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );

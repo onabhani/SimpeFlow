@@ -60,10 +60,13 @@ class FormSettings {
 		$enabled = (bool) rgar( $form, 'sfa_prod_enabled' );
 		$lm_field_id = (int) rgar( $form, 'sfa_prod_lm_field' );
 		$install_field_id = (int) rgar( $form, 'sfa_prod_install_field' );
+		$prod_start_field_id = (int) rgar( $form, 'sfa_prod_start_field' );
+		$prod_end_field_id = (int) rgar( $form, 'sfa_prod_end_field' );
 
 		// Build field options
 		$number_fields = [];
 		$date_fields = [];
+		$hidden_fields = [];
 
 		foreach ( $form['fields'] as $field ) {
 			if ( $field->type === 'number' ) {
@@ -76,6 +79,12 @@ class FormSettings {
 				$date_fields[] = [
 					'value' => $field->id,
 					'label' => $field->label . ' (ID: ' . $field->id . ')',
+				];
+			}
+			if ( $field->type === 'hidden' || $field->type === 'date' ) {
+				$hidden_fields[] = [
+					'value' => $field->id,
+					'label' => $field->label . ' (ID: ' . $field->id . ') - ' . ucfirst( $field->type ),
 				];
 			}
 		}
@@ -189,6 +198,50 @@ class FormSettings {
 						</td>
 					</tr>
 					<?php endif; ?>
+
+					<tr>
+						<td colspan="2">
+							<hr style="margin: 20px 0;">
+							<h4 style="margin: 10px 0;">Optional: Production Date Fields</h4>
+							<p class="description">Map hidden or date fields to store production start and end dates. These dates will be auto-populated and can be used in GravityView, notifications, and entry filtering.</p>
+						</td>
+					</tr>
+
+					<?php if ( ! empty( $hidden_fields ) ): ?>
+					<tr id="sfa_prod_start_field_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<th scope="row">
+							<label for="sfa_prod_start_field">Production Start Date Field</label>
+						</th>
+						<td>
+							<select name="sfa_prod_start_field" id="sfa_prod_start_field" class="widefat">
+								<option value="">None (optional)</option>
+								<?php foreach ( $hidden_fields as $field ): ?>
+									<option value="<?php echo esc_attr( $field['value'] ); ?>" <?php selected( $prod_start_field_id, $field['value'] ); ?>>
+										<?php echo esc_html( $field['label'] ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description">Field to store production start date (will be auto-filled)</p>
+						</td>
+					</tr>
+
+					<tr id="sfa_prod_end_field_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<th scope="row">
+							<label for="sfa_prod_end_field">Production End Date Field</label>
+						</th>
+						<td>
+							<select name="sfa_prod_end_field" id="sfa_prod_end_field" class="widefat">
+								<option value="">None (optional)</option>
+								<?php foreach ( $hidden_fields as $field ): ?>
+									<option value="<?php echo esc_attr( $field['value'] ); ?>" <?php selected( $prod_end_field_id, $field['value'] ); ?>>
+										<?php echo esc_html( $field['label'] ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description">Field to store production end date (will be auto-filled)</p>
+						</td>
+					</tr>
+					<?php endif; ?>
 				</table>
 
 				<?php submit_button( 'Save Production Scheduling Settings' ); ?>
@@ -199,9 +252,9 @@ class FormSettings {
 		jQuery(document).ready(function($) {
 			$("#sfa_prod_enabled").on("change", function() {
 				if ($(this).is(":checked")) {
-					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row").show();
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row").show();
 				} else {
-					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row").hide();
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row").hide();
 				}
 			}).trigger("change");
 		});
@@ -232,6 +285,8 @@ class FormSettings {
 		$form['sfa_prod_enabled'] = isset( $_POST['sfa_prod_enabled'] ) ? true : false;
 		$form['sfa_prod_lm_field'] = isset( $_POST['sfa_prod_lm_field'] ) ? absint( $_POST['sfa_prod_lm_field'] ) : 0;
 		$form['sfa_prod_install_field'] = isset( $_POST['sfa_prod_install_field'] ) ? absint( $_POST['sfa_prod_install_field'] ) : 0;
+		$form['sfa_prod_start_field'] = isset( $_POST['sfa_prod_start_field'] ) ? absint( $_POST['sfa_prod_start_field'] ) : 0;
+		$form['sfa_prod_end_field'] = isset( $_POST['sfa_prod_end_field'] ) ? absint( $_POST['sfa_prod_end_field'] ) : 0;
 
 		// Save form
 		\GFAPI::update_form( $form );
@@ -268,5 +323,19 @@ class FormSettings {
 	 */
 	public static function get_install_field_id( $form ) {
 		return (int) rgar( $form, 'sfa_prod_install_field' );
+	}
+
+	/**
+	 * Get production start date field ID for a form
+	 */
+	public static function get_prod_start_field_id( $form ) {
+		return (int) rgar( $form, 'sfa_prod_start_field' );
+	}
+
+	/**
+	 * Get production end date field ID for a form
+	 */
+	public static function get_prod_end_field_id( $form ) {
+		return (int) rgar( $form, 'sfa_prod_end_field' );
 	}
 }

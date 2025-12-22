@@ -27,6 +27,8 @@ class BillingStepPreview {
 
 		$lm_field_id = FormSettings::get_lm_field_id( $form );
 		$install_field_id = FormSettings::get_install_field_id( $form );
+		$prod_start_field_id = FormSettings::get_prod_start_field_id( $form );
+		$prod_end_field_id = FormSettings::get_prod_end_field_id( $form );
 
 		if ( ! $lm_field_id || ! $install_field_id ) {
 			return;
@@ -40,6 +42,8 @@ class BillingStepPreview {
 			'formId'           => $form['id'],
 			'lmFieldId'        => $lm_field_id,
 			'installFieldId'   => $install_field_id,
+			'prodStartFieldId' => $prod_start_field_id,
+			'prodEndFieldId'   => $prod_end_field_id,
 		] );
 	}
 

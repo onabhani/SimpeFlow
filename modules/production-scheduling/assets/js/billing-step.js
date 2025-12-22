@@ -6,7 +6,7 @@
     'use strict';
 
     var config = window.sfaProdConfig || {};
-    var $lmField, $installField;
+    var $lmField, $installField, $prodStartField, $prodEndField;
     var previewTimeout;
 
     // Wait for DOM ready
@@ -15,7 +15,7 @@
             return; // Not configured
         }
 
-        // Find the fields
+        // Find the required fields
         $lmField = $('#input_' + config.formId + '_' + config.lmFieldId);
         $installField = $('#input_' + config.formId + '_' + config.installFieldId);
 
@@ -23,16 +23,34 @@
             return; // Fields not found
         }
 
+        // Find optional production date fields
+        if (config.prodStartFieldId) {
+            $prodStartField = $('#input_' + config.formId + '_' + config.prodStartFieldId);
+        }
+        if (config.prodEndFieldId) {
+            $prodEndField = $('#input_' + config.formId + '_' + config.prodEndFieldId);
+        }
+
         // Initialize
         initializeProductionScheduling();
     });
 
     function initializeProductionScheduling() {
-        // Create preview container
+        // Create preview container and insert it right after the LM field container
         var $previewContainer = $('<div/>', {
             'class': 'sfa-prod-preview',
-            'id': 'sfa-prod-preview-' + config.formId
-        }).insertAfter($lmField.closest('.gfield'));
+            'id': 'sfa-prod-preview-' + config.formId,
+            'style': 'margin: 15px 0; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa;'
+        });
+
+        // Insert after the LM field's ginput_container
+        var $lmContainer = $lmField.closest('.ginput_container');
+        if ($lmContainer.length) {
+            $previewContainer.insertAfter($lmContainer);
+        } else {
+            // Fallback: insert after the field itself
+            $previewContainer.insertAfter($lmField);
+        }
 
         // Attach change handler to LM field
         $lmField.on('input change', function() {
@@ -128,6 +146,14 @@
         var currentValue = $installField.val();
         if (!currentValue || currentValue < schedule.installation_minimum) {
             $installField.val(schedule.installation_minimum);
+        }
+
+        // Populate production date fields if they exist
+        if ($prodStartField && $prodStartField.length) {
+            $prodStartField.val(schedule.production_start);
+        }
+        if ($prodEndField && $prodEndField.length) {
+            $prodEndField.val(schedule.production_end);
         }
     }
 
