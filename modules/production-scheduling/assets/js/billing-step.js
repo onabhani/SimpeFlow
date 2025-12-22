@@ -119,19 +119,19 @@
         html += '<table class="sfa-prod-schedule-table" style="width: 100%; border-collapse: collapse;">';
         html += '<tr>';
         html += '<td style="padding: 8px; border: 1px solid #ddd;"><strong>Production Start:</strong></td>';
-        html += '<td style="padding: 8px; border: 1px solid #ddd;">' + formatDate(schedule.production_start) + '</td>';
+        html += '<td style="padding: 8px; border: 1px solid #ddd;">' + formatDateDisplay(schedule.production_start) + '</td>';
         html += '</tr>';
         html += '<tr>';
         html += '<td style="padding: 8px; border: 1px solid #ddd;"><strong>Production Complete:</strong></td>';
-        html += '<td style="padding: 8px; border: 1px solid #ddd;">' + formatDate(schedule.production_end) + '</td>';
+        html += '<td style="padding: 8px; border: 1px solid #ddd;">' + formatDateDisplay(schedule.production_end) + '</td>';
         html += '</tr>';
         html += '<tr>';
         html += '<td style="padding: 8px; border: 1px solid #ddd;"><strong>Total Days:</strong></td>';
         html += '<td style="padding: 8px; border: 1px solid #ddd;">' + schedule.total_days + ' day' + (schedule.total_days > 1 ? 's' : '') + '</td>';
         html += '</tr>';
-        html += '<tr style="background: #f0f9ff;">';
-        html += '<td style="padding: 8px; border: 1px solid #ddd;"><strong>Earliest Installation:</strong></td>';
-        html += '<td style="padding: 8px; border: 1px solid #ddd;">' + formatDate(schedule.installation_minimum) + '</td>';
+        html += '<tr style="background: #d4edda; border-left: 4px solid #28a745;">';
+        html += '<td style="padding: 10px; border: 1px solid #c3e6cb; font-weight: bold; font-size: 14px;">📦 Earliest Installation:</td>';
+        html += '<td style="padding: 10px; border: 1px solid #c3e6cb; font-weight: bold; font-size: 14px; color: #155724;">' + formatDateDisplay(schedule.installation_minimum) + '</td>';
         html += '</tr>';
         html += '</table>';
         html += '<p style="margin: 10px 0; font-size: 13px; color: #666;">✓ Based on current factory capacity and bookings</p>';
@@ -165,7 +165,17 @@
         $container.html(html).show();
     }
 
+    function formatDateDisplay(dateStr) {
+        // Format as DD/MM/YYYY
+        var parts = dateStr.split('-');
+        if (parts.length === 3) {
+            return parts[2] + '/' + parts[1] + '/' + parts[0];
+        }
+        return dateStr;
+    }
+
     function formatDate(dateStr) {
+        // Legacy function - kept for compatibility
         var date = new Date(dateStr + 'T00:00:00');
         var options = { year: 'numeric', month: 'long', day: 'numeric' };
         return date.toLocaleDateString(undefined, options);
