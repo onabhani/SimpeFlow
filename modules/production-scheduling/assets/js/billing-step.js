@@ -143,16 +143,10 @@
         // Note: GF date fields may be configured for dd/mm/yyyy format
         $installField.attr('min', schedule.installation_minimum);
 
-        // Auto-fill installation date in dd/mm/yyyy format (GF date field format)
-        var currentValue = $installField.val();
+        // Always update installation date to the new calculated minimum
+        // This ensures the field reflects the current LM value's production schedule
         var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
-
-        // Check if we need to update the value
-        // Compare in YYYY-MM-DD format for consistency
-        var currentValueNormalized = normalizeDateToISO(currentValue);
-        if (!currentValueNormalized || currentValueNormalized < schedule.installation_minimum) {
-            $installField.val(installDateFormatted);
-        }
+        $installField.val(installDateFormatted);
 
         // Populate production date fields if they exist
         // Use DD/MM/YYYY format for better readability
