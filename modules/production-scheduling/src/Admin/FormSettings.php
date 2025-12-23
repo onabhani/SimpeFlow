@@ -63,6 +63,12 @@ class FormSettings {
 		$prod_start_field_id = (int) rgar( $form, 'sfa_prod_start_field' );
 		$prod_end_field_id = (int) rgar( $form, 'sfa_prod_end_field' );
 
+		// Get production fields configuration (new multi-field system)
+		$production_fields = rgar( $form, 'sfa_prod_fields' );
+		if ( ! is_array( $production_fields ) ) {
+			$production_fields = array();
+		}
+
 		// Build field options
 		$number_fields = [];
 		$date_fields = [];
@@ -337,5 +343,83 @@ class FormSettings {
 	 */
 	public static function get_prod_end_field_id( $form ) {
 		return (int) rgar( $form, 'sfa_prod_end_field' );
+	}
+
+	/**
+	 * Get production fields configuration
+	 * Returns array of field configurations with their types and rules
+	 */
+	public static function get_production_fields( $form ) {
+		$fields = rgar( $form, 'sfa_prod_fields' );
+		return is_array( $fields ) ? $fields : array();
+	}
+
+	/**
+	 * Get available field types and their conversion rules
+	 */
+	public static function get_field_types() {
+		return array(
+			'lm' => array(
+				'label' => 'Linear Meter (LM)',
+				'description' => '1 LM = 1 slot. Decimals create additional slots.',
+				'calculate' => function( $value ) {
+					// 1 LM = 1 slot, any decimal rounds up
+					return ceil( $value );
+				},
+			),
+			'vanity' => array(
+				'label' => 'Vanity Shelf',
+				'description' => '0-0.5 = 0 slots, 0.5-2 = 1 slot, 2+ = 2 slots',
+				'calculate' => function( $value ) {
+					if ( $value <= 0.5 ) {
+						return 0; // Shares slot with LM
+					} elseif ( $value <= 2 ) {
+						return 1;
+					} else {
+						return 2;
+					}
+				},
+			),
+			'sqm' => array(
+				'label' => 'SQM (Background)',
+				'description' => 'Every 3 SQM = 1 slot (e.g., 6 SQM = 2 slots)',
+				'calculate' => function( $value ) {
+					// Ceiling of value / 3
+					return ceil( $value / 3 );
+				},
+			),
+		);
+	}
+
+	/**
+	 * Calculate total slots from all production fields
+	 *
+	 * @param array $field_values Array of field_id => value
+	 * @param array $field_configs Array of field configurations
+	 * @return int Total slots required
+	 */
+	public static function calculate_total_slots( $field_values, $field_configs ) {
+		$total_slots = 0;
+		$field_types = self::get_field_types();
+
+		foreach ( $field_configs as $config ) {
+			$field_id = $config['field_id'];
+			$field_type = $config['field_type'];
+
+			if ( ! isset( $field_values[ $field_id ] ) || ! isset( $field_types[ $field_type ] ) ) {
+				continue;
+			}
+
+			$value = floatval( $field_values[ $field_id ] );
+			if ( $value <= 0 ) {
+				continue;
+			}
+
+			$calculate_fn = $field_types[ $field_type ]['calculate'];
+			$slots = $calculate_fn( $value );
+			$total_slots += $slots;
+		}
+
+		return max( 1, $total_slots ); // Minimum 1 slot
 	}
 }
