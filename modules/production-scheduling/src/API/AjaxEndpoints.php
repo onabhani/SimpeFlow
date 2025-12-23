@@ -21,15 +21,25 @@ class AjaxEndpoints {
 	public function ajax_preview_schedule() {
 		check_ajax_referer( 'sfa_prod_preview', 'nonce' );
 
-		$lm_required = isset( $_POST['lm_required'] ) ? absint( $_POST['lm_required'] ) : 0;
+		// Check if using multi-field or legacy single-field
+		$field_values = isset( $_POST['field_values'] ) ? $_POST['field_values'] : null;
+		$field_configs = isset( $_POST['field_configs'] ) ? $_POST['field_configs'] : null;
 
-		if ( $lm_required <= 0 ) {
-			wp_send_json_error( [
-				'message' => 'Please enter valid LM (greater than 0)',
-			] );
+		if ( $field_values && $field_configs ) {
+			// Multi-field mode
+			$schedule = BillingStepPreview::calculate_schedule( $field_values, $field_configs );
+		} else {
+			// Legacy mode (single LM field)
+			$lm_required = isset( $_POST['lm_required'] ) ? absint( $_POST['lm_required'] ) : 0;
+
+			if ( $lm_required <= 0 ) {
+				wp_send_json_error( [
+					'message' => 'Please enter valid production values (greater than 0)',
+				] );
+			}
+
+			$schedule = BillingStepPreview::calculate_schedule( $lm_required );
 		}
-
-		$schedule = BillingStepPreview::calculate_schedule( $lm_required );
 
 		if ( is_wp_error( $schedule ) ) {
 			wp_send_json_error( [

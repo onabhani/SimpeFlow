@@ -29,8 +29,14 @@ class BillingStepPreview {
 		$install_field_id = FormSettings::get_install_field_id( $form );
 		$prod_start_field_id = FormSettings::get_prod_start_field_id( $form );
 		$prod_end_field_id = FormSettings::get_prod_end_field_id( $form );
+		$production_fields = FormSettings::get_production_fields( $form );
 
-		if ( ! $lm_field_id || ! $install_field_id ) {
+		// Require either legacy LM field or production fields configuration
+		if ( empty( $production_fields ) && ! $lm_field_id ) {
+			return;
+		}
+
+		if ( ! $install_field_id ) {
 			return;
 		}
 
@@ -40,23 +46,42 @@ class BillingStepPreview {
 			'ajaxurl'          => admin_url( 'admin-ajax.php' ),
 			'nonce'            => wp_create_nonce( 'sfa_prod_preview' ),
 			'formId'           => $form['id'],
-			'lmFieldId'        => $lm_field_id,
+			'lmFieldId'        => $lm_field_id, // Legacy support
 			'installFieldId'   => $install_field_id,
 			'prodStartFieldId' => $prod_start_field_id,
 			'prodEndFieldId'   => $prod_end_field_id,
+			'productionFields' => $production_fields, // New multi-field configuration
 		] );
 	}
 
 	/**
-	 * Calculate schedule for given LM
+	 * Calculate schedule for given field values
 	 *
-	 * @param int $lm_required
+	 * @param int|array $lm_or_field_values Legacy: int LM value, or array of field_id => value
+	 * @param array|null $field_configs Field configurations (required if using multi-field)
 	 * @param int|null $entry_id Entry ID to exclude from bookings (for edit mode)
 	 * @return array|\WP_Error
 	 */
-	public static function calculate_schedule( int $lm_required, $entry_id = null ) {
-		if ( $lm_required <= 0 ) {
-			return new \WP_Error( 'invalid_lm', 'LM must be greater than 0' );
+	public static function calculate_schedule( $lm_or_field_values, $field_configs = null, $entry_id = null ) {
+		// Handle legacy single LM value (backwards compatibility)
+		if ( is_int( $lm_or_field_values ) || is_numeric( $lm_or_field_values ) ) {
+			$lm_required = (int) $lm_or_field_values;
+			if ( $lm_required <= 0 ) {
+				return new \WP_Error( 'invalid_lm', 'LM must be greater than 0' );
+			}
+			$total_slots = $lm_required;
+		} else {
+			// Multi-field calculation
+			if ( empty( $field_configs ) || ! is_array( $field_configs ) ) {
+				return new \WP_Error( 'invalid_config', 'Field configurations required for multi-field calculation' );
+			}
+
+			$field_values = is_array( $lm_or_field_values ) ? $lm_or_field_values : array();
+			$total_slots = FormSettings::calculate_total_slots( $field_values, $field_configs );
+
+			if ( $total_slots <= 0 ) {
+				return new \WP_Error( 'invalid_values', 'Total production slots must be greater than 0' );
+			}
 		}
 
 		// Load settings
@@ -107,7 +132,7 @@ class BillingStepPreview {
 
 		try {
 			$schedule = $scheduler->calculate_schedule(
-				$lm_required,
+				$total_slots,
 				$earliest_start,
 				$daily_capacity,
 				$capacity_overrides,

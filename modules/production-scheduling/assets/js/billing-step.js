@@ -7,20 +7,52 @@
 
     var config = window.sfaProdConfig || {};
     var $lmField, $installField, $prodStartField, $prodEndField;
+    var $productionFields = []; // Array of production field elements
     var previewTimeout;
 
     // Wait for DOM ready
     $(document).ready(function() {
-        if (!config.lmFieldId || !config.installFieldId) {
+        // Check if we have installation field (required)
+        if (!config.installFieldId) {
             return; // Not configured
         }
 
-        // Find the required fields
-        $lmField = $('#input_' + config.formId + '_' + config.lmFieldId);
         $installField = $('#input_' + config.formId + '_' + config.installFieldId);
+        if (!$installField.length) {
+            return; // Installation field not found
+        }
 
-        if (!$lmField.length || !$installField.length) {
-            return; // Fields not found
+        // Check for multi-field configuration or legacy single field
+        var hasProductionFields = config.productionFields && config.productionFields.length > 0;
+        var hasLegacyField = config.lmFieldId;
+
+        if (!hasProductionFields && !hasLegacyField) {
+            return; // No production fields configured
+        }
+
+        // Find production fields
+        if (hasProductionFields) {
+            // Multi-field mode
+            config.productionFields.forEach(function(fieldConfig) {
+                var $field = $('#input_' + config.formId + '_' + fieldConfig.field_id);
+                if ($field.length) {
+                    $productionFields.push({
+                        element: $field,
+                        fieldId: fieldConfig.field_id,
+                        fieldType: fieldConfig.field_type
+                    });
+                }
+            });
+
+            if ($productionFields.length === 0) {
+                return; // No production fields found in DOM
+            }
+        } else {
+            // Legacy mode (single LM field)
+            $lmField = $('#input_' + config.formId + '_' + config.lmFieldId);
+            if (!$lmField.length) {
+                return; // LM field not found
+            }
         }
 
         // Find optional production date fields
@@ -36,42 +68,101 @@
     });
 
     function initializeProductionScheduling() {
-        // Create preview container and insert it right after the LM field container
+        // Create preview container
         var $previewContainer = $('<div/>', {
             'class': 'sfa-prod-preview',
             'id': 'sfa-prod-preview-' + config.formId,
             'style': 'margin: 15px 0; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa;'
         });
 
-        // Insert after the LM field's ginput_container
-        var $lmContainer = $lmField.closest('.ginput_container');
-        if ($lmContainer.length) {
-            $previewContainer.insertAfter($lmContainer);
-        } else {
-            // Fallback: insert after the field itself
-            $previewContainer.insertAfter($lmField);
-        }
+        // Insert preview container after the first production field
+        if ($productionFields.length > 0) {
+            // Multi-field mode: insert after first field
+            var $firstField = $productionFields[0].element;
+            var $firstContainer = $firstField.closest('.ginput_container');
+            if ($firstContainer.length) {
+                $previewContainer.insertAfter($firstContainer);
+            } else {
+                $previewContainer.insertAfter($firstField);
+            }
 
-        // Attach change handler to LM field
-        $lmField.on('input change', function() {
-            clearTimeout(previewTimeout);
-            previewTimeout = setTimeout(function() {
+            // Attach change handlers to all production fields
+            $productionFields.forEach(function(fieldObj) {
+                fieldObj.element.on('input change', function() {
+                    clearTimeout(previewTimeout);
+                    previewTimeout = setTimeout(function() {
+                        updateSchedulePreview();
+                    }, 500); // Debounce 500ms
+                });
+            });
+
+            // Initial calculation if any field has value
+            var hasValue = $productionFields.some(function(fieldObj) {
+                return fieldObj.element.val() && parseFloat(fieldObj.element.val()) > 0;
+            });
+            if (hasValue) {
                 updateSchedulePreview();
-            }, 500); // Debounce 500ms
-        });
+            }
+        } else {
+            // Legacy mode: insert after LM field
+            var $lmContainer = $lmField.closest('.ginput_container');
+            if ($lmContainer.length) {
+                $previewContainer.insertAfter($lmContainer);
+            } else {
+                $previewContainer.insertAfter($lmField);
+            }
 
-        // Initial calculation if LM field has value
-        if ($lmField.val()) {
-            updateSchedulePreview();
+            // Attach change handler to LM field
+            $lmField.on('input change', function() {
+                clearTimeout(previewTimeout);
+                previewTimeout = setTimeout(function() {
+                    updateSchedulePreview();
+                }, 500); // Debounce 500ms
+            });
+
+            // Initial calculation if LM field has value
+            if ($lmField.val()) {
+                updateSchedulePreview();
+            }
         }
     }
 
     function updateSchedulePreview() {
-        var lmValue = parseInt($lmField.val(), 10);
+        var ajaxData = {
+            action: 'sfa_prod_preview_schedule',
+            nonce: config.nonce
+        };
 
-        if (!lmValue || lmValue <= 0) {
-            clearPreview();
-            return;
+        if ($productionFields.length > 0) {
+            // Multi-field mode
+            var fieldValues = {};
+            var hasAnyValue = false;
+
+            $productionFields.forEach(function(fieldObj) {
+                var value = parseFloat(fieldObj.element.val()) || 0;
+                fieldValues[fieldObj.fieldId] = value;
+                if (value > 0) {
+                    hasAnyValue = true;
+                }
+            });
+
+            if (!hasAnyValue) {
+                clearPreview();
+                return;
+            }
+
+            ajaxData.field_values = fieldValues;
+            ajaxData.field_configs = config.productionFields;
+        } else {
+            // Legacy mode (single LM field)
+            var lmValue = parseInt($lmField.val(), 10);
+
+            if (!lmValue || lmValue <= 0) {
+                clearPreview();
+                return;
+            }
+
+            ajaxData.lm_required = lmValue;
         }
 
         showLoading();
@@ -79,11 +170,7 @@
         $.ajax({
             url: config.ajaxurl,
             method: 'POST',
-            data: {
-                action: 'sfa_prod_preview_schedule',
-                nonce: config.nonce,
-                lm_required: lmValue
-            },
+            data: ajaxData,
             success: function(response) {
                 if (response.success) {
                     displaySchedule(response.data);

@@ -30,31 +30,27 @@ class ValidationHandler {
 
 		$lm_field_id = FormSettings::get_lm_field_id( $form );
 		$install_field_id = FormSettings::get_install_field_id( $form );
+		$production_fields = FormSettings::get_production_fields( $form );
 
-		if ( ! $lm_field_id || ! $install_field_id ) {
+		// Require installation field and either production fields or legacy LM field
+		if ( ! $install_field_id ) {
 			return $validation_result;
 		}
 
-		// Check if fields are visible (not hidden by conditional logic or other modules)
-		$lm_field = null;
-		$install_field = null;
+		if ( empty( $production_fields ) && ! $lm_field_id ) {
+			return $validation_result;
+		}
 
+		// Find installation date field
+		$install_field = null;
 		foreach ( $form['fields'] as $field ) {
-			if ( $field->id == $lm_field_id ) {
-				$lm_field = $field;
-			}
 			if ( $field->id == $install_field_id ) {
 				$install_field = $field;
+				break;
 			}
 		}
 
-		// Skip validation if fields are not found
-		if ( ! $lm_field || ! $install_field ) {
-			return $validation_result;
-		}
-
-		// Skip validation if LM field is hidden by conditional logic
-		if ( \GFFormsModel::is_field_hidden( $form, $lm_field, array(), null ) ) {
+		if ( ! $install_field ) {
 			return $validation_result;
 		}
 
@@ -63,19 +59,86 @@ class ValidationHandler {
 			return $validation_result;
 		}
 
-		// Get LM and installation date from submitted form
-		$lm_required = absint( rgpost( 'input_' . $lm_field_id ) );
 		$installation_date = rgpost( 'input_' . $install_field_id );
 
-		// Skip validation if LM field has no value (might be hidden by other means)
-		if ( $lm_required <= 0 ) {
-			// Don't fail validation, just skip production scheduling validation
-			// The field itself may have its own required validation if needed
-			return $validation_result;
-		}
+		// Handle multi-field or legacy mode
+		if ( ! empty( $production_fields ) ) {
+			// Multi-field mode
+			$field_values = array();
+			$all_fields_hidden = true;
 
-		// Recalculate schedule with LIVE data
-		$schedule = BillingStepPreview::calculate_schedule( $lm_required );
+			foreach ( $production_fields as $prod_field_config ) {
+				$field_id = $prod_field_config['field_id'];
+
+				// Find the field object
+				$field_obj = null;
+				foreach ( $form['fields'] as $field ) {
+					if ( $field->id == $field_id ) {
+						$field_obj = $field;
+						break;
+					}
+				}
+
+				// Skip if field not found
+				if ( ! $field_obj ) {
+					continue;
+				}
+
+				// Check if field is hidden
+				if ( ! \GFFormsModel::is_field_hidden( $form, $field_obj, array(), null ) ) {
+					$all_fields_hidden = false;
+				}
+
+				// Get field value
+				$value = rgpost( 'input_' . $field_id );
+				$field_values[ $field_id ] = floatval( $value );
+			}
+
+			// Skip validation if all production fields are hidden
+			if ( $all_fields_hidden ) {
+				return $validation_result;
+			}
+
+			// Calculate total slots
+			$total_slots = FormSettings::calculate_total_slots( $field_values, $production_fields );
+
+			// Skip validation if no production value
+			if ( $total_slots <= 0 ) {
+				return $validation_result;
+			}
+
+			// Recalculate schedule with LIVE data (multi-field)
+			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields );
+		} else {
+			// Legacy mode (single LM field)
+			$lm_field = null;
+			foreach ( $form['fields'] as $field ) {
+				if ( $field->id == $lm_field_id ) {
+					$lm_field = $field;
+					break;
+				}
+			}
+
+			if ( ! $lm_field ) {
+				return $validation_result;
+			}
+
+			// Skip validation if LM field is hidden by conditional logic
+			if ( \GFFormsModel::is_field_hidden( $form, $lm_field, array(), null ) ) {
+				return $validation_result;
+			}
+
+			// Get LM from submitted form
+			$lm_required = absint( rgpost( 'input_' . $lm_field_id ) );
+
+			// Skip validation if LM field has no value (might be hidden by other means)
+			if ( $lm_required <= 0 ) {
+				return $validation_result;
+			}
+
+			// Recalculate schedule with LIVE data (legacy)
+			$schedule = BillingStepPreview::calculate_schedule( $lm_required );
+		}
 
 		if ( is_wp_error( $schedule ) ) {
 			$validation_result['is_valid'] = false;

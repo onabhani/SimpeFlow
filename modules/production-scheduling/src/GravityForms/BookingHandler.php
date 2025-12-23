@@ -30,23 +30,74 @@ class BookingHandler {
 		$install_field_id = FormSettings::get_install_field_id( $form );
 		$prod_start_field_id = FormSettings::get_prod_start_field_id( $form );
 		$prod_end_field_id = FormSettings::get_prod_end_field_id( $form );
+		$production_fields = FormSettings::get_production_fields( $form );
 
-		if ( ! $lm_field_id || ! $install_field_id ) {
+		// Require installation field and either production fields or legacy LM field
+		if ( ! $install_field_id ) {
+			return;
+		}
+
+		if ( empty( $production_fields ) && ! $lm_field_id ) {
 			return;
 		}
 
 		$entry_id = (int) $entry['id'];
-
-		// Get values from entry
-		$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
 		$installation_date = isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '';
 
-		if ( $lm_required <= 0 ) {
-			return;
-		}
+		// Handle multi-field or legacy mode
+		$total_slots = 0;
 
-		// Recalculate schedule one final time with live data
-		$schedule = BillingStepPreview::calculate_schedule( $lm_required );
+		if ( ! empty( $production_fields ) ) {
+			// Multi-field mode
+			$field_values = array();
+			$field_breakdown = array(); // For entry meta storage
+
+			foreach ( $production_fields as $prod_field_config ) {
+				$field_id = $prod_field_config['field_id'];
+				$field_type = $prod_field_config['field_type'];
+				$value = isset( $entry[ $field_id ] ) ? floatval( $entry[ $field_id ] ) : 0;
+
+				$field_values[ $field_id ] = $value;
+
+				if ( $value > 0 ) {
+					$field_breakdown[] = array(
+						'field_id' => $field_id,
+						'field_type' => $field_type,
+						'value' => $value,
+					);
+				}
+			}
+
+			// Calculate total slots
+			$total_slots = FormSettings::calculate_total_slots( $field_values, $production_fields );
+
+			if ( $total_slots <= 0 ) {
+				return;
+			}
+
+			// Store field breakdown in entry meta
+			gform_update_meta( $entry_id, '_prod_field_breakdown', wp_json_encode( $field_breakdown ) );
+			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
+
+			// Recalculate schedule with live data (multi-field)
+			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields );
+		} else {
+			// Legacy mode (single LM field)
+			$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
+
+			if ( $lm_required <= 0 ) {
+				return;
+			}
+
+			$total_slots = $lm_required;
+
+			// Store LM in entry meta for backwards compatibility
+			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
+			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
+
+			// Recalculate schedule with live data (legacy)
+			$schedule = BillingStepPreview::calculate_schedule( $lm_required );
+		}
 
 		if ( is_wp_error( $schedule ) ) {
 			// Log error but don't block submission (validation should have caught this)

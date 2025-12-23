@@ -208,6 +208,83 @@ class FormSettings {
 					<tr>
 						<td colspan="2">
 							<hr style="margin: 20px 0;">
+							<h4 style="margin: 10px 0;">Production Fields Configuration</h4>
+							<p class="description">Configure which fields contribute to production slot calculations. Each field type has different conversion rules.</p>
+						</td>
+					</tr>
+
+					<tr id="sfa_prod_fields_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<td colspan="2">
+							<div id="sfa-prod-fields-container">
+								<?php
+								$field_types = self::get_field_types();
+
+								// If no production fields configured yet, show one default row
+								if ( empty( $production_fields ) ) {
+									$production_fields = array(
+										array(
+											'field_id' => $lm_field_id, // Default to LM field
+											'field_type' => 'lm',
+										),
+									);
+								}
+
+								foreach ( $production_fields as $index => $prod_field_config ):
+									$field_id = isset( $prod_field_config['field_id'] ) ? $prod_field_config['field_id'] : 0;
+									$field_type = isset( $prod_field_config['field_type'] ) ? $prod_field_config['field_type'] : 'lm';
+								?>
+								<div class="sfa-prod-field-config" style="margin: 15px 0; padding: 15px; background: #f9f9f9; border-left: 3px solid #0073aa;">
+									<div style="display: flex; gap: 20px; align-items: flex-start;">
+										<div style="flex: 1;">
+											<label style="display: block; font-weight: bold; margin-bottom: 5px;">Form Field</label>
+											<select name="sfa_prod_fields[<?php echo $index; ?>][field_id]" class="widefat sfa-prod-field-select" style="max-width: 300px;">
+												<option value="">Select a field...</option>
+												<?php foreach ( $number_fields as $field ): ?>
+													<option value="<?php echo esc_attr( $field['value'] ); ?>" <?php selected( $field_id, $field['value'] ); ?>>
+														<?php echo esc_html( $field['label'] ); ?>
+													</option>
+												<?php endforeach; ?>
+											</select>
+										</div>
+
+										<div style="flex: 1;">
+											<label style="display: block; font-weight: bold; margin-bottom: 5px;">Field Type</label>
+											<select name="sfa_prod_fields[<?php echo $index; ?>][field_type]" class="widefat sfa-prod-type-select" style="max-width: 300px;">
+												<?php foreach ( $field_types as $type_key => $type_info ): ?>
+													<option value="<?php echo esc_attr( $type_key ); ?>" <?php selected( $field_type, $type_key ); ?> data-description="<?php echo esc_attr( $type_info['description'] ); ?>">
+														<?php echo esc_html( $type_info['label'] ); ?>
+													</option>
+												<?php endforeach; ?>
+											</select>
+											<p class="description sfa-prod-field-desc" style="margin-top: 5px;">
+												<?php echo esc_html( $field_types[ $field_type ]['description'] ); ?>
+											</p>
+										</div>
+
+										<div style="padding-top: 25px;">
+											<button type="button" class="button sfa-prod-remove-field" style="color: #dc3232;">Remove</button>
+										</div>
+									</div>
+								</div>
+								<?php endforeach; ?>
+							</div>
+
+							<button type="button" id="sfa-prod-add-field" class="button" style="margin-top: 10px;">+ Add Production Field</button>
+
+							<div style="margin-top: 20px; padding: 15px; background: #e7f5fe; border-left: 3px solid #00a0d2;">
+								<strong>Field Type Conversion Rules:</strong>
+								<ul style="margin: 10px 0; padding-left: 20px;">
+									<?php foreach ( $field_types as $type_info ): ?>
+										<li><strong><?php echo esc_html( $type_info['label'] ); ?>:</strong> <?php echo esc_html( $type_info['description'] ); ?></li>
+									<?php endforeach; ?>
+								</ul>
+							</div>
+						</td>
+					</tr>
+
+					<tr>
+						<td colspan="2">
+							<hr style="margin: 20px 0;">
 							<h4 style="margin: 10px 0;">Optional: Production Date Fields</h4>
 							<p class="description">Map hidden or date fields to store production start and end dates. These dates will be auto-populated and can be used in GravityView, notifications, and entry filtering.</p>
 						</td>
@@ -256,13 +333,71 @@ class FormSettings {
 
 		<script>
 		jQuery(document).ready(function($) {
+			var fieldIndex = <?php echo count( $production_fields ); ?>;
+
+			// Toggle visibility of all production scheduling rows
 			$("#sfa_prod_enabled").on("change", function() {
 				if ($(this).is(":checked")) {
-					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row").show();
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row").show();
 				} else {
-					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row").hide();
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row").hide();
 				}
 			}).trigger("change");
+
+			// Add new production field
+			$("#sfa-prod-add-field").on("click", function() {
+				var template = `
+					<div class="sfa-prod-field-config" style="margin: 15px 0; padding: 15px; background: #f9f9f9; border-left: 3px solid #0073aa;">
+						<div style="display: flex; gap: 20px; align-items: flex-start;">
+							<div style="flex: 1;">
+								<label style="display: block; font-weight: bold; margin-bottom: 5px;">Form Field</label>
+								<select name="sfa_prod_fields[${fieldIndex}][field_id]" class="widefat sfa-prod-field-select" style="max-width: 300px;">
+									<option value="">Select a field...</option>
+									<?php foreach ( $number_fields as $field ): ?>
+										<option value="<?php echo esc_attr( $field['value'] ); ?>">
+											<?php echo esc_html( $field['label'] ); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+							</div>
+							<div style="flex: 1;">
+								<label style="display: block; font-weight: bold; margin-bottom: 5px;">Field Type</label>
+								<select name="sfa_prod_fields[${fieldIndex}][field_type]" class="widefat sfa-prod-type-select" style="max-width: 300px;">
+									<?php foreach ( $field_types as $type_key => $type_info ): ?>
+										<option value="<?php echo esc_attr( $type_key ); ?>" data-description="<?php echo esc_attr( $type_info['description'] ); ?>">
+											<?php echo esc_html( $type_info['label'] ); ?>
+										</option>
+									<?php endforeach; ?>
+								</select>
+								<p class="description sfa-prod-field-desc" style="margin-top: 5px;">
+									<?php echo esc_html( $field_types['lm']['description'] ); ?>
+								</p>
+							</div>
+							<div style="padding-top: 25px;">
+								<button type="button" class="button sfa-prod-remove-field" style="color: #dc3232;">Remove</button>
+							</div>
+						</div>
+					</div>
+				`;
+				$("#sfa-prod-fields-container").append(template);
+				fieldIndex++;
+			});
+
+			// Remove production field
+			$(document).on("click", ".sfa-prod-remove-field", function() {
+				// Prevent removing the last field
+				if ($(".sfa-prod-field-config").length <= 1) {
+					alert("You must have at least one production field configured.");
+					return;
+				}
+				$(this).closest(".sfa-prod-field-config").remove();
+			});
+
+			// Update description when field type changes
+			$(document).on("change", ".sfa-prod-type-select", function() {
+				var description = $(this).find("option:selected").data("description");
+				$(this).siblings(".sfa-prod-field-desc").text(description);
+			});
 		});
 		</script>
 		<?php
@@ -293,6 +428,24 @@ class FormSettings {
 		$form['sfa_prod_install_field'] = isset( $_POST['sfa_prod_install_field'] ) ? absint( $_POST['sfa_prod_install_field'] ) : 0;
 		$form['sfa_prod_start_field'] = isset( $_POST['sfa_prod_start_field'] ) ? absint( $_POST['sfa_prod_start_field'] ) : 0;
 		$form['sfa_prod_end_field'] = isset( $_POST['sfa_prod_end_field'] ) ? absint( $_POST['sfa_prod_end_field'] ) : 0;
+
+		// Save production fields configuration
+		$production_fields = array();
+		if ( isset( $_POST['sfa_prod_fields'] ) && is_array( $_POST['sfa_prod_fields'] ) ) {
+			foreach ( $_POST['sfa_prod_fields'] as $field_config ) {
+				$field_id = isset( $field_config['field_id'] ) ? absint( $field_config['field_id'] ) : 0;
+				$field_type = isset( $field_config['field_type'] ) ? sanitize_key( $field_config['field_type'] ) : '';
+
+				// Only save if both field_id and field_type are provided
+				if ( $field_id > 0 && ! empty( $field_type ) ) {
+					$production_fields[] = array(
+						'field_id' => $field_id,
+						'field_type' => $field_type,
+					);
+				}
+			}
+		}
+		$form['sfa_prod_fields'] = $production_fields;
 
 		// Save form
 		\GFAPI::update_form( $form );
