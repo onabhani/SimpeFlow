@@ -33,9 +33,9 @@ if ( ! function_exists( 'simpleflow_log' ) ) {
 	}
 
 	function simpleflow_log( $msg, array $ctx = array() ): void {
-		$enabled = SIMPLEFLOW_DEBUG
-			|| ( defined( 'WP_DEBUG' ) && WP_DEBUG )
-			|| apply_filters( 'simpleflow_debug', false );
+		// Only enable logging if explicitly requested via filter
+		// Do NOT log by default or when WP_DEBUG is enabled
+		$enabled = apply_filters( 'simpleflow_debug', false );
 
 		if ( ! $enabled ) {
 			return;
