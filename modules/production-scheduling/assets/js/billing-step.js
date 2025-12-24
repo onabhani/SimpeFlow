@@ -72,7 +72,7 @@
         var $previewContainer = $('<div/>', {
             'class': 'sfa-prod-preview',
             'id': 'sfa-prod-preview-' + config.formId,
-            'style': 'margin: 15px 0; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa;'
+            'style': 'margin: 15px 0; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa; width: 100%; display: block; box-sizing: border-box;'
         });
 
         // Insert preview container after the first production field
