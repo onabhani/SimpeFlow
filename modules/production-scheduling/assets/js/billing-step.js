@@ -77,11 +77,11 @@
 
         // Insert preview container after the first production field
         if ($productionFields.length > 0) {
-            // Multi-field mode: insert after first field
+            // Multi-field mode: insert after first field's parent .gfield wrapper
             var $firstField = $productionFields[0].element;
-            var $firstContainer = $firstField.closest('.ginput_container');
-            if ($firstContainer.length) {
-                $previewContainer.insertAfter($firstContainer);
+            var $gfieldWrapper = $firstField.closest('.gfield');
+            if ($gfieldWrapper.length) {
+                $previewContainer.insertAfter($gfieldWrapper);
             } else {
                 $previewContainer.insertAfter($firstField);
             }
@@ -104,10 +104,10 @@
                 updateSchedulePreview();
             }
         } else {
-            // Legacy mode: insert after LM field
-            var $lmContainer = $lmField.closest('.ginput_container');
-            if ($lmContainer.length) {
-                $previewContainer.insertAfter($lmContainer);
+            // Legacy mode: insert after LM field's parent .gfield wrapper
+            var $gfieldWrapper = $lmField.closest('.gfield');
+            if ($gfieldWrapper.length) {
+                $previewContainer.insertAfter($gfieldWrapper);
             } else {
                 $previewContainer.insertAfter($lmField);
             }
