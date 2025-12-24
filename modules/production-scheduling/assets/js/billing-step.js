@@ -201,12 +201,12 @@
     function displaySchedule(schedule) {
         var $container = $('#sfa-prod-preview-' + config.formId);
 
-        var html = '<div class="sfa-prod-schedule-info">';
+        var html = '<div class="sfa-prod-schedule-info" style="width: 100%;">';
         html += '<h4 style="margin: 10px 0;">📅 Production Schedule</h4>';
-        html += '<table class="sfa-prod-schedule-table" style="width: 100%; border-collapse: collapse;">';
+        html += '<table class="sfa-prod-schedule-table" style="width: 100%; border-collapse: collapse; table-layout: fixed;">';
         html += '<tr>';
-        html += '<td style="padding: 8px; border: 1px solid #ddd;"><strong>Production Start:</strong></td>';
-        html += '<td style="padding: 8px; border: 1px solid #ddd;">' + formatDateDisplay(schedule.production_start) + '</td>';
+        html += '<td style="padding: 8px; border: 1px solid #ddd; width: 50%;"><strong>Production Start:</strong></td>';
+        html += '<td style="padding: 8px; border: 1px solid #ddd; width: 50%;">' + formatDateDisplay(schedule.production_start) + '</td>';
         html += '</tr>';
         html += '<tr>';
         html += '<td style="padding: 8px; border: 1px solid #ddd;"><strong>Production Complete:</strong></td>';
