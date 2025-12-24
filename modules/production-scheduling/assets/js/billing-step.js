@@ -68,11 +68,11 @@
     });
 
     function initializeProductionScheduling() {
-        // Create preview container
+        // Create preview container with full width styling to break out of column constraints
         var $previewContainer = $('<div/>', {
-            'class': 'sfa-prod-preview',
+            'class': 'sfa-prod-preview gfield gfield--width-full',
             'id': 'sfa-prod-preview-' + config.formId,
-            'style': 'margin: 15px 0; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa; width: 100%; display: block; box-sizing: border-box;'
+            'style': 'margin: 15px 0 !important; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa; width: 100% !important; max-width: 100% !important; display: block; box-sizing: border-box; clear: both; grid-column: 1 / -1; flex-basis: 100%;'
         });
 
         // Insert preview container after the last production field
