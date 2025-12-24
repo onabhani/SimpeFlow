@@ -75,15 +75,15 @@
             'style': 'margin: 15px 0; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa; width: 100%; display: block; box-sizing: border-box;'
         });
 
-        // Insert preview container after the first production field
+        // Insert preview container after the last production field
         if ($productionFields.length > 0) {
-            // Multi-field mode: insert after first field's parent .gfield wrapper
-            var $firstField = $productionFields[0].element;
-            var $gfieldWrapper = $firstField.closest('.gfield');
+            // Multi-field mode: insert after LAST field's parent .gfield wrapper
+            var $lastField = $productionFields[$productionFields.length - 1].element;
+            var $gfieldWrapper = $lastField.closest('.gfield');
             if ($gfieldWrapper.length) {
                 $previewContainer.insertAfter($gfieldWrapper);
             } else {
-                $previewContainer.insertAfter($firstField);
+                $previewContainer.insertAfter($lastField);
             }
 
             // Attach change handlers to all production fields
