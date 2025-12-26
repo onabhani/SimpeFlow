@@ -121,11 +121,32 @@ class BillingStepPreview {
 		);
 
 		// Load existing bookings (exclude current entry if editing)
-		$existing_bookings = self::load_existing_bookings(
+		$booking_data = self::load_existing_bookings(
 			$earliest_start->format( 'Y-m-d' ),
 			$end_date->format( 'Y-m-d' ),
 			$entry_id
 		);
+
+		// Extract booking information
+		$existing_bookings = $booking_data['bookings'];
+		$last_filled_date = $booking_data['last_filled_date'];
+		$historical_capacity = $booking_data['capacity_per_date'];
+
+		// Build capacity overrides: use historical capacity for dates up to last filled date,
+		// then merge with manual capacity overrides
+		$effective_capacity_overrides = $capacity_overrides;
+
+		if ( $last_filled_date ) {
+			// For dates up to and including the last filled date, use historical capacity
+			foreach ( $historical_capacity as $date => $capacity ) {
+				if ( $date <= $last_filled_date ) {
+					// Only override if we have historical data and no manual override exists
+					if ( ! isset( $effective_capacity_overrides[ $date ] ) ) {
+						$effective_capacity_overrides[ $date ] = $capacity;
+					}
+				}
+			}
+		}
 
 		// Calculate schedule
 		$scheduler = new Scheduler();
@@ -135,7 +156,7 @@ class BillingStepPreview {
 				$total_slots,
 				$earliest_start,
 				$daily_capacity,
-				$capacity_overrides,
+				$effective_capacity_overrides,
 				$existing_bookings,
 				$off_days,
 				$holidays,
@@ -149,12 +170,16 @@ class BillingStepPreview {
 	}
 
 	/**
-	 * Load existing bookings from entry meta
+	 * Load existing bookings from entry meta with capacity tracking
 	 *
 	 * @param string   $start_date
 	 * @param string   $end_date
 	 * @param int|null $exclude_entry_id Entry ID to exclude (for edit mode)
-	 * @return array [date => total_lm_used]
+	 * @return array [
+	 *   'bookings' => [date => total_slots_used],
+	 *   'last_filled_date' => 'YYYY-MM-DD' or null,
+	 *   'capacity_per_date' => [date => capacity]
+	 * ]
 	 */
 	private static function load_existing_bookings( string $start_date, string $end_date, $exclude_entry_id = null ): array {
 		global $wpdb;
@@ -162,40 +187,67 @@ class BillingStepPreview {
 		// Build exclude condition
 		$exclude_sql = '';
 		if ( $exclude_entry_id ) {
-			$exclude_sql = $wpdb->prepare( ' AND entry_id != %d', $exclude_entry_id );
+			$exclude_sql = $wpdb->prepare( ' AND em.entry_id != %d', $exclude_entry_id );
 		}
 
-		// Query all entries with production bookings in date range
+		// Query all entries with production bookings and their capacity at booking time
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT meta_value
-				FROM {$wpdb->prefix}gf_entry_meta
-				WHERE meta_key = '_prod_slots_allocation'
-				AND meta_value LIKE %s" . $exclude_sql,
+				"SELECT
+					em.meta_value as allocation,
+					cm.meta_value as capacity_at_booking
+				FROM {$wpdb->prefix}gf_entry_meta em
+				LEFT JOIN {$wpdb->prefix}gf_entry_meta cm
+					ON em.entry_id = cm.entry_id
+					AND cm.meta_key = '_prod_daily_capacity_at_booking'
+				WHERE em.meta_key = '_prod_slots_allocation'
+				AND em.meta_value LIKE %s" . $exclude_sql,
 				'%' . $wpdb->esc_like( substr( $start_date, 0, 7 ) ) . '%'
 			),
 			ARRAY_A
 		);
 
 		$bookings = [];
+		$capacity_per_date = [];
+		$last_filled_date = null;
 
 		foreach ( $results as $row ) {
-			$allocation = json_decode( $row['meta_value'], true );
+			$allocation = json_decode( $row['allocation'], true );
+			$capacity_at_booking = isset( $row['capacity_at_booking'] ) ? (int) $row['capacity_at_booking'] : null;
 
 			if ( ! is_array( $allocation ) ) {
 				continue;
 			}
 
-			foreach ( $allocation as $date => $lm ) {
+			foreach ( $allocation as $date => $slots ) {
 				if ( $date >= $start_date && $date <= $end_date ) {
+					// Track total bookings
 					if ( ! isset( $bookings[ $date ] ) ) {
 						$bookings[ $date ] = 0;
 					}
-					$bookings[ $date ] += (int) $lm;
+					$bookings[ $date ] += (int) $slots;
+
+					// Track capacity (use the maximum capacity ever used for this date)
+					if ( $capacity_at_booking ) {
+						if ( ! isset( $capacity_per_date[ $date ] ) ) {
+							$capacity_per_date[ $date ] = $capacity_at_booking;
+						} else {
+							$capacity_per_date[ $date ] = max( $capacity_per_date[ $date ], $capacity_at_booking );
+						}
+					}
+
+					// Track last filled date
+					if ( ! $last_filled_date || $date > $last_filled_date ) {
+						$last_filled_date = $date;
+					}
 				}
 			}
 		}
 
-		return $bookings;
+		return [
+			'bookings' => $bookings,
+			'last_filled_date' => $last_filled_date,
+			'capacity_per_date' => $capacity_per_date,
+		];
 	}
 }

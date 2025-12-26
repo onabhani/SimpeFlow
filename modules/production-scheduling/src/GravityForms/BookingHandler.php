@@ -138,6 +138,10 @@ class BookingHandler {
 		gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
 		gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
 
+		// Store the daily capacity at time of booking for historical tracking
+		$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+		gform_update_meta( $entry_id, '_prod_daily_capacity_at_booking', $daily_capacity_at_booking );
+
 		// Clear cache for affected dates
 		foreach ( array_keys( $schedule['allocation'] ) as $date ) {
 			$year_month = substr( $date, 0, 7 );
