@@ -23,6 +23,17 @@ class ValidationHandler {
 	public function validate_production_schedule( $validation_result ) {
 		$form = $validation_result['form'];
 
+		// Skip validation during workflow administrative actions
+		// Validation should only run during actual form submissions
+		if ( doing_action( 'gravityflow_workflow_complete' ) || doing_action( 'gravityflow_post_process_workflow' ) ) {
+			return $validation_result;
+		}
+
+		// Skip validation if this is a workflow inbox update (admin changing steps manually)
+		if ( isset( $_POST['action'] ) && strpos( $_POST['action'], 'gravityflow' ) !== false ) {
+			return $validation_result;
+		}
+
 		// Only validate if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
 			return $validation_result;
