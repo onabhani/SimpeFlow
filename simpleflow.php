@@ -475,6 +475,45 @@ add_filter( 'gform_validation', function( $validation_result ) {
 }, 5 ); // Priority 5 to run before other validation filters
 
 /**
+ * Bypass GravityFlow's step validation during admin operations
+ *
+ * This allows admins to manually move entries through workflow steps using the
+ * "Admin" dropdown, regardless of assignee status or step completion requirements.
+ */
+add_filter( 'gravityflow_validation_step', function( $is_valid, $step, $entry_id, $form ) {
+	// Bypass if admin is manually changing steps
+	if ( is_admin() && current_user_can( 'manage_options' ) ) {
+		return true;
+	}
+
+	return $is_valid;
+}, 5, 4 );
+
+/**
+ * Bypass GravityFlow's user input step validation during admin operations
+ */
+add_filter( 'gravityflow_validation_step_user_input', function( $is_valid, $form, $step ) {
+	// Bypass if admin is manually changing steps
+	if ( is_admin() && current_user_can( 'manage_options' ) ) {
+		return true;
+	}
+
+	return $is_valid;
+}, 5, 3 );
+
+/**
+ * Bypass GravityFlow's approval step validation during admin operations
+ */
+add_filter( 'gravityflow_validation_step_approval', function( $is_valid, $form, $step ) {
+	// Bypass if admin is manually changing steps
+	if ( is_admin() && current_user_can( 'manage_options' ) ) {
+		return true;
+	}
+
+	return $is_valid;
+}, 5, 3 );
+
+/**
  * BOOT: Load modules immediately
  */
 simpleflow_load_modules();
