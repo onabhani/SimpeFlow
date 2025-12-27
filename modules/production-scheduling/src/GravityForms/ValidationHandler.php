@@ -23,6 +23,12 @@ class ValidationHandler {
 	public function validate_production_schedule( $validation_result ) {
 		$form = $validation_result['form'];
 
+		// Skip validation if we're in the admin area
+		// Production scheduling validation should only run on front-end form submissions
+		if ( is_admin() ) {
+			return $validation_result;
+		}
+
 		// Skip validation during workflow administrative actions
 		// Validation should only run during actual form submissions
 		if ( doing_action( 'gravityflow_workflow_complete' ) || doing_action( 'gravityflow_post_process_workflow' ) ) {
@@ -31,6 +37,11 @@ class ValidationHandler {
 
 		// Skip validation if this is a workflow inbox update (admin changing steps manually)
 		if ( isset( $_POST['action'] ) && strpos( $_POST['action'], 'gravityflow' ) !== false ) {
+			return $validation_result;
+		}
+
+		// Skip if this is an entry update rather than a new submission
+		if ( isset( $_POST['gform_update_entry'] ) || isset( $_POST['screen_mode'] ) ) {
 			return $validation_result;
 		}
 
