@@ -432,6 +432,49 @@ foreach ( $modules as $slug => $info ) {
 }
 
 /**
+ * Bypass all Gravity Forms validation during GravityFlow admin operations
+ *
+ * When admins manually move entries through workflow steps, validation should not block them.
+ * Validation is only for user submissions, not for administrative workflow management.
+ */
+add_filter( 'gform_validation', function( $validation_result ) {
+	$should_bypass = false;
+
+	// Bypass validation if we're in the admin area
+	if ( is_admin() ) {
+		$should_bypass = true;
+	}
+
+	// Bypass validation during workflow operations
+	if ( doing_action( 'gravityflow_workflow_complete' ) || doing_action( 'gravityflow_post_process_workflow' ) ) {
+		$should_bypass = true;
+	}
+
+	// Bypass if this is a workflow inbox update (admin changing steps manually)
+	if ( isset( $_POST['action'] ) && strpos( $_POST['action'], 'gravityflow' ) !== false ) {
+		$should_bypass = true;
+	}
+
+	// Bypass if this is an entry update rather than a new submission
+	if ( isset( $_POST['gform_update_entry'] ) || isset( $_POST['screen_mode'] ) ) {
+		$should_bypass = true;
+	}
+
+	// If we should bypass, force validation to pass
+	if ( $should_bypass ) {
+		$validation_result['is_valid'] = true;
+
+		// Clear all field validation errors
+		foreach ( $validation_result['form']['fields'] as &$field ) {
+			$field->failed_validation = false;
+			$field->validation_message = '';
+		}
+	}
+
+	return $validation_result;
+}, 5 ); // Priority 5 to run before other validation filters
+
+/**
  * BOOT: Load modules immediately
  */
 simpleflow_load_modules();
