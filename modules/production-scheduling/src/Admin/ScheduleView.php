@@ -1,0 +1,361 @@
+<?php
+namespace SFA\ProductionScheduling\Admin;
+
+use SFA\ProductionScheduling\Database\CapacityRepository;
+
+/**
+ * Schedule View Page
+ *
+ * Displays production schedule calendar and bookings list
+ */
+class ScheduleView {
+
+	public function __construct() {
+		add_action( 'admin_menu', [ $this, 'add_menu_page' ], 100 ); // Load after SimpleFlow parent menu
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
+	}
+
+	/**
+	 * Add schedule view page to admin menu
+	 */
+	public function add_menu_page() {
+		add_submenu_page(
+			'simpleflow', // Parent slug
+			'Production Schedule',
+			'Production Schedule',
+			'manage_options', // Match parent menu capability
+			'sfa-production-schedule',
+			[ $this, 'render_schedule_page' ]
+		);
+	}
+
+	/**
+	 * Enqueue assets for schedule page
+	 */
+	public function enqueue_assets( $hook ) {
+		// Hook name for submenu page: {parent_slug}_page_{menu_slug}
+		if ( $hook !== 'simpleflow_page_sfa-production-schedule' ) {
+			return;
+		}
+
+		wp_enqueue_script( 'sfa-prod-calendar' );
+		wp_enqueue_style( 'sfa-prod-styles' );
+	}
+
+	/**
+	 * Render schedule page
+	 */
+	public function render_schedule_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'You do not have permission to access this page.' );
+		}
+
+		// Get current month or requested month
+		$month = isset( $_GET['month'] ) ? sanitize_text_field( $_GET['month'] ) : date( 'Y-m' );
+
+		// Parse month
+		$date = new \DateTime( $month . '-01' );
+		$year = $date->format( 'Y' );
+		$month_num = $date->format( 'm' );
+
+		// Get bookings for this month
+		$start_date = $date->format( 'Y-m-01' );
+		$end_date = $date->format( 'Y-m-t' );
+
+		$bookings = $this->load_bookings( $start_date, $end_date );
+
+		// Get capacity data
+		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+		$repo = new CapacityRepository();
+		$capacity_overrides = $repo->get_range( $start_date, $end_date );
+
+		// Get settings
+		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
+		$working_days = json_decode( $working_days_json, true );
+		$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
+		$holidays = json_decode( $holidays_json, true );
+
+		// Calculate all days (invert working days to get off days)
+		$all_days = [ 0, 1, 2, 3, 4, 5, 6 ];
+		$off_days = array_values( array_diff( $all_days, $working_days ) );
+
+		// Render UI
+		?>
+		<div class="wrap">
+			<h1>Production Schedule</h1>
+
+			<?php $this->render_month_navigation( $date ); ?>
+
+			<?php $this->render_calendar( $date, $bookings, $daily_capacity, $capacity_overrides, $off_days, $holidays ); ?>
+
+			<hr style="margin: 40px 0;">
+
+			<?php $this->render_bookings_list( $bookings ); ?>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render month navigation
+	 */
+	private function render_month_navigation( $date ) {
+		$prev_month = clone $date;
+		$prev_month->modify( '-1 month' );
+
+		$next_month = clone $date;
+		$next_month->modify( '+1 month' );
+
+		$current_month = $date->format( 'F Y' );
+
+		?>
+		<div style="margin: 20px 0; display: flex; justify-content: space-between; align-items: center;">
+			<a href="?page=sfa-production-schedule&month=<?php echo $prev_month->format( 'Y-m' ); ?>" class="button">
+				◀ <?php echo $prev_month->format( 'M Y' ); ?>
+			</a>
+
+			<h2 style="margin: 0;"><?php echo $current_month; ?></h2>
+
+			<a href="?page=sfa-production-schedule&month=<?php echo $next_month->format( 'Y-m' ); ?>" class="button">
+				<?php echo $next_month->format( 'M Y' ); ?> ▶
+			</a>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render calendar grid
+	 */
+	private function render_calendar( $date, $bookings, $daily_capacity, $capacity_overrides, $off_days, $holidays ) {
+		$days_in_month = (int) $date->format( 't' );
+		$first_day_of_week = (int) $date->format( 'w' ); // 0=Sunday
+
+		?>
+		<table class="widefat" style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+			<thead>
+				<tr style="background: #f0f0f0;">
+					<th style="padding: 10px; text-align: center;">Sun</th>
+					<th style="padding: 10px; text-align: center;">Mon</th>
+					<th style="padding: 10px; text-align: center;">Tue</th>
+					<th style="padding: 10px; text-align: center;">Wed</th>
+					<th style="padding: 10px; text-align: center;">Thu</th>
+					<th style="padding: 10px; text-align: center;">Fri</th>
+					<th style="padding: 10px; text-align: center;">Sat</th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php
+				$current_day = 1;
+				$weeks = ceil( ( $days_in_month + $first_day_of_week ) / 7 );
+
+				for ( $week = 0; $week < $weeks; $week++ ) {
+					echo '<tr>';
+
+					for ( $day_of_week = 0; $day_of_week < 7; $day_of_week++ ) {
+						if ( ( $week === 0 && $day_of_week < $first_day_of_week ) || $current_day > $days_in_month ) {
+							echo '<td style="padding: 10px; border: 1px solid #ddd; background: #fafafa;"></td>';
+							continue;
+						}
+
+						$day_date = $date->format( 'Y-m-' ) . str_pad( $current_day, 2, '0', STR_PAD_LEFT );
+
+						// Check if off day or holiday
+						$is_off_day = in_array( $day_of_week, $off_days, true );
+						$is_holiday = in_array( $day_date, $holidays, true );
+
+						// Get capacity for this day
+						$capacity = isset( $capacity_overrides[ $day_date ] )
+							? $capacity_overrides[ $day_date ]
+							: $daily_capacity;
+
+						// Get used capacity
+						$used = isset( $bookings[ $day_date ] ) ? $bookings[ $day_date ]['total_lm'] : 0;
+
+						// Calculate percentage
+						$percentage = $capacity > 0 ? ( $used / $capacity ) * 100 : 0;
+
+						// Determine color
+						if ( $is_off_day || $is_holiday || $capacity === 0 ) {
+							$bg_color = '#e0e0e0';
+							$text = 'OFF';
+						} elseif ( $percentage >= 100 ) {
+							$bg_color = '#ffcccc';
+							$text = "$used/$capacity FULL";
+						} elseif ( $percentage >= 70 ) {
+							$bg_color = '#fff4cc';
+							$text = "$used/$capacity";
+						} else {
+							$bg_color = '#ccffcc';
+							$text = "$used/$capacity";
+						}
+
+						echo '<td style="padding: 10px; border: 1px solid #ddd; background: ' . $bg_color . '; vertical-align: top; height: 80px;">';
+						echo '<div style="font-weight: bold; margin-bottom: 5px;">' . $current_day . '</div>';
+						echo '<div style="font-size: 12px;">' . $text . '</div>';
+
+						if ( isset( $bookings[ $day_date ] ) && ! empty( $bookings[ $day_date ]['entries'] ) ) {
+							echo '<div style="font-size: 11px; color: #666; margin-top: 3px;">';
+							echo count( $bookings[ $day_date ]['entries'] ) . ' order' . ( count( $bookings[ $day_date ]['entries'] ) > 1 ? 's' : '' );
+							echo '</div>';
+						}
+
+						echo '</td>';
+
+						$current_day++;
+					}
+
+					echo '</tr>';
+				}
+				?>
+			</tbody>
+		</table>
+
+		<div style="margin: 20px 0; padding: 15px; background: #f9f9f9; border-left: 3px solid #0073aa;">
+			<strong>Legend:</strong>
+			<span style="display: inline-block; margin-left: 20px; padding: 5px 10px; background: #ccffcc;">Available (&lt;70%)</span>
+			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #fff4cc;">Filling Up (70-99%)</span>
+			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #ffcccc;">Full (100%)</span>
+			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #e0e0e0;">Off Day</span>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render bookings list
+	 */
+	private function render_bookings_list( $bookings ) {
+		?>
+		<h2>Production Bookings</h2>
+
+		<?php if ( empty( $bookings ) ): ?>
+			<p>No bookings for this month.</p>
+		<?php else: ?>
+			<table class="widefat striped">
+				<thead>
+					<tr>
+						<th>Entry ID</th>
+						<th>LM</th>
+						<th>Production Dates</th>
+						<th>Installation Date</th>
+						<th>Booked By</th>
+						<th>Booked At</th>
+						<th>Status</th>
+					</tr>
+				</thead>
+				<tbody>
+					<?php
+					$all_entries = [];
+
+					foreach ( $bookings as $date => $day_data ) {
+						foreach ( $day_data['entries'] as $entry_data ) {
+							$entry_id = $entry_data['entry_id'];
+							if ( ! isset( $all_entries[ $entry_id ] ) ) {
+								$all_entries[ $entry_id ] = $entry_data;
+							}
+						}
+					}
+
+					foreach ( $all_entries as $entry_data ):
+						$user = get_userdata( $entry_data['booked_by'] );
+						$username = $user ? $user->display_name : 'Unknown';
+						?>
+						<tr>
+							<td><a href="<?php echo admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id'] ); ?>">
+								#<?php echo $entry_data['entry_id']; ?>
+							</a></td>
+							<td><?php echo $entry_data['lm_required']; ?> LM</td>
+							<td><?php echo date( 'M j', strtotime( $entry_data['prod_start'] ) ); ?> - <?php echo date( 'M j, Y', strtotime( $entry_data['prod_end'] ) ); ?></td>
+							<td><?php echo date( 'M j, Y', strtotime( $entry_data['install_date'] ) ); ?></td>
+							<td><?php echo esc_html( $username ); ?></td>
+							<td><?php echo date( 'M j, Y g:i a', strtotime( $entry_data['booked_at'] ) ); ?></td>
+							<td><?php echo ucfirst( $entry_data['status'] ); ?></td>
+						</tr>
+					<?php endforeach; ?>
+				</tbody>
+			</table>
+		<?php endif; ?>
+		<?php
+	}
+
+	/**
+	 * Load bookings for date range
+	 */
+	private function load_bookings( $start_date, $end_date ) {
+		global $wpdb;
+
+		// Query all entries with production bookings
+		$results = $wpdb->get_results(
+			$wpdb->prepare(
+				"SELECT entry_id, meta_key, meta_value
+				FROM {$wpdb->prefix}gf_entry_meta
+				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by')
+				AND entry_id IN (
+					SELECT DISTINCT entry_id
+					FROM {$wpdb->prefix}gf_entry_meta
+					WHERE meta_key = '_prod_start_date'
+					AND meta_value >= %s
+					AND meta_value <= %s
+				)
+				ORDER BY entry_id",
+				$start_date,
+				$end_date
+			),
+			ARRAY_A
+		);
+
+		// Group by entry ID
+		$entries = [];
+		foreach ( $results as $row ) {
+			$entry_id = $row['entry_id'];
+			if ( ! isset( $entries[ $entry_id ] ) ) {
+				$entries[ $entry_id ] = [ 'entry_id' => $entry_id ];
+			}
+			$entries[ $entry_id ][ str_replace( '_prod_', '', str_replace( '_install_', 'install_', $row['meta_key'] ) ) ] = $row['meta_value'];
+		}
+
+		// Organize by date
+		$bookings = [];
+
+		foreach ( $entries as $entry_id => $entry_data ) {
+			if ( empty( $entry_data['slots_allocation'] ) ) {
+				continue;
+			}
+
+			$allocation = json_decode( $entry_data['slots_allocation'], true );
+
+			if ( ! is_array( $allocation ) ) {
+				continue;
+			}
+
+			// Get form ID for entry
+			$form_id = $wpdb->get_var( $wpdb->prepare(
+				"SELECT form_id FROM {$wpdb->prefix}gf_entry WHERE id = %d",
+				$entry_id
+			) );
+
+			foreach ( $allocation as $date => $lm ) {
+				if ( ! isset( $bookings[ $date ] ) ) {
+					$bookings[ $date ] = [
+						'total_lm' => 0,
+						'entries' => [],
+					];
+				}
+
+				$bookings[ $date ]['total_lm'] += (int) $lm;
+				$bookings[ $date ]['entries'][] = [
+					'entry_id' => $entry_id,
+					'form_id' => $form_id,
+					'lm_on_date' => $lm,
+					'lm_required' => isset( $entry_data['lm_required'] ) ? $entry_data['lm_required'] : 0,
+					'prod_start' => isset( $entry_data['start_date'] ) ? $entry_data['start_date'] : '',
+					'prod_end' => isset( $entry_data['end_date'] ) ? $entry_data['end_date'] : '',
+					'install_date' => isset( $entry_data['date'] ) ? $entry_data['date'] : '',
+					'status' => isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'unknown',
+					'booked_at' => isset( $entry_data['booked_at'] ) ? $entry_data['booked_at'] : '',
+					'booked_by' => isset( $entry_data['booked_by'] ) ? $entry_data['booked_by'] : 0,
+				];
+			}
+		}
+
+		return $bookings;
+	}
+}
