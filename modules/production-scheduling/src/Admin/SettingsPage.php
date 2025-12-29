@@ -7,7 +7,7 @@ namespace SFA\ProductionScheduling\Admin;
 class SettingsPage {
 
 	public function __construct() {
-		add_action( 'admin_menu', [ $this, 'add_menu_page' ] );
+		add_action( 'admin_menu', [ $this, 'add_menu_page' ], 110 ); // Load after Schedule View
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
 	}
 
@@ -15,11 +15,12 @@ class SettingsPage {
 	 * Add settings page to admin menu
 	 */
 	public function add_menu_page() {
-		add_options_page(
+		add_submenu_page(
+			'sfa-production-schedule', // Parent is the schedule page
 			'Production Scheduling Settings',
-			'Production Scheduling',
+			'Settings',
 			'manage_options',
-			'sfa-production-scheduling',
+			'sfa-production-scheduling-settings',
 			[ $this, 'render_settings_page' ]
 		);
 	}
