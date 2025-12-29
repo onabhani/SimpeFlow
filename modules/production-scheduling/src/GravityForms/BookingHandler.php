@@ -11,7 +11,41 @@ use SFA\ProductionScheduling\Admin\FormSettings;
 class BookingHandler {
 
 	public function __construct() {
+		// Hook into form submission for immediate booking (default behavior)
 		add_action( 'gform_after_submission', [ $this, 'save_production_booking' ], 10, 2 );
+
+		// Hook into GravityFlow step completion for step-based booking
+		add_action( 'gravityflow_step_complete', [ $this, 'save_production_booking_after_step' ], 10, 4 );
+	}
+
+	/**
+	 * Save production booking after workflow step completion
+	 *
+	 * @param int    $entry_id
+	 * @param int    $step_id
+	 * @param array  $form
+	 * @param object $step
+	 */
+	public function save_production_booking_after_step( $entry_id, $step_id, $form, $step ) {
+		// Check if production scheduling is enabled
+		if ( ! FormSettings::is_enabled( $form ) ) {
+			return;
+		}
+
+		// Check if booking should happen after this specific step
+		$booking_step_id = FormSettings::get_booking_step_id( $form );
+		if ( $booking_step_id !== $step_id ) {
+			return; // Not the booking trigger step
+		}
+
+		// Get entry
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) || ! $entry ) {
+			return;
+		}
+
+		// Process the booking
+		$this->process_production_booking( $entry, $form );
 	}
 
 	/**
@@ -25,6 +59,25 @@ class BookingHandler {
 		if ( ! FormSettings::is_enabled( $form ) ) {
 			return;
 		}
+
+		// Check if booking should happen at a specific workflow step
+		$booking_step_id = FormSettings::get_booking_step_id( $form );
+		if ( $booking_step_id > 0 ) {
+			// Booking is deferred to a workflow step, don't create it on submission
+			return;
+		}
+
+		// Process the booking immediately
+		$this->process_production_booking( $entry, $form );
+	}
+
+	/**
+	 * Process production booking (shared logic)
+	 *
+	 * @param array $entry
+	 * @param array $form
+	 */
+	private function process_production_booking( $entry, $form ) {
 
 		$lm_field_id = FormSettings::get_lm_field_id( $form );
 		$install_field_id = FormSettings::get_install_field_id( $form );
