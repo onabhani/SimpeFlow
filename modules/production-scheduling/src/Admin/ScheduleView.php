@@ -268,9 +268,12 @@ class ScheduleView {
 					foreach ( $all_entries as $entry_data ):
 						$user = get_userdata( $entry_data['booked_by'] );
 						$username = $user ? $user->display_name : 'Unknown';
+
+						// Build workflow-inbox URL
+						$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id'];
 						?>
 						<tr>
-							<td><a href="<?php echo admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id'] ); ?>">
+							<td><a href="<?php echo esc_url( $workflow_url ); ?>" target="_blank">
 								#<?php echo $entry_data['entry_id']; ?>
 							</a></td>
 							<td><?php echo $entry_data['lm_required']; ?> LM</td>

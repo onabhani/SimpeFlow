@@ -46,11 +46,13 @@ class BookingHandler {
 
 		// Handle multi-field or legacy mode
 		$total_slots = 0;
+		$lm_required = 0; // Initialize for both modes
 
 		if ( ! empty( $production_fields ) ) {
 			// Multi-field mode
 			$field_values = array();
 			$field_breakdown = array(); // For entry meta storage
+			$has_values = false;
 
 			foreach ( $production_fields as $prod_field_config ) {
 				$field_id = $prod_field_config['field_id'];
@@ -60,12 +62,18 @@ class BookingHandler {
 				$field_values[ $field_id ] = $value;
 
 				if ( $value > 0 ) {
+					$has_values = true;
 					$field_breakdown[] = array(
 						'field_id' => $field_id,
 						'field_type' => $field_type,
 						'value' => $value,
 					);
 				}
+			}
+
+			// Skip booking if no production values entered yet (prevents premature booking)
+			if ( ! $has_values ) {
+				return;
 			}
 
 			// Calculate total slots
@@ -75,12 +83,15 @@ class BookingHandler {
 				return;
 			}
 
+			// For multi-field mode, lm_required represents total slots
+			$lm_required = $total_slots;
+
 			// Store field breakdown in entry meta
 			gform_update_meta( $entry_id, '_prod_field_breakdown', wp_json_encode( $field_breakdown ) );
 			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
 
 			// Recalculate schedule with live data (multi-field)
-			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields );
+			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
 		} else {
 			// Legacy mode (single LM field)
 			$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
@@ -96,7 +107,7 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
 
 			// Recalculate schedule with live data (legacy)
-			$schedule = BillingStepPreview::calculate_schedule( $lm_required );
+			$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
 		}
 
 		if ( is_wp_error( $schedule ) ) {
