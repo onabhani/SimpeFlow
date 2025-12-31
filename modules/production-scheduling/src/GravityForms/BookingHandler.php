@@ -29,20 +29,49 @@ class BookingHandler {
 	public function save_production_booking_after_step( $entry_id, $step_id, $form, $step ) {
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
+			error_log( sprintf(
+				'Production Booking: Skipped entry %d - production scheduling not enabled for form %d',
+				$entry_id,
+				$form['id']
+			) );
 			return;
 		}
 
 		// Check if booking should happen after this specific step
 		$booking_step_id = FormSettings::get_booking_step_id( $form );
-		if ( $booking_step_id !== $step_id ) {
+
+		error_log( sprintf(
+			'Production Booking: Step complete for entry %d. Current step: %d, Booking step: %d',
+			$entry_id,
+			$step_id,
+			$booking_step_id
+		) );
+
+		if ( $booking_step_id != $step_id ) {
+			error_log( sprintf(
+				'Production Booking: Skipped entry %d - step mismatch (current: %d, required: %d)',
+				$entry_id,
+				$step_id,
+				$booking_step_id
+			) );
 			return; // Not the booking trigger step
 		}
 
 		// Get entry
 		$entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $entry ) || ! $entry ) {
+			error_log( sprintf(
+				'Production Booking: Failed to load entry %d',
+				$entry_id
+			) );
 			return;
 		}
+
+		error_log( sprintf(
+			'Production Booking: Processing booking for entry %d after step %d completion',
+			$entry_id,
+			$step_id
+		) );
 
 		// Process the booking
 		$this->process_production_booking( $entry, $form );
