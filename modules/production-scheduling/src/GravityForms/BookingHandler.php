@@ -236,10 +236,30 @@ class BookingHandler {
 			return;
 		}
 
+		error_log( sprintf(
+			'Production Booking: Entry %d - Schedule calculated. Min install date: %s, Submitted install date: %s',
+			$entry_id,
+			$schedule['installation_minimum'],
+			$installation_date
+		) );
+
 		// Use submitted installation date if valid, otherwise use minimum
+		$original_installation_date = $installation_date;
 		if ( ! $installation_date || $installation_date < $schedule['installation_minimum'] ) {
 			$installation_date = $schedule['installation_minimum'];
+			error_log( sprintf(
+				'Production Booking: Entry %d - Using calculated min date %s instead of submitted date %s',
+				$entry_id,
+				$installation_date,
+				$original_installation_date ?: '(empty)'
+			) );
 		}
+
+		error_log( sprintf(
+			'Production Booking: Entry %d - Final installation date to save: %s',
+			$entry_id,
+			$installation_date
+		) );
 
 		// Get production dates from form fields if they were submitted
 		// (JavaScript should have populated these, but we verify against calculated schedule)
