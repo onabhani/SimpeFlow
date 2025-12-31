@@ -243,31 +243,88 @@ class BookingHandler {
 			$installation_date
 		) );
 
-		// Check if this is a re-booking (existing installation date in meta)
+		// Check if this is a re-booking (existing booking meta)
 		$existing_install_date = gform_get_meta( $entry_id, '_install_date' );
+		$existing_lm = gform_get_meta( $entry_id, '_prod_lm_required' );
 
-		// Use submitted installation date if valid, otherwise use minimum
-		// BUT: If this is a re-booking, preserve the original installation date
-		$original_installation_date = $installation_date;
+		// Determine installation date based on changes
+		$submitted_installation_date = $installation_date;
+		$lm_changed = $existing_lm && ( (float) $existing_lm !== (float) $lm_required );
+		$date_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
+
 		if ( $existing_install_date ) {
-			// Re-booking: preserve original installation date
-			$installation_date = $existing_install_date;
-			error_log( sprintf(
-				'Production Booking: Entry %d - Re-booking detected. Preserving original installation date: %s (submitted: %s, calculated min: %s)',
-				$entry_id,
-				$installation_date,
-				$original_installation_date,
-				$schedule['installation_minimum']
-			) );
-		} elseif ( ! $installation_date || $installation_date < $schedule['installation_minimum'] ) {
-			// New booking: use calculated minimum if submitted date is invalid/too early
-			$installation_date = $schedule['installation_minimum'];
-			error_log( sprintf(
-				'Production Booking: Entry %d - New booking. Using calculated min date %s instead of submitted date %s',
-				$entry_id,
-				$installation_date,
-				$original_installation_date ?: '(empty)'
-			) );
+			// This is a re-booking
+			if ( $lm_changed ) {
+				// LM changed: Use submitted date if valid, otherwise use calculated minimum
+				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
+					$installation_date = $submitted_installation_date;
+					error_log( sprintf(
+						'Production Booking: Entry %d - LM changed (%s → %s). Using submitted date: %s (min: %s)',
+						$entry_id,
+						$existing_lm,
+						$lm_required,
+						$installation_date,
+						$schedule['installation_minimum']
+					) );
+				} else {
+					$installation_date = $schedule['installation_minimum'];
+					error_log( sprintf(
+						'Production Booking: Entry %d - LM changed (%s → %s). Using calculated min date: %s (submitted: %s)',
+						$entry_id,
+						$existing_lm,
+						$lm_required,
+						$installation_date,
+						$submitted_installation_date ?: '(empty)'
+					) );
+				}
+			} elseif ( $date_changed ) {
+				// LM unchanged but date manually changed: Use new date if valid
+				if ( $submitted_installation_date >= $schedule['installation_minimum'] ) {
+					$installation_date = $submitted_installation_date;
+					error_log( sprintf(
+						'Production Booking: Entry %d - Date manually changed: %s → %s (LM unchanged: %s)',
+						$entry_id,
+						$existing_install_date,
+						$installation_date,
+						$lm_required
+					) );
+				} else {
+					$installation_date = $schedule['installation_minimum'];
+					error_log( sprintf(
+						'Production Booking: Entry %d - Manual date %s too early, using min: %s',
+						$entry_id,
+						$submitted_installation_date,
+						$installation_date
+					) );
+				}
+			} else {
+				// LM unchanged and date unchanged: Keep existing date
+				$installation_date = $existing_install_date;
+				error_log( sprintf(
+					'Production Booking: Entry %d - No changes detected. Preserving installation date: %s (LM: %s)',
+					$entry_id,
+					$installation_date,
+					$lm_required
+				) );
+			}
+		} else {
+			// New booking: use submitted date if valid, otherwise use calculated minimum
+			if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
+				$installation_date = $submitted_installation_date;
+				error_log( sprintf(
+					'Production Booking: Entry %d - New booking. Using submitted date: %s',
+					$entry_id,
+					$installation_date
+				) );
+			} else {
+				$installation_date = $schedule['installation_minimum'];
+				error_log( sprintf(
+					'Production Booking: Entry %d - New booking. Using calculated min date %s instead of submitted date %s',
+					$entry_id,
+					$installation_date,
+					$submitted_installation_date ?: '(empty)'
+				) );
+			}
 		}
 
 		error_log( sprintf(
