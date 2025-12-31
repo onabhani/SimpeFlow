@@ -313,7 +313,8 @@ class ScheduleView {
 			if ( ! isset( $entries[ $entry_id ] ) ) {
 				$entries[ $entry_id ] = [ 'entry_id' => $entry_id ];
 			}
-			$entries[ $entry_id ][ str_replace( '_prod_', '', str_replace( '_install_', 'install_', $row['meta_key'] ) ) ] = $row['meta_value'];
+			$key = str_replace( '_prod_', '', str_replace( '_install_', 'install_', $row['meta_key'] ) );
+			$entries[ $entry_id ][ $key ] = $row['meta_value'];
 		}
 
 		// Organize by date
@@ -352,7 +353,7 @@ class ScheduleView {
 					'lm_required' => isset( $entry_data['lm_required'] ) ? $entry_data['lm_required'] : 0,
 					'prod_start' => isset( $entry_data['start_date'] ) ? $entry_data['start_date'] : '',
 					'prod_end' => isset( $entry_data['end_date'] ) ? $entry_data['end_date'] : '',
-					'install_date' => isset( $entry_data['date'] ) ? $entry_data['date'] : '',
+					'install_date' => isset( $entry_data['install_date'] ) ? $entry_data['install_date'] : '',
 					'status' => isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'unknown',
 					'booked_at' => isset( $entry_data['booked_at'] ) ? $entry_data['booked_at'] : '',
 					'booked_by' => isset( $entry_data['booked_by'] ) ? $entry_data['booked_by'] : 0,
