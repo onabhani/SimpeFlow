@@ -19,21 +19,11 @@ class ScheduleView {
 	 * Add schedule view page to admin menu
 	 */
 	public function add_menu_page() {
-		// Add as parent under SimpleFlow
+		// Add Production Scheduling under SimpleFlow
 		add_submenu_page(
 			'simpleflow',
 			'Production Scheduling',
 			'Production Scheduling',
-			'manage_options',
-			'sfa-production-schedule',
-			[ $this, 'render_schedule_page' ]
-		);
-
-		// Add Calendar submenu (points to same page)
-		add_submenu_page(
-			'sfa-production-schedule',
-			'Production Calendar',
-			'Calendar',
 			'manage_options',
 			'sfa-production-schedule',
 			[ $this, 'render_schedule_page' ]

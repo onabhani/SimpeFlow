@@ -16,9 +16,9 @@ class SettingsPage {
 	 */
 	public function add_menu_page() {
 		add_submenu_page(
-			'sfa-production-schedule', // Parent is the schedule page
+			'simpleflow', // Parent is SimpleFlow menu (not sfa-production-schedule)
 			'Production Scheduling Settings',
-			'Settings',
+			'Production Settings',
 			'manage_options',
 			'sfa-production-scheduling-settings',
 			[ $this, 'render_settings_page' ]
