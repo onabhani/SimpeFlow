@@ -51,48 +51,17 @@ class BookingHandler {
 			return;
 		}
 
-		error_log( sprintf(
-			'Production Booking: Loaded form %d for entry %d (step %d completed)',
-			$form_id,
-			$entry_id,
-			$step_id
-		) );
-
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
-			error_log( sprintf(
-				'Production Booking: Skipped entry %d - production scheduling not enabled for form %d',
-				$entry_id,
-				$form['id']
-			) );
 			return;
 		}
 
 		// Check if booking should happen after this specific step
 		$booking_step_id = FormSettings::get_booking_step_id( $form );
 
-		error_log( sprintf(
-			'Production Booking: Entry %d - Step %d completed, booking step configured as %d',
-			$entry_id,
-			$step_id,
-			$booking_step_id
-		) );
-
 		if ( $booking_step_id != $step_id ) {
-			error_log( sprintf(
-				'Production Booking: Skipped entry %d - step mismatch (completed: %d, required: %d)',
-				$entry_id,
-				$step_id,
-				$booking_step_id
-			) );
 			return; // Not the booking trigger step
 		}
-
-		error_log( sprintf(
-			'Production Booking: ✓ Creating booking for entry %d after step %d completion',
-			$entry_id,
-			$step_id
-		) );
 
 		// Process the booking
 		$this->process_production_booking( $entry, $form );
@@ -151,14 +120,6 @@ class BookingHandler {
 		if ( $installation_date ) {
 			$installation_date = $this->normalize_date( $installation_date );
 		}
-
-		error_log( sprintf(
-			'Production Booking: Entry %d - Installation date from entry field %d: "%s" (normalized: "%s")',
-			$entry_id,
-			$install_field_id,
-			isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '(empty)',
-			$installation_date
-		) );
 
 		// Handle multi-field or legacy mode
 		$total_slots = 0;
@@ -236,13 +197,6 @@ class BookingHandler {
 			return;
 		}
 
-		error_log( sprintf(
-			'Production Booking: Entry %d - Schedule calculated. Min install date: %s, Submitted install date: %s',
-			$entry_id,
-			$schedule['installation_minimum'],
-			$installation_date
-		) );
-
 		// Check if this is a re-booking (existing booking meta)
 		$existing_install_date = gform_get_meta( $entry_id, '_install_date' );
 		$existing_lm = gform_get_meta( $entry_id, '_prod_lm_required' );
@@ -258,80 +212,28 @@ class BookingHandler {
 				// LM changed: Use submitted date if valid, otherwise use calculated minimum
 				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
 					$installation_date = $submitted_installation_date;
-					error_log( sprintf(
-						'Production Booking: Entry %d - LM changed (%s → %s). Using submitted date: %s (min: %s)',
-						$entry_id,
-						$existing_lm,
-						$lm_required,
-						$installation_date,
-						$schedule['installation_minimum']
-					) );
 				} else {
 					$installation_date = $schedule['installation_minimum'];
-					error_log( sprintf(
-						'Production Booking: Entry %d - LM changed (%s → %s). Using calculated min date: %s (submitted: %s)',
-						$entry_id,
-						$existing_lm,
-						$lm_required,
-						$installation_date,
-						$submitted_installation_date ?: '(empty)'
-					) );
 				}
 			} elseif ( $date_changed ) {
 				// LM unchanged but date manually changed: Use new date if valid
 				if ( $submitted_installation_date >= $schedule['installation_minimum'] ) {
 					$installation_date = $submitted_installation_date;
-					error_log( sprintf(
-						'Production Booking: Entry %d - Date manually changed: %s → %s (LM unchanged: %s)',
-						$entry_id,
-						$existing_install_date,
-						$installation_date,
-						$lm_required
-					) );
 				} else {
 					$installation_date = $schedule['installation_minimum'];
-					error_log( sprintf(
-						'Production Booking: Entry %d - Manual date %s too early, using min: %s',
-						$entry_id,
-						$submitted_installation_date,
-						$installation_date
-					) );
 				}
 			} else {
 				// LM unchanged and date unchanged: Keep existing date
 				$installation_date = $existing_install_date;
-				error_log( sprintf(
-					'Production Booking: Entry %d - No changes detected. Preserving installation date: %s (LM: %s)',
-					$entry_id,
-					$installation_date,
-					$lm_required
-				) );
 			}
 		} else {
 			// New booking: use submitted date if valid, otherwise use calculated minimum
 			if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
 				$installation_date = $submitted_installation_date;
-				error_log( sprintf(
-					'Production Booking: Entry %d - New booking. Using submitted date: %s',
-					$entry_id,
-					$installation_date
-				) );
 			} else {
 				$installation_date = $schedule['installation_minimum'];
-				error_log( sprintf(
-					'Production Booking: Entry %d - New booking. Using calculated min date %s instead of submitted date %s',
-					$entry_id,
-					$installation_date,
-					$submitted_installation_date ?: '(empty)'
-				) );
 			}
 		}
-
-		error_log( sprintf(
-			'Production Booking: Entry %d - Final installation date to save: %s',
-			$entry_id,
-			$installation_date
-		) );
 
 		// Get production dates from form fields if they were submitted
 		// (JavaScript should have populated these, but we verify against calculated schedule)
@@ -355,11 +257,6 @@ class BookingHandler {
 				foreach ( array_keys( $old_allocation ) as $old_date ) {
 					$year_month = substr( $old_date, 0, 7 );
 					wp_cache_delete( 'sfa_prod_availability_' . $year_month );
-					error_log( sprintf(
-						'Production Booking: Entry %d - Clearing cache for old allocation date: %s',
-						$entry_id,
-						$old_date
-					) );
 				}
 			}
 		}
