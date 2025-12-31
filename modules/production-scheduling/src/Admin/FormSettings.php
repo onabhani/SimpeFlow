@@ -577,8 +577,8 @@ class FormSettings {
 					return ceil( $value );
 				},
 			),
-			'shelf' => array(
-				'label' => 'Shelf (Rack)',
+			'vanity' => array(
+				'label' => 'Vanity Shelf',
 				'description' => '0-0.5 LM = 0 slots, then 1 slot for each 2 LM (e.g., 0.51-2 = 1 slot, 2.01-4 = 2 slots)',
 				'calculate' => function( $value ) {
 					// 0-0.5 LM doesn't count as a slot
@@ -587,19 +587,6 @@ class FormSettings {
 					}
 					// 1 slot for each 2 LM, round up
 					return ceil( $value / 2 );
-				},
-			),
-			'vanity' => array(
-				'label' => 'Vanity Shelf',
-				'description' => '0-0.5 = 0 slots, 0.5-2 = 1 slot, 2+ = 2 slots',
-				'calculate' => function( $value ) {
-					if ( $value <= 0.5 ) {
-						return 0; // Shares slot with LM
-					} elseif ( $value <= 2 ) {
-						return 1;
-					} else {
-						return 2;
-					}
 				},
 			),
 			'sqm' => array(

@@ -147,6 +147,19 @@ class BookingHandler {
 		$entry_id = (int) $entry['id'];
 		$installation_date = isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '';
 
+		// Normalize installation date format (convert DD/MM/YYYY to YYYY-MM-DD if needed)
+		if ( $installation_date ) {
+			$installation_date = $this->normalize_date( $installation_date );
+		}
+
+		error_log( sprintf(
+			'Production Booking: Entry %d - Installation date from entry field %d: "%s" (normalized: "%s")',
+			$entry_id,
+			$install_field_id,
+			isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '(empty)',
+			$installation_date
+		) );
+
 		// Handle multi-field or legacy mode
 		$total_slots = 0;
 		$lm_required = 0; // Initialize for both modes
