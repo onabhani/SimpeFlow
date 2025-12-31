@@ -27,6 +27,46 @@ class BookingHandler {
 	 * @param object $step
 	 */
 	public function save_production_booking_after_step( $entry_id, $step_id, $form, $step ) {
+		// Get entry first to ensure we have the correct form ID
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) || ! $entry ) {
+			error_log( sprintf(
+				'Production Booking: Failed to load entry %d',
+				$entry_id
+			) );
+			return;
+		}
+
+		// Load form if not provided correctly (sometimes GravityFlow passes form as integer)
+		if ( ! is_array( $form ) || empty( $form['id'] ) ) {
+			$form_id = isset( $entry['form_id'] ) ? $entry['form_id'] : 0;
+
+			if ( ! $form_id ) {
+				error_log( sprintf(
+					'Production Booking: No form ID found for entry %d',
+					$entry_id
+				) );
+				return;
+			}
+
+			$form = \GFAPI::get_form( $form_id );
+
+			if ( ! $form || is_wp_error( $form ) ) {
+				error_log( sprintf(
+					'Production Booking: Failed to load form %d for entry %d',
+					$form_id,
+					$entry_id
+				) );
+				return;
+			}
+
+			error_log( sprintf(
+				'Production Booking: Loaded form %d for entry %d (form param was invalid)',
+				$form_id,
+				$entry_id
+			) );
+		}
+
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
 			error_log( sprintf(
@@ -55,16 +95,6 @@ class BookingHandler {
 				$booking_step_id
 			) );
 			return; // Not the booking trigger step
-		}
-
-		// Get entry
-		$entry = \GFAPI::get_entry( $entry_id );
-		if ( is_wp_error( $entry ) || ! $entry ) {
-			error_log( sprintf(
-				'Production Booking: Failed to load entry %d',
-				$entry_id
-			) );
-			return;
 		}
 
 		error_log( sprintf(
