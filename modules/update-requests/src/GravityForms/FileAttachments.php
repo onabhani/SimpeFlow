@@ -215,8 +215,8 @@ class FileAttachments {
 		}
 
 		// Check GF global
-		if ( class_exists( 'GFFormDisplay' ) && isset( GFFormDisplay::$submission ) ) {
-			$entry = GFFormDisplay::$submission['lead'];
+		if ( class_exists( '\GFFormDisplay' ) && isset( \GFFormDisplay::$submission ) ) {
+			$entry = \GFFormDisplay::$submission['lead'];
 			if ( isset( $entry['id'] ) ) {
 				return absint( $entry['id'] );
 			}
