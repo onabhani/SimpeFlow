@@ -243,12 +243,27 @@ class BookingHandler {
 			$installation_date
 		) );
 
+		// Check if this is a re-booking (existing installation date in meta)
+		$existing_install_date = gform_get_meta( $entry_id, '_install_date' );
+
 		// Use submitted installation date if valid, otherwise use minimum
+		// BUT: If this is a re-booking, preserve the original installation date
 		$original_installation_date = $installation_date;
-		if ( ! $installation_date || $installation_date < $schedule['installation_minimum'] ) {
+		if ( $existing_install_date ) {
+			// Re-booking: preserve original installation date
+			$installation_date = $existing_install_date;
+			error_log( sprintf(
+				'Production Booking: Entry %d - Re-booking detected. Preserving original installation date: %s (submitted: %s, calculated min: %s)',
+				$entry_id,
+				$installation_date,
+				$original_installation_date,
+				$schedule['installation_minimum']
+			) );
+		} elseif ( ! $installation_date || $installation_date < $schedule['installation_minimum'] ) {
+			// New booking: use calculated minimum if submitted date is invalid/too early
 			$installation_date = $schedule['installation_minimum'];
 			error_log( sprintf(
-				'Production Booking: Entry %d - Using calculated min date %s instead of submitted date %s',
+				'Production Booking: Entry %d - New booking. Using calculated min date %s instead of submitted date %s',
 				$entry_id,
 				$installation_date,
 				$original_installation_date ?: '(empty)'
@@ -273,6 +288,23 @@ class BookingHandler {
 		if ( $prod_end_field_id && isset( $entry[ $prod_end_field_id ] ) && $entry[ $prod_end_field_id ] ) {
 			// Convert DD/MM/YYYY to YYYY-MM-DD if needed
 			$prod_end_date = $this->normalize_date( $entry[ $prod_end_field_id ] );
+		}
+
+		// Clear cache for old allocation dates (before updating)
+		$old_allocation_json = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+		if ( $old_allocation_json ) {
+			$old_allocation = json_decode( $old_allocation_json, true );
+			if ( is_array( $old_allocation ) ) {
+				foreach ( array_keys( $old_allocation ) as $old_date ) {
+					$year_month = substr( $old_date, 0, 7 );
+					wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+					error_log( sprintf(
+						'Production Booking: Entry %d - Clearing cache for old allocation date: %s',
+						$entry_id,
+						$old_date
+					) );
+				}
+			}
 		}
 
 		// Save to entry meta
