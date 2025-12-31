@@ -80,6 +80,32 @@ class BookingHandler {
 		// Check if booking should happen after this specific step
 		$booking_step_id = FormSettings::get_booking_step_id( $form );
 
+		// Debug: Log step object details
+		$step_type = is_object( $step ) && method_exists( $step, 'get_type' ) ? $step->get_type() : 'unknown';
+		$step_name = is_object( $step ) && method_exists( $step, 'get_name' ) ? $step->get_name() : 'unknown';
+		$actual_step_id = is_object( $step ) && method_exists( $step, 'get_id' ) ? $step->get_id() : $step_id;
+
+		error_log( sprintf(
+			'Production Booking: Entry %d - Step details: passed_step_id=%s, actual_step_id=%s, step_type=%s, step_name=%s, booking_step_id=%s',
+			$entry_id,
+			$step_id,
+			$actual_step_id,
+			$step_type,
+			$step_name,
+			$booking_step_id
+		) );
+
+		// Use the actual step ID from the step object if available
+		if ( $actual_step_id && $actual_step_id != $step_id ) {
+			error_log( sprintf(
+				'Production Booking: Entry %d - Using step object ID (%s) instead of passed ID (%s)',
+				$entry_id,
+				$actual_step_id,
+				$step_id
+			) );
+			$step_id = $actual_step_id;
+		}
+
 		error_log( sprintf(
 			'Production Booking: Step complete for entry %d. Current step: %d, Booking step: %d',
 			$entry_id,
