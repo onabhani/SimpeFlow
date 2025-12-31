@@ -80,6 +80,18 @@ class BookingHandler {
 		// Check if booking should happen after this specific step
 		$booking_step_id = FormSettings::get_booking_step_id( $form );
 
+		// Debug: Log what $step actually is
+		$step_class = is_object( $step ) ? get_class( $step ) : gettype( $step );
+		$step_methods = is_object( $step ) ? get_class_methods( $step ) : [];
+
+		error_log( sprintf(
+			'Production Booking: Entry %d - Step object debug: class=%s, is_object=%s, methods=%s',
+			$entry_id,
+			$step_class,
+			is_object( $step ) ? 'yes' : 'no',
+			implode( ', ', array_slice( $step_methods, 0, 10 ) )
+		) );
+
 		// Debug: Log step object details
 		$step_type = is_object( $step ) && method_exists( $step, 'get_type' ) ? $step->get_type() : 'unknown';
 		$step_name = is_object( $step ) && method_exists( $step, 'get_name' ) ? $step->get_name() : 'unknown';
