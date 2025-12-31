@@ -53,10 +53,13 @@ global $wpdb;
 echo "Step 1: Finding entries with invalid production bookings...\n";
 
 $entries_to_clean = $wpdb->get_results(
-	"SELECT entry_id, meta_value
+	"SELECT DISTINCT entry_id
 	FROM {$wpdb->prefix}gf_entry_meta
-	WHERE meta_key = '_prod_total_slots'
-	AND (meta_value = '0' OR meta_value IS NULL OR meta_value = '')",
+	WHERE (
+		(meta_key = '_prod_lm_required' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+		OR
+		(meta_key = '_prod_total_slots' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+	)",
 	ARRAY_A
 );
 
@@ -70,13 +73,12 @@ echo "Found {$total_entries} entries with invalid bookings (0 LM).\n\n";
 
 // Step 2: Show preview of entries to be cleaned
 echo "Preview of entries to be cleaned:\n";
-echo "Entry ID | Current LM Value\n";
-echo "---------|------------------\n";
+echo "Entry ID\n";
+echo "---------\n";
 $preview_count = min( 10, $total_entries );
 for ( $i = 0; $i < $preview_count; $i++ ) {
 	$entry_id = $entries_to_clean[ $i ]['entry_id'];
-	$lm_value = $entries_to_clean[ $i ]['meta_value'] ?: '(empty)';
-	echo str_pad( $entry_id, 9 ) . "| {$lm_value}\n";
+	echo $entry_id . "\n";
 }
 if ( $total_entries > 10 ) {
 	echo "... and " . ( $total_entries - 10 ) . " more entries\n";

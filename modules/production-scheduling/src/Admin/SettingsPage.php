@@ -65,12 +65,15 @@ class SettingsPage {
 	private function cleanup_invalid_bookings() {
 		global $wpdb;
 
-		// Find all entries with 0 or null LM
+		// Find all entries with 0 or null LM (check both _prod_lm_required and _prod_total_slots)
 		$entries_to_clean = $wpdb->get_results(
-			"SELECT entry_id
+			"SELECT DISTINCT entry_id
 			FROM {$wpdb->prefix}gf_entry_meta
-			WHERE meta_key = '_prod_total_slots'
-			AND (meta_value = '0' OR meta_value IS NULL OR meta_value = '')",
+			WHERE (
+				(meta_key = '_prod_lm_required' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+				OR
+				(meta_key = '_prod_total_slots' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+			)",
 			ARRAY_A
 		);
 

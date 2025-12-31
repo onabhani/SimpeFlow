@@ -12,13 +12,15 @@
 -- =====================================================
 -- Step 1: Preview - See which entries will be affected
 -- =====================================================
-SELECT
+SELECT DISTINCT
     entry_id,
-    meta_value as current_lm,
     COUNT(*) OVER() as total_entries_to_clean
 FROM wp_gf_entry_meta
-WHERE meta_key = '_prod_total_slots'
-AND (meta_value = '0' OR meta_value IS NULL OR meta_value = '')
+WHERE (
+    (meta_key = '_prod_lm_required' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+    OR
+    (meta_key = '_prod_total_slots' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+)
 ORDER BY entry_id DESC
 LIMIT 100;
 
@@ -30,10 +32,13 @@ SELECT
     COUNT(DISTINCT entry_id) as total_entries_affected
 FROM wp_gf_entry_meta
 WHERE entry_id IN (
-    SELECT entry_id
+    SELECT DISTINCT entry_id
     FROM wp_gf_entry_meta
-    WHERE meta_key = '_prod_total_slots'
-    AND (meta_value = '0' OR meta_value IS NULL OR meta_value = '')
+    WHERE (
+        (meta_key = '_prod_lm_required' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+        OR
+        (meta_key = '_prod_total_slots' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+    )
 )
 AND meta_key IN (
     '_prod_lm_required',
@@ -65,10 +70,13 @@ DELETE FROM wp_gf_entry_meta
 WHERE entry_id IN (
     SELECT entry_id
     FROM (
-        SELECT entry_id
+        SELECT DISTINCT entry_id
         FROM wp_gf_entry_meta
-        WHERE meta_key = '_prod_total_slots'
-        AND (meta_value = '0' OR meta_value IS NULL OR meta_value = '')
+        WHERE (
+            (meta_key = '_prod_lm_required' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+            OR
+            (meta_key = '_prod_total_slots' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+        )
     ) AS invalid_entries
 )
 AND meta_key IN (
@@ -91,12 +99,14 @@ AND meta_key IN (
 -- =====================================================
 -- This should return 0 rows after successful cleanup:
 /*
-SELECT
-    entry_id,
-    meta_value as current_lm
+SELECT DISTINCT
+    entry_id
 FROM wp_gf_entry_meta
-WHERE meta_key = '_prod_total_slots'
-AND (meta_value = '0' OR meta_value IS NULL OR meta_value = '');
+WHERE (
+    (meta_key = '_prod_lm_required' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+    OR
+    (meta_key = '_prod_total_slots' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+);
 */
 
 -- =====================================================
