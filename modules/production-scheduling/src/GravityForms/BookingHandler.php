@@ -21,12 +21,14 @@ class BookingHandler {
 	/**
 	 * Save production booking after workflow step completion
 	 *
-	 * @param int    $entry_id
-	 * @param int    $step_id
-	 * @param array  $form
-	 * @param object $step
+	 * GravityFlow hook signature: do_action( 'gravityflow_step_complete', $step_id, $entry_id, $form_id, $step )
+	 *
+	 * @param int    $step_id     The step ID that completed
+	 * @param int    $entry_id    The entry ID
+	 * @param int    $form_id     The form ID (integer, not array)
+	 * @param object $step        The step object
 	 */
-	public function save_production_booking_after_step( $entry_id, $step_id, $form, $step ) {
+	public function save_production_booking_after_step( $step_id, $entry_id, $form_id, $step ) {
 		// Get entry first to ensure we have the correct form ID
 		$entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $entry ) || ! $entry ) {
@@ -37,35 +39,24 @@ class BookingHandler {
 			return;
 		}
 
-		// Load form if not provided correctly (sometimes GravityFlow passes form as integer)
-		if ( ! is_array( $form ) || empty( $form['id'] ) ) {
-			$form_id = isset( $entry['form_id'] ) ? $entry['form_id'] : 0;
+		// Load form (GravityFlow passes form_id as integer, not array)
+		$form = \GFAPI::get_form( $form_id );
 
-			if ( ! $form_id ) {
-				error_log( sprintf(
-					'Production Booking: No form ID found for entry %d',
-					$entry_id
-				) );
-				return;
-			}
-
-			$form = \GFAPI::get_form( $form_id );
-
-			if ( ! $form || is_wp_error( $form ) ) {
-				error_log( sprintf(
-					'Production Booking: Failed to load form %d for entry %d',
-					$form_id,
-					$entry_id
-				) );
-				return;
-			}
-
+		if ( ! $form || is_wp_error( $form ) ) {
 			error_log( sprintf(
-				'Production Booking: Loaded form %d for entry %d (form param was invalid)',
+				'Production Booking: Failed to load form %d for entry %d',
 				$form_id,
 				$entry_id
 			) );
+			return;
 		}
+
+		error_log( sprintf(
+			'Production Booking: Loaded form %d for entry %d (step %d completed)',
+			$form_id,
+			$entry_id,
+			$step_id
+		) );
 
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
@@ -80,46 +71,8 @@ class BookingHandler {
 		// Check if booking should happen after this specific step
 		$booking_step_id = FormSettings::get_booking_step_id( $form );
 
-		// Debug: Log what $step actually is
-		$step_class = is_object( $step ) ? get_class( $step ) : gettype( $step );
-		$step_methods = is_object( $step ) ? get_class_methods( $step ) : [];
-
 		error_log( sprintf(
-			'Production Booking: Entry %d - Step object debug: class=%s, is_object=%s, methods=%s',
-			$entry_id,
-			$step_class,
-			is_object( $step ) ? 'yes' : 'no',
-			implode( ', ', array_slice( $step_methods, 0, 10 ) )
-		) );
-
-		// Debug: Log step object details
-		$step_type = is_object( $step ) && method_exists( $step, 'get_type' ) ? $step->get_type() : 'unknown';
-		$step_name = is_object( $step ) && method_exists( $step, 'get_name' ) ? $step->get_name() : 'unknown';
-		$actual_step_id = is_object( $step ) && method_exists( $step, 'get_id' ) ? $step->get_id() : $step_id;
-
-		error_log( sprintf(
-			'Production Booking: Entry %d - Step details: passed_step_id=%s, actual_step_id=%s, step_type=%s, step_name=%s, booking_step_id=%s',
-			$entry_id,
-			$step_id,
-			$actual_step_id,
-			$step_type,
-			$step_name,
-			$booking_step_id
-		) );
-
-		// Use the actual step ID from the step object if available
-		if ( $actual_step_id && $actual_step_id != $step_id ) {
-			error_log( sprintf(
-				'Production Booking: Entry %d - Using step object ID (%s) instead of passed ID (%s)',
-				$entry_id,
-				$actual_step_id,
-				$step_id
-			) );
-			$step_id = $actual_step_id;
-		}
-
-		error_log( sprintf(
-			'Production Booking: Step complete for entry %d. Current step: %d, Booking step: %d',
+			'Production Booking: Entry %d - Step %d completed, booking step configured as %d',
 			$entry_id,
 			$step_id,
 			$booking_step_id
@@ -127,7 +80,7 @@ class BookingHandler {
 
 		if ( $booking_step_id != $step_id ) {
 			error_log( sprintf(
-				'Production Booking: Skipped entry %d - step mismatch (current: %d, required: %d)',
+				'Production Booking: Skipped entry %d - step mismatch (completed: %d, required: %d)',
 				$entry_id,
 				$step_id,
 				$booking_step_id
@@ -136,7 +89,7 @@ class BookingHandler {
 		}
 
 		error_log( sprintf(
-			'Production Booking: Processing booking for entry %d after step %d completion',
+			'Production Booking: ✓ Creating booking for entry %d after step %d completion',
 			$entry_id,
 			$step_id
 		) );
