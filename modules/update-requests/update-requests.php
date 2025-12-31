@@ -2,7 +2,7 @@
 /**
  * Update Requests Module for SimpleFlow
  * Allows submitting update requests for existing job entries
- * Version: 0.1.0
+ * Version: 1.0.0
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Module constants
 if ( ! defined( 'SFA_UR_VER' ) ) {
-	define( 'SFA_UR_VER', '0.1.0' );
+	define( 'SFA_UR_VER', '1.0.0' );
 }
 if ( ! defined( 'SFA_UR_DIR' ) ) {
 	define( 'SFA_UR_DIR', plugin_dir_path( __FILE__ ) );
@@ -53,6 +53,20 @@ add_action( 'plugins_loaded', function () {
 	// Initialize drawing population (populates checkbox from parent field 45)
 	require_once SFA_UR_DIR . 'src/GravityForms/DrawingPopulation.php';
 	new SFA\UpdateRequests\GravityForms\DrawingPopulation();
+
+	// Initialize approval guards (prevents skipping approval step) - v0.2.0
+	if ( class_exists( 'Gravity_Flow_API' ) ) {
+		require_once SFA_UR_DIR . 'src/GravityForms/ApprovalGuards.php';
+		new SFA\UpdateRequests\GravityForms\ApprovalGuards();
+	}
+
+	// Initialize file attachments (controls file uploads after approval) - v0.3.0
+	require_once SFA_UR_DIR . 'src/GravityForms/FileAttachments.php';
+	new SFA\UpdateRequests\GravityForms\FileAttachments();
+
+	// Initialize entry updating (applies approved changes to parent) - v0.4.0
+	require_once SFA_UR_DIR . 'src/GravityForms/EntryUpdating.php';
+	new SFA\UpdateRequests\GravityForms\EntryUpdating();
 
 	// Initialize admin panel (shows all update requests in parent entry)
 	if ( is_admin() || strpos( $_SERVER['REQUEST_URI'], 'workflow-inbox' ) !== false ) {
