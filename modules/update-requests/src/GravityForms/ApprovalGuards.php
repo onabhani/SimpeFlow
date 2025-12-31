@@ -17,7 +17,7 @@ class ApprovalGuards {
 		add_action( 'gravityflow_step_complete', [ $this, 'track_approval_status' ], 10, 4 );
 
 		// Prevent admin bypass for update requests
-		add_filter( 'gravityflow_assignee_status_workflow_detail', [ $this, 'prevent_admin_bypass' ], 10, 4 );
+		add_filter( 'gravityflow_assignee_status_workflow_detail', [ $this, 'prevent_admin_bypass' ], 10, 3 );
 	}
 
 	/**
@@ -130,10 +130,16 @@ class ApprovalGuards {
 	 * @param array  $assignee_details
 	 * @param object $step
 	 * @param array  $form
-	 * @param int    $entry_id
 	 * @return array
 	 */
-	public function prevent_admin_bypass( $assignee_details, $step, $form, $entry_id ) {
+	public function prevent_admin_bypass( $assignee_details, $step, $form ) {
+		// Get entry ID from step object
+		$entry_id = method_exists( $step, 'get_entry_id' ) ? $step->get_entry_id() : 0;
+
+		if ( ! $entry_id ) {
+			return $assignee_details;
+		}
+
 		// Only apply to update request entries
 		if ( ! $this->is_update_request_entry( $entry_id ) ) {
 			return $assignee_details;
