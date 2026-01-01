@@ -60,10 +60,8 @@ class FormSettings {
 		$enabled = (bool) rgar( $form, 'sfa_ur_enabled' );
 		$drawing_field_id = (int) rgar( $form, 'sfa_ur_drawing_field' );
 		$invoice_field_id = (int) rgar( $form, 'sfa_ur_invoice_field' );
-		$approval_guards = rgar( $form, 'sfa_ur_approval_guards' );
-		if ( ! is_array( $approval_guards ) ) {
-			$approval_guards = array();
-		}
+		$update_request_step = (int) rgar( $form, 'sfa_ur_update_step' );
+		$following_invoice_step = (int) rgar( $form, 'sfa_ur_following_step' );
 
 		// Get GravityFlow steps if available
 		$workflow_steps = [];
@@ -125,17 +123,6 @@ class FormSettings {
 				color: #666;
 				font-size: 13px;
 			}
-			.sfa-ur-guards-list {
-				margin-top: 10px;
-			}
-			.sfa-ur-guards-list label {
-				display: block;
-				margin: 5px 0;
-				font-weight: normal;
-			}
-			.sfa-ur-guards-list input[type="checkbox"] {
-				margin-right: 8px;
-			}
 		</style>
 
 		<div class="sfa-ur-settings-wrap">
@@ -189,35 +176,49 @@ class FormSettings {
 					</p>
 				</div>
 
-				<!-- Approval Guards (Placeholder - waiting for user decision) -->
+				<!-- Update Request Step Guard -->
 				<div class="sfa-ur-field-row">
-					<label>Approval Guards</label>
+					<label for="sfa_ur_update_step">Update Request Step</label>
 					<?php if ( empty( $workflow_steps ) ): ?>
 						<p class="description" style="color: #dc3545;">
 							No GravityFlow steps found. Please configure workflow steps first.
 						</p>
 					<?php else: ?>
-						<div class="sfa-ur-guards-list">
-							<p class="description" style="margin-bottom: 10px;">
-								Select which approval steps must be completed for update requests:
-							</p>
+						<select name="sfa_ur_update_step" id="sfa_ur_update_step">
+							<option value="0">-- Disabled (Update requests not allowed) --</option>
 							<?php foreach ( $workflow_steps as $step ): ?>
-								<?php if ( $step['type'] === 'approval' ): ?>
-									<label>
-										<input
-											type="checkbox"
-											name="sfa_ur_approval_guards[]"
-											value="<?php echo $step['id']; ?>"
-											<?php checked( in_array( $step['id'], $approval_guards ) ); ?>
-										>
-										<?php echo esc_html( $step['name'] ); ?> (Step #<?php echo $step['id']; ?>)
-									</label>
-								<?php endif; ?>
+								<option value="<?php echo $step['id']; ?>" <?php selected( $update_request_step, $step['id'] ); ?>>
+									<?php echo esc_html( $step['name'] ); ?> (Step #<?php echo $step['id']; ?> - <?php echo ucfirst( $step['type'] ); ?>)
+								</option>
 							<?php endforeach; ?>
-						</div>
+						</select>
 					<?php endif; ?>
-					<p class="description" style="margin-top: 10px;">
-						Update requests will require approval from selected steps before files are applied to parent entry.
+					<p class="description">
+						Select which workflow step allows employees to submit drawing update requests.
+						Updates can only be submitted when entry reaches this step.
+					</p>
+				</div>
+
+				<!-- Following Invoice Step Guard -->
+				<div class="sfa-ur-field-row">
+					<label for="sfa_ur_following_step">Following Invoice Step</label>
+					<?php if ( empty( $workflow_steps ) ): ?>
+						<p class="description" style="color: #dc3545;">
+							No GravityFlow steps found. Please configure workflow steps first.
+						</p>
+					<?php else: ?>
+						<select name="sfa_ur_following_step" id="sfa_ur_following_step">
+							<option value="0">-- Disabled (Following invoices not allowed) --</option>
+							<?php foreach ( $workflow_steps as $step ): ?>
+								<option value="<?php echo $step['id']; ?>" <?php selected( $following_invoice_step, $step['id'] ); ?>>
+									<?php echo esc_html( $step['name'] ); ?> (Step #<?php echo $step['id']; ?> - <?php echo ucfirst( $step['type'] ); ?>)
+								</option>
+							<?php endforeach; ?>
+						</select>
+					<?php endif; ?>
+					<p class="description">
+						Select which workflow step allows employees to submit following invoices.
+						Following invoices can only be submitted when entry reaches this step.
 					</p>
 				</div>
 
@@ -261,9 +262,9 @@ class FormSettings {
 		$form['sfa_ur_drawing_field'] = isset( $_POST['sfa_ur_drawing_field'] ) ? absint( $_POST['sfa_ur_drawing_field'] ) : 0;
 		$form['sfa_ur_invoice_field'] = isset( $_POST['sfa_ur_invoice_field'] ) ? absint( $_POST['sfa_ur_invoice_field'] ) : 0;
 
-		// Save approval guards
-		$approval_guards = isset( $_POST['sfa_ur_approval_guards'] ) ? array_map( 'absint', $_POST['sfa_ur_approval_guards'] ) : array();
-		$form['sfa_ur_approval_guards'] = $approval_guards;
+		// Save step guards
+		$form['sfa_ur_update_step'] = isset( $_POST['sfa_ur_update_step'] ) ? absint( $_POST['sfa_ur_update_step'] ) : 0;
+		$form['sfa_ur_following_step'] = isset( $_POST['sfa_ur_following_step'] ) ? absint( $_POST['sfa_ur_following_step'] ) : 0;
 
 		// Update form
 		\GFAPI::update_form( $form );
@@ -327,17 +328,54 @@ class FormSettings {
 	}
 
 	/**
-	 * Get approval guard step IDs for form
+	 * Get update request step ID for form
 	 *
 	 * @param array|int $form Form array or form ID
-	 * @return array
+	 * @return int
 	 */
-	public static function get_approval_guards( $form ) {
+	public static function get_update_request_step( $form ) {
 		if ( is_numeric( $form ) ) {
 			$form = \GFAPI::get_form( $form );
 		}
 
-		$guards = rgar( $form, 'sfa_ur_approval_guards' );
-		return is_array( $guards ) ? $guards : array();
+		return (int) rgar( $form, 'sfa_ur_update_step' );
+	}
+
+	/**
+	 * Get following invoice step ID for form
+	 *
+	 * @param array|int $form Form array or form ID
+	 * @return int
+	 */
+	public static function get_following_invoice_step( $form ) {
+		if ( is_numeric( $form ) ) {
+			$form = \GFAPI::get_form( $form );
+		}
+
+		return (int) rgar( $form, 'sfa_ur_following_step' );
+	}
+
+	/**
+	 * Check if update requests are allowed at current step
+	 *
+	 * @param array|int $form Form array or form ID
+	 * @param int       $current_step_id Current workflow step ID
+	 * @return bool
+	 */
+	public static function can_submit_update_request( $form, $current_step_id ) {
+		$allowed_step = self::get_update_request_step( $form );
+		return $allowed_step > 0 && $allowed_step == $current_step_id;
+	}
+
+	/**
+	 * Check if following invoices are allowed at current step
+	 *
+	 * @param array|int $form Form array or form ID
+	 * @param int       $current_step_id Current workflow step ID
+	 * @return bool
+	 */
+	public static function can_submit_following_invoice( $form, $current_step_id ) {
+		$allowed_step = self::get_following_invoice_step( $form );
+		return $allowed_step > 0 && $allowed_step == $current_step_id;
 	}
 }
