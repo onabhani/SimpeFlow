@@ -28,6 +28,15 @@ class BookingHandler {
 
 		// Hook into workflow step processing to update bookings when entries are edited in workflow inbox
 		add_action( 'gravityflow_post_process_workflow', [ $this, 'handle_workflow_processing' ], 10, 4 );
+
+		// Hook into entry status changes (for trash/spam/delete)
+		add_action( 'gform_update_status', [ $this, 'handle_entry_status_change' ], 10, 3 );
+
+		// Hook into workflow status changes
+		add_action( 'gravityflow_status_updated', [ $this, 'handle_workflow_status_change' ], 10, 4 );
+
+		// Debug: Log all gravityflow hooks
+		error_log( 'Production Booking: BookingHandler initialized with hooks' );
 	}
 
 	/**
@@ -252,11 +261,29 @@ class BookingHandler {
 		$existing_prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
 		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
 
+		error_log( sprintf(
+			'Production Booking DEBUG for entry %d: existing_lm=%s, new_lm=%s, existing_install=%s, submitted_install=%s',
+			$entry_id,
+			$existing_lm ? $existing_lm : 'NULL',
+			$lm_required,
+			$existing_install_date ? $existing_install_date : 'NULL',
+			$installation_date
+		) );
+
 		// Determine installation date based on changes
 		$submitted_installation_date = $installation_date;
 		$lm_changed = $existing_lm && ( (float) $existing_lm !== (float) $lm_required );
 
+		error_log( sprintf(
+			'Production Booking DEBUG for entry %d: lm_changed=%s (existing=%s, new=%s)',
+			$entry_id,
+			$lm_changed ? 'TRUE' : 'FALSE',
+			$existing_lm ? (float) $existing_lm : 'NULL',
+			(float) $lm_required
+		) );
+
 		if ( $existing_install_date && $existing_allocation && ! $lm_changed ) {
+			error_log( sprintf( 'Production Booking: PRESERVING existing dates for entry %d', $entry_id ) );
 			// Re-booking with unchanged LM: Keep ALL existing booking data
 			// This prevents date drift when user re-submits through billing step
 			$installation_date = $existing_install_date;
@@ -336,6 +363,15 @@ class BookingHandler {
 		gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
 		gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
 
+		error_log( sprintf(
+			'Production Booking SAVED for entry %d: install_date=%s, prod_start=%s, prod_end=%s, lm=%s',
+			$entry_id,
+			$installation_date,
+			$prod_start_date,
+			$prod_end_date,
+			$lm_required
+		) );
+
 		// Store the daily capacity at time of booking for historical tracking
 		$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
 		gform_update_meta( $entry_id, '_prod_daily_capacity_at_booking', $daily_capacity_at_booking );
@@ -367,30 +403,78 @@ class BookingHandler {
 	 * @param string $status    The processing status
 	 */
 	public function handle_workflow_processing( $form, $entry_id, $step, $status ) {
+		error_log( sprintf( 'Production Booking: Workflow processing - Entry %d, Status: %s', $entry_id, $status ) );
+
 		// Only process if step is being actively worked on
 		if ( ! in_array( $status, [ 'pending', 'queued', 'processing' ], true ) ) {
+			error_log( sprintf( 'Production Booking: Skipping - status %s not in allowed list', $status ) );
 			return;
 		}
 
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
+			error_log( 'Production Booking: Production scheduling not enabled' );
 			return;
 		}
 
 		// Check if entry has an existing booking
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 		if ( ! $existing_booking ) {
+			error_log( 'Production Booking: No existing booking found' );
 			return; // No existing booking to update
 		}
 
 		// Get updated entry
 		$entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $entry ) || ! $entry ) {
+			error_log( 'Production Booking: Failed to load entry' );
 			return;
 		}
 
+		error_log( sprintf( 'Production Booking: Updating booking for entry %d', $entry_id ) );
 		// Update the booking with new values
 		$this->process_production_booking( $entry, $form );
+	}
+
+	/**
+	 * Handle entry status changes (trash, spam, delete, restore)
+	 *
+	 * @param int    $entry_id The entry ID
+	 * @param string $status   The new status (active, trash, spam)
+	 * @param string $old_status The old status
+	 */
+	public function handle_entry_status_change( $entry_id, $status, $old_status ) {
+		error_log( sprintf( 'Production Booking: Entry %d status changed from %s to %s', $entry_id, $old_status, $status ) );
+
+		// If entry is being trashed or marked as spam, remove the booking
+		if ( in_array( $status, [ 'trash', 'spam' ], true ) ) {
+			error_log( sprintf( 'Production Booking: Removing booking for trashed/spam entry %d', $entry_id ) );
+			$this->handle_entry_deletion( $entry_id );
+		}
+
+		// If entry is being restored, we don't recreate booking (user must go through workflow again)
+	}
+
+	/**
+	 * Handle workflow status changes (complete, cancelled, pending, etc)
+	 *
+	 * @param int    $entry_id The entry ID
+	 * @param string $new_status The new workflow status
+	 * @param string $old_status The old workflow status
+	 * @param object $step The current step
+	 */
+	public function handle_workflow_status_change( $entry_id, $new_status, $old_status, $step ) {
+		error_log( sprintf( 'Production Booking: Entry %d workflow status changed from %s to %s', $entry_id, $old_status, $new_status ) );
+
+		// If workflow is cancelled, mark booking as canceled
+		if ( 'cancelled' === $new_status || 'canceled' === $new_status ) {
+			error_log( sprintf( 'Production Booking: Marking booking as canceled for entry %d', $entry_id ) );
+			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
+			if ( $existing_booking ) {
+				gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
+				error_log( sprintf( 'Production Booking: Booking marked as canceled for entry %d', $entry_id ) );
+			}
+		}
 	}
 
 	/**
