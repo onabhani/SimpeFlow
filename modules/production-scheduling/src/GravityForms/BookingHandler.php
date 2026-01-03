@@ -35,6 +35,9 @@ class BookingHandler {
 		// Hook into workflow status changes
 		add_action( 'gravityflow_status_updated', [ $this, 'handle_workflow_status_change' ], 10, 4 );
 
+		// Hook into entry meta updates to catch workflow cancellation
+		add_action( 'updated_post_meta', [ $this, 'handle_meta_update' ], 10, 4 );
+
 		// Debug: Log all gravityflow hooks
 		error_log( 'Production Booking: BookingHandler initialized with hooks' );
 	}
@@ -400,16 +403,10 @@ class BookingHandler {
 	 * @param array  $form      The form object
 	 * @param int    $entry_id  The entry ID
 	 * @param object $step      The current step object
-	 * @param string $status    The processing status
+	 * @param int    $step_id   The step ID (NOT status!)
 	 */
-	public function handle_workflow_processing( $form, $entry_id, $step, $status ) {
-		error_log( sprintf( 'Production Booking: Workflow processing - Entry %d, Status: %s', $entry_id, $status ) );
-
-		// Only process if step is being actively worked on
-		if ( ! in_array( $status, [ 'pending', 'queued', 'processing' ], true ) ) {
-			error_log( sprintf( 'Production Booking: Skipping - status %s not in allowed list', $status ) );
-			return;
-		}
+	public function handle_workflow_processing( $form, $entry_id, $step, $step_id ) {
+		error_log( sprintf( 'Production Booking: Workflow processing - Entry %d, Step ID: %d', $entry_id, $step_id ) );
 
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
@@ -420,7 +417,7 @@ class BookingHandler {
 		// Check if entry has an existing booking
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 		if ( ! $existing_booking ) {
-			error_log( 'Production Booking: No existing booking found' );
+			error_log( 'Production Booking: No existing booking found, skipping update' );
 			return; // No existing booking to update
 		}
 
@@ -431,7 +428,7 @@ class BookingHandler {
 			return;
 		}
 
-		error_log( sprintf( 'Production Booking: Updating booking for entry %d', $entry_id ) );
+		error_log( sprintf( 'Production Booking: Updating booking for entry %d via workflow processing', $entry_id ) );
 		// Update the booking with new values
 		$this->process_production_booking( $entry, $form );
 	}
@@ -469,6 +466,36 @@ class BookingHandler {
 		// If workflow is cancelled, mark booking as canceled
 		if ( 'cancelled' === $new_status || 'canceled' === $new_status ) {
 			error_log( sprintf( 'Production Booking: Marking booking as canceled for entry %d', $entry_id ) );
+			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
+			if ( $existing_booking ) {
+				gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
+				error_log( sprintf( 'Production Booking: Booking marked as canceled for entry %d', $entry_id ) );
+			}
+		}
+	}
+
+	/**
+	 * Handle entry meta updates to catch workflow cancellation
+	 *
+	 * This catches when GravityFlow updates the workflow_final_status meta
+	 *
+	 * @param int    $meta_id    ID of updated metadata entry
+	 * @param int    $object_id  Post ID (entry ID in GF context)
+	 * @param string $meta_key   Metadata key
+	 * @param mixed  $meta_value Metadata value
+	 */
+	public function handle_meta_update( $meta_id, $object_id, $meta_key, $meta_value ) {
+		// Only care about workflow status changes
+		if ( 'workflow_final_status' !== $meta_key ) {
+			return;
+		}
+
+		$entry_id = $object_id;
+		error_log( sprintf( 'Production Booking: Meta update - Entry %d, Key: %s, Value: %s', $entry_id, $meta_key, $meta_value ) );
+
+		// If workflow is cancelled, mark booking as canceled
+		if ( 'cancelled' === $meta_value || 'canceled' === $meta_value ) {
+			error_log( sprintf( 'Production Booking: Workflow cancelled via meta - Entry %d', $entry_id ) );
 			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 			if ( $existing_booking ) {
 				gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
