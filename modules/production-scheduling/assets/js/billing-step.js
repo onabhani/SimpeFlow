@@ -9,6 +9,8 @@
     var $lmField, $installField, $prodStartField, $prodEndField;
     var $productionFields = []; // Array of production field elements
     var previewTimeout;
+    var isEditMode = false; // Track if we're editing an existing entry
+    var preservedInstallDate = null; // Store the original date to preserve
 
     // Wait for DOM ready
     $(document).ready(function() {
@@ -61,6 +63,15 @@
         }
         if (config.prodEndFieldId) {
             $prodEndField = $('#input_' + config.formId + '_' + config.prodEndFieldId);
+        }
+
+        // Check if we're in edit mode by checking if installation field has a value
+        // This happens when GravityFlow loads an existing entry
+        var initialInstallDate = $installField.val();
+        if (initialInstallDate && initialInstallDate.trim() !== '') {
+            isEditMode = true;
+            preservedInstallDate = initialInstallDate;
+            console.log('SFA Production: Edit mode detected, preserving date:', preservedInstallDate);
         }
 
         // Initialize
@@ -239,26 +250,27 @@
         // Set installation date field minimum
         $installField.attr('min', schedule.installation_minimum);
 
-        // Only update installation date if field is empty (new entry)
-        // For existing entries, backend preserves the date if LM unchanged
-        var currentInstallDate = $installField.val();
-        if (!currentInstallDate || currentInstallDate.trim() === '') {
-            // New entry: set to calculated minimum
+        // Handle date field population based on mode
+        if (isEditMode && preservedInstallDate) {
+            // EDIT MODE: Always restore the preserved date (from when form loaded)
+            // This prevents JavaScript from overwriting the backend-preserved date
+            console.log('SFA Production: Restoring preserved date:', preservedInstallDate);
+            $installField.val(preservedInstallDate);
+        } else {
+            // NEW ENTRY MODE: Set to calculated minimum
             var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
             $installField.val(installDateFormatted);
+            console.log('SFA Production: New entry, setting date to:', installDateFormatted);
         }
-        // If field already has a date, leave it alone - backend will preserve if appropriate
 
-        // Only populate production date fields if they're empty
+        // Only populate production date fields if they're empty (or in edit mode, preserve them)
         if ($prodStartField && $prodStartField.length) {
-            var currentStart = $prodStartField.val();
-            if (!currentStart || currentStart.trim() === '') {
+            if (!isEditMode) {
                 $prodStartField.val(formatDateDisplay(schedule.production_start));
             }
         }
         if ($prodEndField && $prodEndField.length) {
-            var currentEnd = $prodEndField.val();
-            if (!currentEnd || currentEnd.trim() === '') {
+            if (!isEditMode) {
                 $prodEndField.val(formatDateDisplay(schedule.production_end));
             }
         }

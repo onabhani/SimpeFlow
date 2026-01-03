@@ -38,8 +38,12 @@ class BookingHandler {
 		// Hook into entry meta updates to catch workflow cancellation
 		add_action( 'updated_post_meta', [ $this, 'handle_meta_update' ], 10, 4 );
 
-		// Hook directly into GravityFlow cancel workflow action
+		// Hook directly into GravityFlow cancel workflow action (try multiple possible action names)
 		add_action( 'wp_ajax_gravityflow_cancel_workflow', [ $this, 'handle_cancel_workflow_ajax' ], 5 );
+		add_action( 'wp_ajax_gf_cancel_workflow', [ $this, 'handle_cancel_workflow_ajax' ], 5 );
+
+		// Hook into admin_init to catch cancel workflow action
+		add_action( 'admin_init', [ $this, 'check_cancel_workflow_request' ] );
 
 		// Debug: Log all gravityflow hooks
 		error_log( 'Production Booking: BookingHandler initialized with hooks' );
@@ -478,15 +482,49 @@ class BookingHandler {
 	}
 
 	/**
+	 * Check for cancel workflow request in admin_init
+	 *
+	 * This catches when user clicks "Cancel Workflow" link
+	 */
+	public function check_cancel_workflow_request() {
+		// Check if this is a cancel workflow request
+		if ( ! isset( $_GET['gf_cancel_workflow'] ) && ! isset( $_POST['gf_cancel_workflow'] ) ) {
+			return;
+		}
+
+		// Get entry ID from request
+		$entry_id = isset( $_GET['lid'] ) ? absint( $_GET['lid'] ) : ( isset( $_POST['lid'] ) ? absint( $_POST['lid'] ) : 0 );
+
+		if ( ! $entry_id ) {
+			error_log( 'Production Booking: Cancel workflow request but no entry ID found' );
+			return;
+		}
+
+		error_log( sprintf( 'Production Booking: Cancel workflow REQUEST detected for entry %d', $entry_id ) );
+
+		// Mark booking as canceled
+		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
+		if ( $existing_booking ) {
+			gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
+			error_log( sprintf( 'Production Booking: Booking marked as canceled via admin_init for entry %d', $entry_id ) );
+		}
+	}
+
+	/**
 	 * Handle cancel workflow AJAX action (before GravityFlow processes it)
 	 *
 	 * This hooks early into the AJAX action to catch cancellation
 	 */
 	public function handle_cancel_workflow_ajax() {
 		// Get entry ID from request
-		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : 0;
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : (
+			isset( $_POST['lid'] ) ? absint( $_POST['lid'] ) : (
+				isset( $_GET['lid'] ) ? absint( $_GET['lid'] ) : 0
+			)
+		);
 
 		if ( ! $entry_id ) {
+			error_log( 'Production Booking: Cancel workflow AJAX but no entry ID in request' );
 			return;
 		}
 
