@@ -189,13 +189,30 @@ class ScheduleView {
 							$text = "$used/$capacity";
 						}
 
-						echo '<td style="padding: 10px; border: 1px solid #ddd; background: ' . $bg_color . '; vertical-align: top; height: 80px;">';
+						echo '<td style="padding: 10px; border: 1px solid #ddd; background: ' . $bg_color . '; vertical-align: top; height: 80px; position: relative;">';
 						echo '<div style="font-weight: bold; margin-bottom: 5px;">' . $current_day . '</div>';
 						echo '<div style="font-size: 12px;">' . $text . '</div>';
 
 						if ( isset( $bookings[ $day_date ] ) && ! empty( $bookings[ $day_date ]['entries'] ) ) {
-							echo '<div style="font-size: 11px; color: #666; margin-top: 3px;">';
-							echo count( $bookings[ $day_date ]['entries'] ) . ' order' . ( count( $bookings[ $day_date ]['entries'] ) > 1 ? 's' : '' );
+							$entry_count = count( $bookings[ $day_date ]['entries'] );
+							echo '<div class="sfa-day-entries" style="font-size: 11px; color: #0073aa; margin-top: 3px; cursor: help; position: relative;">';
+							echo '<span style="text-decoration: underline dotted;">';
+							echo $entry_count . ' order' . ( $entry_count > 1 ? 's' : '' );
+							echo '</span>';
+
+							// Tooltip with entry details
+							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 10px; min-width: 200px; left: 0; top: 20px; border-radius: 3px;">';
+							echo '<div style="font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #eee;">Entries on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
+							foreach ( $bookings[ $day_date ]['entries'] as $entry_info ) {
+								$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_info['form_id'] . '&lid=' . $entry_info['entry_id'];
+								echo '<div style="padding: 3px 0; border-bottom: 1px solid #f0f0f0;">';
+								echo '<a href="' . esc_url( $workflow_url ) . '" target="_blank" style="color: #0073aa; text-decoration: none; font-weight: 500;">';
+								echo '#' . $entry_info['entry_id'];
+								echo '</a>';
+								echo ' - <span style="color: #666;">' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' ) . '</span>';
+								echo '</div>';
+							}
+							echo '</div>';
 							echo '</div>';
 						}
 

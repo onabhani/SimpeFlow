@@ -72,7 +72,13 @@
         var $previewContainer = $('<div/>', {
             'class': 'sfa-prod-preview gfield gfield--width-full',
             'id': 'sfa-prod-preview-' + config.formId,
-            'style': 'margin: 15px 0 !important; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa; width: 100% !important; max-width: 100% !important; display: block; box-sizing: border-box; clear: both; grid-column: 1 / -1; flex-basis: 100%;'
+            'style': 'margin: 15px 0 !important; padding: 15px; background: #f0f9ff; border-left: 4px solid #0073aa; width: 100% !important; max-width: 100% !important; display: block; box-sizing: border-box; clear: both; grid-column: 1 / -1; flex-basis: 100%; position: relative; float: none;'
+        });
+
+        // Create a clearing div to reset layout flow after the preview
+        var $clearDiv = $('<div/>', {
+            'class': 'sfa-prod-clear',
+            'style': 'clear: both; display: block; height: 0; overflow: hidden; grid-column: 1 / -1; flex-basis: 100%; width: 100%;'
         });
 
         // Insert preview container after the last production field
@@ -82,8 +88,10 @@
             var $gfieldWrapper = $lastField.closest('.gfield');
             if ($gfieldWrapper.length) {
                 $previewContainer.insertAfter($gfieldWrapper);
+                $clearDiv.insertAfter($previewContainer);
             } else {
                 $previewContainer.insertAfter($lastField);
+                $clearDiv.insertAfter($previewContainer);
             }
 
             // Attach change handlers to all production fields
@@ -108,8 +116,10 @@
             var $gfieldWrapper = $lmField.closest('.gfield');
             if ($gfieldWrapper.length) {
                 $previewContainer.insertAfter($gfieldWrapper);
+                $clearDiv.insertAfter($previewContainer);
             } else {
                 $previewContainer.insertAfter($lmField);
+                $clearDiv.insertAfter($previewContainer);
             }
 
             // Attach change handler to LM field
