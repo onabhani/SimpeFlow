@@ -16,6 +16,49 @@ class BookingHandler {
 
 		// Hook into GravityFlow step completion for step-based booking
 		add_action( 'gravityflow_step_complete', [ $this, 'save_production_booking_after_step' ], 10, 4 );
+
+		// Hook into entry updates (when editing entries directly)
+		add_action( 'gform_after_update_entry', [ $this, 'handle_entry_update' ], 10, 3 );
+
+		// Hook into entry deletion to remove bookings
+		add_action( 'gform_delete_entry', [ $this, 'handle_entry_deletion' ], 10, 1 );
+
+		// Hook into workflow cancellation to mark bookings as canceled
+		add_action( 'gravityflow_workflow_cancelled', [ $this, 'handle_workflow_cancellation' ], 10, 3 );
+	}
+
+	/**
+	 * Handle entry update (when editing entries directly)
+	 *
+	 * @param array $form  The form object
+	 * @param int   $entry_id The entry ID
+	 * @param array $original_entry The original entry before update
+	 */
+	public function handle_entry_update( $form, $entry_id, $original_entry ) {
+		// Get updated entry
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) || ! $entry ) {
+			return;
+		}
+
+		// Check if production scheduling is enabled
+		if ( ! FormSettings::is_enabled( $form ) ) {
+			return;
+		}
+
+		// Check if booking should happen at a specific workflow step
+		$booking_step_id = FormSettings::get_booking_step_id( $form );
+		if ( $booking_step_id > 0 ) {
+			// Step-based booking: only update if entry has existing booking
+			// (don't create new booking on edit, only update existing ones)
+			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
+			if ( ! $existing_booking ) {
+				return; // No existing booking, skip
+			}
+		}
+
+		// Process the booking (will update if exists, or create if immediate mode)
+		$this->process_production_booking( $entry, $form );
 	}
 
 	/**
@@ -208,16 +251,18 @@ class BookingHandler {
 		$submitted_installation_date = $installation_date;
 		$lm_changed = $existing_lm && ( (float) $existing_lm !== (float) $lm_required );
 
-		if ( $existing_install_date && ! $lm_changed ) {
+		if ( $existing_install_date && $existing_allocation && ! $lm_changed ) {
 			// Re-booking with unchanged LM: Keep ALL existing booking data
 			// This prevents date drift when user re-submits through billing step
 			$installation_date = $existing_install_date;
 			$prod_start_date = $existing_prod_start;
 			$prod_end_date = $existing_prod_end;
 
-			// Don't recalculate - use existing schedule
-			// This ensures the date stays exactly the same
+			// Use existing allocation (don't recalculate)
+			// This ensures the exact same slots are preserved
+			$use_existing_allocation = true;
 		} else {
+			$use_existing_allocation = false;
 			// New booking OR LM changed: Calculate new schedule
 			$date_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
 
@@ -251,21 +296,35 @@ class BookingHandler {
 			}
 		}
 
-		// Clear cache for old allocation dates (before updating)
-		$old_allocation_json = gform_get_meta( $entry_id, '_prod_slots_allocation' );
-		if ( $old_allocation_json ) {
-			$old_allocation = json_decode( $old_allocation_json, true );
-			if ( is_array( $old_allocation ) ) {
-				foreach ( array_keys( $old_allocation ) as $old_date ) {
-					$year_month = substr( $old_date, 0, 7 );
-					wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+		// Clear cache for old allocation dates (only if recalculating)
+		if ( ! $use_existing_allocation ) {
+			$old_allocation_json = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+			if ( $old_allocation_json ) {
+				$old_allocation = json_decode( $old_allocation_json, true );
+				if ( is_array( $old_allocation ) ) {
+					foreach ( array_keys( $old_allocation ) as $old_date ) {
+						$year_month = substr( $old_date, 0, 7 );
+						wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+					}
 				}
 			}
 		}
 
 		// Save to entry meta
 		gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
-		gform_update_meta( $entry_id, '_prod_slots_allocation', wp_json_encode( $schedule['allocation'] ) );
+
+		// Use existing or new allocation based on whether data was preserved
+		if ( $use_existing_allocation ) {
+			// Keep existing allocation (no changes needed)
+			$allocation_to_save = $existing_allocation;
+			$allocation_array = json_decode( $existing_allocation, true );
+		} else {
+			// Use newly calculated allocation
+			$allocation_to_save = wp_json_encode( $schedule['allocation'] );
+			$allocation_array = $schedule['allocation'];
+		}
+
+		gform_update_meta( $entry_id, '_prod_slots_allocation', $allocation_to_save );
 		gform_update_meta( $entry_id, '_prod_start_date', $prod_start_date );
 		gform_update_meta( $entry_id, '_prod_end_date', $prod_end_date );
 		gform_update_meta( $entry_id, '_install_date', $installation_date );
@@ -278,9 +337,11 @@ class BookingHandler {
 		gform_update_meta( $entry_id, '_prod_daily_capacity_at_booking', $daily_capacity_at_booking );
 
 		// Clear cache for affected dates
-		foreach ( array_keys( $schedule['allocation'] ) as $date ) {
-			$year_month = substr( $date, 0, 7 );
-			wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+		if ( is_array( $allocation_array ) ) {
+			foreach ( array_keys( $allocation_array ) as $date ) {
+				$year_month = substr( $date, 0, 7 );
+				wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+			}
 		}
 
 		// Clear general availability cache
@@ -288,6 +349,73 @@ class BookingHandler {
 
 		// Allow other plugins to react to booking
 		do_action( 'sfa_production_booking_saved', $entry_id, $schedule, $installation_date );
+	}
+
+	/**
+	 * Handle entry deletion - remove production booking
+	 *
+	 * @param int $entry_id The entry ID being deleted
+	 */
+	public function handle_entry_deletion( $entry_id ) {
+		// Get existing booking data before deletion
+		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+
+		if ( ! $existing_allocation ) {
+			return; // No booking to remove
+		}
+
+		// Clear cache for allocated dates
+		$allocation = json_decode( $existing_allocation, true );
+		if ( is_array( $allocation ) ) {
+			foreach ( array_keys( $allocation ) as $date ) {
+				$year_month = substr( $date, 0, 7 );
+				wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+			}
+		}
+
+		// Delete all production booking meta
+		gform_delete_meta( $entry_id, '_prod_lm_required' );
+		gform_delete_meta( $entry_id, '_prod_total_slots' );
+		gform_delete_meta( $entry_id, '_prod_slots_allocation' );
+		gform_delete_meta( $entry_id, '_prod_start_date' );
+		gform_delete_meta( $entry_id, '_prod_end_date' );
+		gform_delete_meta( $entry_id, '_install_date' );
+		gform_delete_meta( $entry_id, '_prod_booking_status' );
+		gform_delete_meta( $entry_id, '_prod_booked_at' );
+		gform_delete_meta( $entry_id, '_prod_booked_by' );
+		gform_delete_meta( $entry_id, '_prod_daily_capacity_at_booking' );
+		gform_delete_meta( $entry_id, '_prod_field_breakdown' );
+
+		// Clear general availability cache
+		wp_cache_delete( 'sfa_prod_availability_next_30_days' );
+
+		// Allow other plugins to react
+		do_action( 'sfa_production_booking_deleted', $entry_id );
+	}
+
+	/**
+	 * Handle workflow cancellation - mark booking as canceled
+	 *
+	 * @param int    $entry_id The entry ID
+	 * @param array  $form     The form object
+	 * @param object $step     The current step object
+	 */
+	public function handle_workflow_cancellation( $entry_id, $form, $step ) {
+		// Check if entry has a production booking
+		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
+
+		if ( ! $existing_booking ) {
+			return; // No booking to cancel
+		}
+
+		// Mark booking as canceled (keep the allocation, just change status)
+		gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
+
+		// Note: We keep the slots allocated (don't clear cache) so they remain reserved
+		// This prevents overbooking in case the workflow is reactivated
+
+		// Allow other plugins to react
+		do_action( 'sfa_production_booking_canceled', $entry_id );
 	}
 
 	/**

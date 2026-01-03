@@ -288,7 +288,16 @@ class ScheduleView {
 							<td><?php echo date( 'M j, Y', strtotime( $entry_data['install_date'] ) ); ?></td>
 							<td><?php echo esc_html( $username ); ?></td>
 							<td><?php echo date( 'M j, Y g:i a', strtotime( $entry_data['booked_at'] ) ); ?></td>
-							<td><?php echo ucfirst( $entry_data['status'] ); ?></td>
+							<td>
+								<?php
+								$status = $entry_data['status'];
+								$status_color = 'confirmed' === $status ? '#28a745' : ( 'canceled' === $status ? '#dc3545' : '#6c757d' );
+								$status_bg = 'confirmed' === $status ? '#d4edda' : ( 'canceled' === $status ? '#f8d7da' : '#e9ecef' );
+								?>
+								<span style="display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; background: <?php echo $status_bg; ?>; color: <?php echo $status_color; ?>; text-transform: uppercase;">
+									<?php echo esc_html( $status ); ?>
+								</span>
+							</td>
 						</tr>
 					<?php endforeach; ?>
 				</tbody>
