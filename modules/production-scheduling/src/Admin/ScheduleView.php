@@ -363,6 +363,9 @@ class ScheduleView {
 				$entry_id
 			) );
 
+			// Get booking status (default to confirmed for backwards compatibility)
+			$booking_status = isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'confirmed';
+
 			foreach ( $allocation as $date => $lm ) {
 				if ( ! isset( $bookings[ $date ] ) ) {
 					$bookings[ $date ] = [
@@ -371,7 +374,12 @@ class ScheduleView {
 					];
 				}
 
-				$bookings[ $date ]['total_lm'] += (int) $lm;
+				// Only count confirmed bookings toward capacity usage
+				// Canceled bookings are shown but don't consume capacity
+				if ( 'canceled' !== $booking_status ) {
+					$bookings[ $date ]['total_lm'] += (int) $lm;
+				}
+
 				$bookings[ $date ]['entries'][] = [
 					'entry_id' => $entry_id,
 					'form_id' => $form_id,

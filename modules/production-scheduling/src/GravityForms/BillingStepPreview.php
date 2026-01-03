@@ -190,16 +190,21 @@ class BillingStepPreview {
 			$exclude_sql = $wpdb->prepare( ' AND em.entry_id != %d', $exclude_entry_id );
 		}
 
-		// Query all entries with production bookings and their capacity at booking time
+		// Query all entries with production bookings, their capacity, and status
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT
+					em.entry_id,
 					em.meta_value as allocation,
-					cm.meta_value as capacity_at_booking
+					cm.meta_value as capacity_at_booking,
+					sm.meta_value as booking_status
 				FROM {$wpdb->prefix}gf_entry_meta em
 				LEFT JOIN {$wpdb->prefix}gf_entry_meta cm
 					ON em.entry_id = cm.entry_id
 					AND cm.meta_key = '_prod_daily_capacity_at_booking'
+				LEFT JOIN {$wpdb->prefix}gf_entry_meta sm
+					ON em.entry_id = sm.entry_id
+					AND sm.meta_key = '_prod_booking_status'
 				WHERE em.meta_key = '_prod_slots_allocation'
 				AND em.meta_value LIKE %s" . $exclude_sql,
 				'%' . $wpdb->esc_like( substr( $start_date, 0, 7 ) ) . '%'
@@ -214,6 +219,12 @@ class BillingStepPreview {
 		foreach ( $results as $row ) {
 			$allocation = json_decode( $row['allocation'], true );
 			$capacity_at_booking = isset( $row['capacity_at_booking'] ) ? (int) $row['capacity_at_booking'] : null;
+			$booking_status = isset( $row['booking_status'] ) ? $row['booking_status'] : 'confirmed';
+
+			// Skip canceled bookings - they don't consume capacity
+			if ( 'canceled' === $booking_status ) {
+				continue;
+			}
 
 			if ( ! is_array( $allocation ) ) {
 				continue;

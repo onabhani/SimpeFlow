@@ -25,6 +25,9 @@ class BookingHandler {
 
 		// Hook into workflow cancellation to mark bookings as canceled
 		add_action( 'gravityflow_workflow_cancelled', [ $this, 'handle_workflow_cancellation' ], 10, 3 );
+
+		// Hook into workflow step processing to update bookings when entries are edited in workflow inbox
+		add_action( 'gravityflow_post_process_workflow', [ $this, 'handle_workflow_processing' ], 10, 4 );
 	}
 
 	/**
@@ -209,6 +212,8 @@ class BookingHandler {
 			// Store field breakdown in entry meta
 			gform_update_meta( $entry_id, '_prod_field_breakdown', wp_json_encode( $field_breakdown ) );
 			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
+			// IMPORTANT: Save _prod_lm_required for date preservation logic to work
+			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
 
 			// Recalculate schedule with live data (multi-field)
 			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
@@ -223,8 +228,8 @@ class BookingHandler {
 			$total_slots = $lm_required;
 
 			// Store LM in entry meta for backwards compatibility
-			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
 			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
+			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
 
 			// Recalculate schedule with live data (legacy)
 			$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
@@ -310,8 +315,7 @@ class BookingHandler {
 			}
 		}
 
-		// Save to entry meta
-		gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
+		// Save to entry meta (note: _prod_lm_required already saved above in both multi-field and legacy modes)
 
 		// Use existing or new allocation based on whether data was preserved
 		if ( $use_existing_allocation ) {
@@ -349,6 +353,44 @@ class BookingHandler {
 
 		// Allow other plugins to react to booking
 		do_action( 'sfa_production_booking_saved', $entry_id, $schedule, $installation_date );
+	}
+
+	/**
+	 * Handle workflow processing - update booking when entry edited in workflow inbox
+	 *
+	 * This handles cases where users edit entries in the workflow inbox and the
+	 * step is processed again (but not necessarily completed)
+	 *
+	 * @param array  $form      The form object
+	 * @param int    $entry_id  The entry ID
+	 * @param object $step      The current step object
+	 * @param string $status    The processing status
+	 */
+	public function handle_workflow_processing( $form, $entry_id, $step, $status ) {
+		// Only process if step is being actively worked on
+		if ( ! in_array( $status, [ 'pending', 'queued', 'processing' ], true ) ) {
+			return;
+		}
+
+		// Check if production scheduling is enabled
+		if ( ! FormSettings::is_enabled( $form ) ) {
+			return;
+		}
+
+		// Check if entry has an existing booking
+		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
+		if ( ! $existing_booking ) {
+			return; // No existing booking to update
+		}
+
+		// Get updated entry
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) || ! $entry ) {
+			return;
+		}
+
+		// Update the booking with new values
+		$this->process_production_booking( $entry, $form );
 	}
 
 	/**
