@@ -200,53 +200,55 @@ class BookingHandler {
 		// Check if this is a re-booking (existing booking meta)
 		$existing_install_date = gform_get_meta( $entry_id, '_install_date' );
 		$existing_lm = gform_get_meta( $entry_id, '_prod_lm_required' );
+		$existing_prod_start = gform_get_meta( $entry_id, '_prod_start_date' );
+		$existing_prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
+		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
 
 		// Determine installation date based on changes
 		$submitted_installation_date = $installation_date;
 		$lm_changed = $existing_lm && ( (float) $existing_lm !== (float) $lm_required );
-		$date_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
 
-		if ( $existing_install_date ) {
-			// This is a re-booking
-			if ( $lm_changed ) {
+		if ( $existing_install_date && ! $lm_changed ) {
+			// Re-booking with unchanged LM: Keep ALL existing booking data
+			// This prevents date drift when user re-submits through billing step
+			$installation_date = $existing_install_date;
+			$prod_start_date = $existing_prod_start;
+			$prod_end_date = $existing_prod_end;
+
+			// Don't recalculate - use existing schedule
+			// This ensures the date stays exactly the same
+		} else {
+			// New booking OR LM changed: Calculate new schedule
+			$date_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
+
+			if ( $existing_install_date && $lm_changed ) {
 				// LM changed: Use submitted date if valid, otherwise use calculated minimum
 				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
 					$installation_date = $submitted_installation_date;
 				} else {
 					$installation_date = $schedule['installation_minimum'];
 				}
-			} elseif ( $date_changed ) {
-				// LM unchanged but date manually changed: Use new date if valid
-				if ( $submitted_installation_date >= $schedule['installation_minimum'] ) {
+			} elseif ( ! $existing_install_date ) {
+				// New booking: use submitted date if valid, otherwise use calculated minimum
+				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
 					$installation_date = $submitted_installation_date;
 				} else {
 					$installation_date = $schedule['installation_minimum'];
 				}
-			} else {
-				// LM unchanged and date unchanged: Keep existing date
-				$installation_date = $existing_install_date;
 			}
-		} else {
-			// New booking: use submitted date if valid, otherwise use calculated minimum
-			if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
-				$installation_date = $submitted_installation_date;
-			} else {
-				$installation_date = $schedule['installation_minimum'];
+
+			// Get production dates from calculated schedule
+			$prod_start_date = $schedule['production_start'];
+			$prod_end_date = $schedule['production_end'];
+
+			if ( $prod_start_field_id && isset( $entry[ $prod_start_field_id ] ) && $entry[ $prod_start_field_id ] ) {
+				// Convert DD/MM/YYYY to YYYY-MM-DD if needed
+				$prod_start_date = $this->normalize_date( $entry[ $prod_start_field_id ] );
 			}
-		}
-
-		// Get production dates from form fields if they were submitted
-		// (JavaScript should have populated these, but we verify against calculated schedule)
-		$prod_start_date = $schedule['production_start'];
-		$prod_end_date = $schedule['production_end'];
-
-		if ( $prod_start_field_id && isset( $entry[ $prod_start_field_id ] ) && $entry[ $prod_start_field_id ] ) {
-			// Convert DD/MM/YYYY to YYYY-MM-DD if needed
-			$prod_start_date = $this->normalize_date( $entry[ $prod_start_field_id ] );
-		}
-		if ( $prod_end_field_id && isset( $entry[ $prod_end_field_id ] ) && $entry[ $prod_end_field_id ] ) {
-			// Convert DD/MM/YYYY to YYYY-MM-DD if needed
-			$prod_end_date = $this->normalize_date( $entry[ $prod_end_field_id ] );
+			if ( $prod_end_field_id && isset( $entry[ $prod_end_field_id ] ) && $entry[ $prod_end_field_id ] ) {
+				// Convert DD/MM/YYYY to YYYY-MM-DD if needed
+				$prod_end_date = $this->normalize_date( $entry[ $prod_end_field_id ] );
+			}
 		}
 
 		// Clear cache for old allocation dates (before updating)
