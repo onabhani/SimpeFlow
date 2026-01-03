@@ -38,6 +38,9 @@ class BookingHandler {
 		// Hook into entry meta updates to catch workflow cancellation
 		add_action( 'updated_post_meta', [ $this, 'handle_meta_update' ], 10, 4 );
 
+		// Hook directly into GravityFlow cancel workflow action
+		add_action( 'wp_ajax_gravityflow_cancel_workflow', [ $this, 'handle_cancel_workflow_ajax' ], 5 );
+
 		// Debug: Log all gravityflow hooks
 		error_log( 'Production Booking: BookingHandler initialized with hooks' );
 	}
@@ -475,9 +478,32 @@ class BookingHandler {
 	}
 
 	/**
+	 * Handle cancel workflow AJAX action (before GravityFlow processes it)
+	 *
+	 * This hooks early into the AJAX action to catch cancellation
+	 */
+	public function handle_cancel_workflow_ajax() {
+		// Get entry ID from request
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : 0;
+
+		if ( ! $entry_id ) {
+			return;
+		}
+
+		error_log( sprintf( 'Production Booking: Cancel workflow AJAX triggered for entry %d', $entry_id ) );
+
+		// Mark booking as canceled immediately
+		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
+		if ( $existing_booking ) {
+			gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
+			error_log( sprintf( 'Production Booking: Booking marked as canceled via AJAX for entry %d', $entry_id ) );
+		}
+	}
+
+	/**
 	 * Handle entry meta updates to catch workflow cancellation
 	 *
-	 * This catches when GravityFlow updates the workflow_final_status meta
+	 * This catches when GravityFlow updates workflow status meta
 	 *
 	 * @param int    $meta_id    ID of updated metadata entry
 	 * @param int    $object_id  Post ID (entry ID in GF context)
@@ -485,8 +511,14 @@ class BookingHandler {
 	 * @param mixed  $meta_value Metadata value
 	 */
 	public function handle_meta_update( $meta_id, $object_id, $meta_key, $meta_value ) {
-		// Only care about workflow status changes
-		if ( 'workflow_final_status' !== $meta_key ) {
+		// Check for various GravityFlow status meta keys
+		$workflow_status_keys = [
+			'workflow_final_status',
+			'_gravityflow_workflow_status',
+			'gravityflow_workflow_status'
+		];
+
+		if ( ! in_array( $meta_key, $workflow_status_keys, true ) ) {
 			return;
 		}
 

@@ -236,22 +236,31 @@
 
         $container.html(html).show();
 
-        // Set installation date field minimum and value
-        // Note: GF date fields may be configured for dd/mm/yyyy format
+        // Set installation date field minimum
         $installField.attr('min', schedule.installation_minimum);
 
-        // Always update installation date to the new calculated minimum
-        // This ensures the field reflects the current LM value's production schedule
-        var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
-        $installField.val(installDateFormatted);
+        // Only update installation date if field is empty (new entry)
+        // For existing entries, backend preserves the date if LM unchanged
+        var currentInstallDate = $installField.val();
+        if (!currentInstallDate || currentInstallDate.trim() === '') {
+            // New entry: set to calculated minimum
+            var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
+            $installField.val(installDateFormatted);
+        }
+        // If field already has a date, leave it alone - backend will preserve if appropriate
 
-        // Populate production date fields if they exist
-        // Use DD/MM/YYYY format for better readability
+        // Only populate production date fields if they're empty
         if ($prodStartField && $prodStartField.length) {
-            $prodStartField.val(formatDateDisplay(schedule.production_start));
+            var currentStart = $prodStartField.val();
+            if (!currentStart || currentStart.trim() === '') {
+                $prodStartField.val(formatDateDisplay(schedule.production_start));
+            }
         }
         if ($prodEndField && $prodEndField.length) {
-            $prodEndField.val(formatDateDisplay(schedule.production_end));
+            var currentEnd = $prodEndField.val();
+            if (!currentEnd || currentEnd.trim() === '') {
+                $prodEndField.val(formatDateDisplay(schedule.production_end));
+            }
         }
     }
 
