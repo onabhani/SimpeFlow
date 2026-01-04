@@ -366,6 +366,18 @@ class ScheduleView {
 			// Get booking status (default to confirmed for backwards compatibility)
 			$booking_status = isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'confirmed';
 
+			// Sync booking status with GravityFlow workflow status
+			// This ensures cancelled workflows show as canceled even if hooks didn't fire
+			$workflow_status = gform_get_meta( $entry_id, 'workflow_final_status' );
+			if ( 'cancelled' === $workflow_status || 'canceled' === $workflow_status ) {
+				if ( 'canceled' !== $booking_status ) {
+					// Workflow is cancelled but booking status doesn't reflect it - fix it now
+					gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
+					$booking_status = 'canceled';
+					error_log( sprintf( 'Production Booking: Synced canceled status for entry %d (workflow was cancelled)', $entry_id ) );
+				}
+			}
+
 			foreach ( $allocation as $date => $lm ) {
 				if ( ! isset( $bookings[ $date ] ) ) {
 					$bookings[ $date ] = [

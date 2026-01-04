@@ -154,6 +154,10 @@
             nonce: config.nonce
         };
 
+        // Capture current installation date BEFORE making AJAX call
+        // This ensures we preserve it even if AJAX changes field order
+        var currentInstallDateBeforeAjax = $installField.val();
+
         if ($productionFields.length > 0) {
             // Multi-field mode
             var fieldValues = {};
@@ -251,11 +255,20 @@
         $installField.attr('min', schedule.installation_minimum);
 
         // Handle date field population based on mode
-        if (isEditMode && preservedInstallDate) {
-            // EDIT MODE: Always restore the preserved date (from when form loaded)
+        // Check if user manually changed the date (different from what we captured before AJAX)
+        var userChangedDate = currentInstallDateBeforeAjax &&
+                             currentInstallDateBeforeAjax !== preservedInstallDate &&
+                             currentInstallDateBeforeAjax !== '';
+
+        if (isEditMode && preservedInstallDate && !userChangedDate) {
+            // EDIT MODE: Restore the original preserved date
             // This prevents JavaScript from overwriting the backend-preserved date
-            console.log('SFA Production: Restoring preserved date:', preservedInstallDate);
+            console.log('SFA Production: Restoring preserved date:', preservedInstallDate, '(was', currentInstallDateBeforeAjax, ')');
             $installField.val(preservedInstallDate);
+        } else if (userChangedDate) {
+            // User manually changed the date - respect their choice
+            console.log('SFA Production: User changed date to:', currentInstallDateBeforeAjax, '- preserving user choice');
+            $installField.val(currentInstallDateBeforeAjax);
         } else {
             // NEW ENTRY MODE: Set to calculated minimum
             var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
