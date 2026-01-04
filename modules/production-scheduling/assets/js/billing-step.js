@@ -11,6 +11,7 @@
     var previewTimeout;
     var isEditMode = false; // Track if we're editing an existing entry
     var preservedInstallDate = null; // Store the original date to preserve
+    var currentInstallDateBeforeAjax = null; // Capture date before AJAX for each call
 
     // Wait for DOM ready
     $(document).ready(function() {
@@ -156,7 +157,7 @@
 
         // Capture current installation date BEFORE making AJAX call
         // This ensures we preserve it even if AJAX changes field order
-        var currentInstallDateBeforeAjax = $installField.val();
+        currentInstallDateBeforeAjax = $installField.val();
 
         if ($productionFields.length > 0) {
             // Multi-field mode
