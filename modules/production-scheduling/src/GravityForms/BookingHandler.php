@@ -271,31 +271,23 @@ class BookingHandler {
 		$existing_prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
 		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
 
+		// Determine if LM changed
+		$lm_changed = $existing_lm && ( (float) $existing_lm !== (float) $lm_required );
+
 		error_log( sprintf(
-			'Production Booking DEBUG for entry %d: existing_lm=%s, new_lm=%s, existing_install=%s, submitted_install=%s',
+			'Production Booking DEBUG for entry %d: existing_lm=%s, new_lm=%s, lm_changed=%s, existing_install=%s, submitted_install=%s',
 			$entry_id,
 			$existing_lm ? $existing_lm : 'NULL',
 			$lm_required,
+			$lm_changed ? 'TRUE' : 'FALSE',
 			$existing_install_date ? $existing_install_date : 'NULL',
 			$installation_date
 		) );
 
-		// Determine installation date based on changes
-		$submitted_installation_date = $installation_date;
-		$lm_changed = $existing_lm && ( (float) $existing_lm !== (float) $lm_required );
-
-		error_log( sprintf(
-			'Production Booking DEBUG for entry %d: lm_changed=%s (existing=%s, new=%s)',
-			$entry_id,
-			$lm_changed ? 'TRUE' : 'FALSE',
-			$existing_lm ? (float) $existing_lm : 'NULL',
-			(float) $lm_required
-		) );
-
 		if ( $existing_install_date && $existing_allocation && ! $lm_changed ) {
-			error_log( sprintf( 'Production Booking: PRESERVING existing dates for entry %d', $entry_id ) );
+			error_log( sprintf( 'Production Booking: PRESERVING existing dates for entry %d (IGNORING submitted date)', $entry_id ) );
 			// Re-booking with unchanged LM: Keep ALL existing booking data
-			// This prevents date drift when user re-submits through billing step
+			// IGNORE the submitted installation_date entirely - JavaScript may have changed it
 			$installation_date = $existing_install_date;
 			$prod_start_date = $existing_prod_start;
 			$prod_end_date = $existing_prod_end;
@@ -303,6 +295,9 @@ class BookingHandler {
 			// Use existing allocation (don't recalculate)
 			// This ensures the exact same slots are preserved
 			$use_existing_allocation = true;
+
+			// DON'T recalculate schedule at all - we're using existing data
+			// Skip the schedule calculation entirely
 		} else {
 			$use_existing_allocation = false;
 			// New booking OR LM changed: Calculate new schedule
