@@ -11,26 +11,82 @@
     var previewTimeout;
     var isEditMode = false; // Track if we're editing an existing entry
     var preservedInstallDate = null; // Store the original date to preserve
+    var preservedProdStartDate = null; // Store original production start date
+    var preservedProdEndDate = null; // Store original production end date
     var currentInstallDateBeforeAjax = null; // Capture date before AJAX for each call
+    var hasUserChangedDate = false; // Track if user manually changed the date
 
-    // Wait for DOM ready
+    // Check if we should initialize on this page
+    function shouldInitialize() {
+        // Check if config is available
+        if (!config.formId || !config.installFieldId) {
+            return false;
+        }
+
+        // Check if we're on a Gravity Forms page
+        if (typeof gform === 'undefined' && typeof window.gf_submitting === 'undefined') {
+            return false;
+        }
+
+        // Check if the form exists on the page
+        var formSelector = '#gform_' + config.formId + ', #gform_wrapper_' + config.formId;
+        if ($(formSelector).length === 0) {
+            return false;
+        }
+
+        return true;
+    }
+
+    // Initialize on DOM ready
     $(document).ready(function() {
-        // Check if we have installation field (required)
-        if (!config.installFieldId) {
-            return; // Not configured
+        if (!shouldInitialize()) {
+            return;
         }
 
-        $installField = $('#input_' + config.formId + '_' + config.installFieldId);
-        if (!$installField.length) {
-            return; // Installation field not found
+        initializeProductionScheduling();
+    });
+
+    // Re-initialize on Gravity Forms render (for AJAX/multi-page forms and workflow navigation)
+    $(document).on('gform_post_render', function(event, form_id) {
+        if (form_id != config.formId) {
+            return;
         }
 
+        if (!shouldInitialize()) {
+            return;
+        }
+
+        console.log('SFA Production: Form re-rendered, re-initializing (form_id:', form_id, ')');
+
+        // Clear existing state
+        $productionFields = [];
+        clearTimeout(previewTimeout);
+
+        // Re-initialize (this will re-detect edit mode)
+        initializeProductionScheduling();
+    });
+
+    function initializeProductionScheduling() {
         // Check for multi-field configuration or legacy single field
         var hasProductionFields = config.productionFields && config.productionFields.length > 0;
         var hasLegacyField = config.lmFieldId;
 
         if (!hasProductionFields && !hasLegacyField) {
             return; // No production fields configured
+        }
+
+        // Find installation field (required)
+        $installField = $('#input_' + config.formId + '_' + config.installFieldId);
+        if (!$installField.length) {
+            return; // Installation field not found
+        }
+
+        // Find optional production date fields
+        if (config.prodStartFieldId) {
+            $prodStartField = $('#input_' + config.formId + '_' + config.prodStartFieldId);
+        }
+        if (config.prodEndFieldId) {
+            $prodEndField = $('#input_' + config.formId + '_' + config.prodEndFieldId);
         }
 
         // Find production fields
@@ -58,28 +114,59 @@
             }
         }
 
-        // Find optional production date fields
-        if (config.prodStartFieldId) {
-            $prodStartField = $('#input_' + config.formId + '_' + config.prodStartFieldId);
-        }
-        if (config.prodEndFieldId) {
-            $prodEndField = $('#input_' + config.formId + '_' + config.prodEndFieldId);
-        }
-
-        // Check if we're in edit mode by checking if installation field has a value
-        // This happens when GravityFlow loads an existing entry
+        // Re-detect edit mode EVERY time we initialize (important for workflow navigation)
         var initialInstallDate = $installField.val();
         if (initialInstallDate && initialInstallDate.trim() !== '') {
             isEditMode = true;
             preservedInstallDate = initialInstallDate;
-            console.log('SFA Production: Edit mode detected, preserving date:', preservedInstallDate);
+            console.log('SFA Production: Edit mode detected, preserving install date:', preservedInstallDate);
+        } else {
+            isEditMode = false;
+            preservedInstallDate = null;
         }
 
-        // Initialize
-        initializeProductionScheduling();
-    });
+        // Preserve production dates if in edit mode
+        if (isEditMode) {
+            if ($prodStartField && $prodStartField.length) {
+                var initialProdStart = $prodStartField.val();
+                if (initialProdStart && initialProdStart.trim() !== '') {
+                    preservedProdStartDate = initialProdStart;
+                    console.log('SFA Production: Preserving prod start date:', preservedProdStartDate);
+                }
+            }
+            if ($prodEndField && $prodEndField.length) {
+                var initialProdEnd = $prodEndField.val();
+                if (initialProdEnd && initialProdEnd.trim() !== '') {
+                    preservedProdEndDate = initialProdEnd;
+                    console.log('SFA Production: Preserving prod end date:', preservedProdEndDate);
+                }
+            }
+        }
 
-    function initializeProductionScheduling() {
+        // Reset user change tracking
+        hasUserChangedDate = false;
+
+        // Track manual date changes by user
+        $installField.off('change.sfaProd').on('change.sfaProd', function() {
+            var currentValue = $(this).val();
+            if (currentValue && currentValue !== preservedInstallDate) {
+                hasUserChangedDate = true;
+                console.log('SFA Production: User manually changed date to:', currentValue);
+            }
+        });
+
+        // Setup preview container and event handlers
+        setupPreviewContainer();
+    }
+
+    function setupPreviewContainer() {
+        // Check if preview container already exists
+        var $existingPreview = $('#sfa-prod-preview-' + config.formId);
+        if ($existingPreview.length > 0) {
+            console.log('SFA Production: Preview container already exists, skipping creation');
+            return;
+        }
+
         // Create preview container with full width styling to break out of column constraints
         var $previewContainer = $('<div/>', {
             'class': 'sfa-prod-preview gfield gfield--width-full',
@@ -256,35 +343,39 @@
         $installField.attr('min', schedule.installation_minimum);
 
         // Handle date field population based on mode
-        // Check if user manually changed the date (different from what we captured before AJAX)
-        var userChangedDate = currentInstallDateBeforeAjax &&
-                             currentInstallDateBeforeAjax !== preservedInstallDate &&
-                             currentInstallDateBeforeAjax !== '';
-
-        if (isEditMode && preservedInstallDate && !userChangedDate) {
-            // EDIT MODE: Restore the original preserved date
-            // This prevents JavaScript from overwriting the backend-preserved date
-            console.log('SFA Production: Restoring preserved date:', preservedInstallDate, '(was', currentInstallDateBeforeAjax, ')');
+        if (isEditMode && preservedInstallDate && !hasUserChangedDate) {
+            // EDIT MODE: Restore the preserved date (ignore AJAX-calculated date)
+            console.log('SFA Production: Edit mode - restoring preserved date:', preservedInstallDate);
             $installField.val(preservedInstallDate);
-        } else if (userChangedDate) {
+        } else if (hasUserChangedDate) {
             // User manually changed the date - respect their choice
-            console.log('SFA Production: User changed date to:', currentInstallDateBeforeAjax, '- preserving user choice');
+            console.log('SFA Production: User changed date - preserving user choice:', currentInstallDateBeforeAjax);
             $installField.val(currentInstallDateBeforeAjax);
         } else {
             // NEW ENTRY MODE: Set to calculated minimum
             var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
             $installField.val(installDateFormatted);
-            console.log('SFA Production: New entry, setting date to:', installDateFormatted);
+            console.log('SFA Production: New entry - setting date to calculated minimum:', installDateFormatted);
         }
 
-        // Only populate production date fields if they're empty (or in edit mode, preserve them)
+        // Handle production date fields
         if ($prodStartField && $prodStartField.length) {
-            if (!isEditMode) {
+            if (isEditMode && preservedProdStartDate) {
+                // Edit mode: preserve original date
+                $prodStartField.val(preservedProdStartDate);
+                console.log('SFA Production: Preserving prod start date:', preservedProdStartDate);
+            } else if (!isEditMode || !$prodStartField.val()) {
+                // New entry or empty: set to calculated date
                 $prodStartField.val(formatDateDisplay(schedule.production_start));
             }
         }
         if ($prodEndField && $prodEndField.length) {
-            if (!isEditMode) {
+            if (isEditMode && preservedProdEndDate) {
+                // Edit mode: preserve original date
+                $prodEndField.val(preservedProdEndDate);
+                console.log('SFA Production: Preserving prod end date:', preservedProdEndDate);
+            } else if (!isEditMode || !$prodEndField.val()) {
+                // New entry or empty: set to calculated date
                 $prodEndField.val(formatDateDisplay(schedule.production_end));
             }
         }
@@ -305,31 +396,6 @@
             return parts[2] + '/' + parts[1] + '/' + parts[0];
         }
         return dateStr;
-    }
-
-    function normalizeDateToISO(dateStr) {
-        // Convert DD/MM/YYYY to YYYY-MM-DD for comparison
-        if (!dateStr) return '';
-
-        // Check if already in YYYY-MM-DD format
-        if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
-            return dateStr;
-        }
-
-        // Check if in DD/MM/YYYY format
-        var match = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
-        if (match) {
-            return match[3] + '-' + match[2] + '-' + match[1];
-        }
-
-        return '';
-    }
-
-    function formatDate(dateStr) {
-        // Legacy function - kept for compatibility
-        var date = new Date(dateStr + 'T00:00:00');
-        var options = { year: 'numeric', month: 'long', day: 'numeric' };
-        return date.toLocaleDateString(undefined, options);
     }
 
 })(jQuery);

@@ -186,6 +186,9 @@ class BookingHandler {
 			$installation_date = $this->normalize_date( $installation_date );
 		}
 
+		// Store the submitted installation date for later comparison (before any modifications)
+		$submitted_installation_date = $installation_date;
+
 		// Handle multi-field or legacy mode
 		$total_slots = 0;
 		$lm_required = 0; // Initialize for both modes
