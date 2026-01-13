@@ -20,16 +20,24 @@ window.SimpleNotes = {
 					<textarea id="note-content-${entityId}" placeholder="Add a note... Use @username to mention users" style="width: 100%; height: 80px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;"></textarea>
 					<div id="mention-dropdown-${entityId}" class="mention-dropdown" style="display: none; position: absolute; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); max-height: 200px; overflow-y: auto; z-index: 10000; width: 200px;"></div>
 					<br><br>
-					<button onclick="SimpleNotes.addNote('${entityType}', '${entityId}')" style="background: #0073aa; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">Add Note</button>
+					<button class="sn-add-note-btn" data-entity-type="${entityType}" data-entity-id="${entityId}" style="background: #0073aa; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">Add Note</button>
 				</div>
 
-				<div id="notes-list-${entityId}" class="notes-list">
+				<div id="notes-list-${entityId}" class="notes-list" data-entity-type="${entityType}">
 					<div style="text-align: center; color: #666;">Loading notes...</div>
 				</div>
 			</div>
 		`;
 
 		$container.html(html);
+
+		// Attach add note button click handler
+		$container.off('click', '.sn-add-note-btn').on('click', '.sn-add-note-btn', function() {
+			var entityType = jQuery(this).data('entity-type');
+			var entityId = jQuery(this).data('entity-id');
+			self.addNote(entityType, entityId);
+		});
+
 		this.setupMentions(entityId);
 		this.loadNotes(entityType, entityId);
 	},
@@ -278,6 +286,7 @@ window.SimpleNotes = {
 	},
 
 	renderNotes: function(entityId, notes) {
+		var self = this;
 		var html = "";
 		if (notes.length === 0) {
 			html = '<div style="text-align: center; color: #666; font-style: italic;">No notes yet. Add the first one above!</div>';
@@ -288,13 +297,17 @@ window.SimpleNotes = {
 				var deleteButton = "";
 
 				if (note.can_delete) {
-					deleteButton = '<button onclick="SimpleNotes.deleteNote(' + note.id + ', \'' + entityId + '\')" style="background: #dc3545; color: white; padding: 2px 6px; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; margin-left: 10px;">Delete</button>';
+					deleteButton = '<button class="sn-delete-btn" data-note-id="' + note.id + '" data-entity-id="' + entityId + '" style="background: #dc3545; color: white; padding: 2px 6px; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; margin-left: 10px;">Delete</button>';
 				}
+
+				// Escape username and author name for safe insertion
+				var escapedUsername = String(note.author_username || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+				var escapedAuthorName = String(note.author_name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 				html += `
 					<div style="border-bottom: 1px solid #eee; padding: 10px 0;">
 						<div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-							<strong class="author-name-clickable" data-username="${note.author_username}" style="cursor: pointer; color: #0073aa;" onclick="SimpleNotes.mentionUser('${note.author_username}', '${entityId}')">${note.author_name}</strong>
+							<strong class="author-name-clickable" data-username="${escapedUsername}" data-entity-id="${entityId}" style="cursor: pointer; color: #0073aa;">${escapedAuthorName}</strong>
 							<div>
 								<small style="color: #666;">${note.created_at}</small>
 								${deleteButton}
@@ -305,7 +318,23 @@ window.SimpleNotes = {
 				`;
 			}
 		}
-		jQuery("#notes-list-" + entityId).html(html);
+
+		var $notesList = jQuery("#notes-list-" + entityId);
+		$notesList.html(html);
+
+		// Attach click handlers using event delegation (safer and handles special characters)
+		$notesList.off('click', '.author-name-clickable').on('click', '.author-name-clickable', function() {
+			var username = jQuery(this).data('username');
+			var entityId = jQuery(this).data('entity-id');
+			self.mentionUser(username, entityId);
+		});
+
+		// Attach delete button click handler
+		$notesList.off('click', '.sn-delete-btn').on('click', '.sn-delete-btn', function() {
+			var noteId = jQuery(this).data('note-id');
+			var entityId = jQuery(this).data('entity-id');
+			self.deleteNote(noteId, entityId);
+		});
 	},
 
 	processMentions: function(content) {
