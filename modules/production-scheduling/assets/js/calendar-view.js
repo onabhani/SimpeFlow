@@ -6,6 +6,11 @@
     'use strict';
 
     $(document).ready(function() {
+        // Only initialize if calendar elements exist on the page
+        if ($('.sfa-prod-calendar, .sfa-day-entries').length === 0) {
+            return;
+        }
+
         initializeCalendarTooltips();
     });
 

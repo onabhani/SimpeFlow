@@ -5,6 +5,10 @@
 	'use strict';
 
 	$(document).ready(function() {
+		// Only initialize if modal elements or trigger buttons exist on the page
+		if ($('#sfa-ur-update-modal, #sfa-ur-following-modal, .sfa-ur-update-btn, .sfa-ur-following-btn').length === 0) {
+			return;
+		}
 
 		// Open Update Request Modal
 		$(document).on('click', '.sfa-ur-update-btn', function(e) {
