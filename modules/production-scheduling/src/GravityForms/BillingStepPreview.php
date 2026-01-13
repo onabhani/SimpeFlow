@@ -42,10 +42,24 @@ class BillingStepPreview {
 
 		wp_enqueue_script( 'sfa-prod-billing' );
 
+		// Get entry ID if editing (for Gravity Flow or Gravity Forms edit context)
+		$entry_id = 0;
+		if ( isset( $_GET['lid'] ) ) {
+			// Gravity Flow context
+			$entry_id = absint( $_GET['lid'] );
+		} elseif ( isset( $_GET['entry_id'] ) ) {
+			// Gravity Forms edit entry context
+			$entry_id = absint( $_GET['entry_id'] );
+		} elseif ( function_exists( 'rgget' ) && rgget( 'entry' ) ) {
+			// Gravity Forms helper function
+			$entry_id = absint( rgget( 'entry' ) );
+		}
+
 		wp_localize_script( 'sfa-prod-billing', 'sfaProdConfig', [
 			'ajaxurl'          => admin_url( 'admin-ajax.php' ),
 			'nonce'            => wp_create_nonce( 'sfa_prod_preview' ),
 			'formId'           => $form['id'],
+			'entryId'          => $entry_id, // Pass entry ID for edit mode
 			'lmFieldId'        => $lm_field_id, // Legacy support
 			'installFieldId'   => $install_field_id,
 			'prodStartFieldId' => $prod_start_field_id,

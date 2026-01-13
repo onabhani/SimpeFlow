@@ -242,6 +242,11 @@
             nonce: config.nonce
         };
 
+        // Include entry ID if editing (to exclude from booking calculations)
+        if (config.entryId && config.entryId > 0) {
+            ajaxData.entry_id = config.entryId;
+        }
+
         // Capture current installation date BEFORE making AJAX call
         // This ensures we preserve it even if AJAX changes field order
         currentInstallDateBeforeAjax = $installField.val();
