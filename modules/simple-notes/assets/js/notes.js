@@ -307,7 +307,7 @@ window.SimpleNotes = {
 				html += `
 					<div style="border-bottom: 1px solid #eee; padding: 10px 0;">
 						<div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-							<strong class="author-name-clickable" data-username="${username}" data-entity-id="${entityId}" style="cursor: pointer; color: #0073aa; user-select: none;">${authorName}</strong>
+							<strong class="author-name-clickable" data-username="${username}" data-entity-id="${entityId}" style="cursor: pointer; color: #0073aa; user-select: none; text-decoration: none;">${authorName}</strong>
 							<div>
 								<small style="color: #666;">${note.created_at}</small>
 								${deleteButton}
@@ -322,15 +322,21 @@ window.SimpleNotes = {
 		var $notesList = jQuery("#notes-list-" + entityId);
 		$notesList.html(html);
 
-		// Attach click handlers using event delegation
-		$notesList.off('click', '.author-name-clickable').on('click', '.author-name-clickable', function(e) {
+		// Use body-level event delegation for maximum reliability
+		// Remove any existing handlers first to prevent duplicates
+		jQuery(document.body).off('click.simpleNotes' + entityId, '#notes-list-' + entityId + ' .author-name-clickable');
+		jQuery(document.body).off('click.simpleNotes' + entityId, '#notes-list-' + entityId + ' .sn-delete-btn');
+
+		// Attach click handlers using body-level event delegation with namespaced events
+		jQuery(document.body).on('click.simpleNotes' + entityId, '#notes-list-' + entityId + ' .author-name-clickable', function(e) {
 			e.preventDefault();
 			e.stopPropagation();
 
-			var username = jQuery(this).attr('data-username');  // Use attr instead of data for reliability
-			var entityId = jQuery(this).attr('data-entity-id');
+			var $target = jQuery(this);
+			var username = $target.attr('data-username');
+			var entityId = $target.attr('data-entity-id');
 
-			console.log('Author clicked:', username, 'entityId:', entityId);
+			console.log('Author clicked:', username, 'entityId:', entityId, 'element:', $target[0]);
 
 			if (username && entityId) {
 				self.mentionUser(username, entityId);
@@ -340,14 +346,19 @@ window.SimpleNotes = {
 		});
 
 		// Attach delete button click handler
-		$notesList.off('click', '.sn-delete-btn').on('click', '.sn-delete-btn', function(e) {
+		jQuery(document.body).on('click.simpleNotes' + entityId, '#notes-list-' + entityId + ' .sn-delete-btn', function(e) {
 			e.preventDefault();
 			e.stopPropagation();
 
-			var noteId = jQuery(this).attr('data-note-id');
-			var entityId = jQuery(this).attr('data-entity-id');
+			var $target = jQuery(this);
+			var noteId = $target.attr('data-note-id');
+			var entityId = $target.attr('data-entity-id');
+
+			console.log('Delete button clicked:', noteId, 'entityId:', entityId);
 			self.deleteNote(noteId, entityId);
 		});
+
+		console.log('SimpleNotes: Handlers attached for entity', entityId, 'notes count:', notes.length);
 	},
 
 	processMentions: function(content) {
