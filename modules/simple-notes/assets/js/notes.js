@@ -300,14 +300,14 @@ window.SimpleNotes = {
 					deleteButton = '<button class="sn-delete-btn" data-note-id="' + note.id + '" data-entity-id="' + entityId + '" style="background: #dc3545; color: white; padding: 2px 6px; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; margin-left: 10px;">Delete</button>';
 				}
 
-				// Escape username and author name for safe insertion
-				var escapedUsername = String(note.author_username || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-				var escapedAuthorName = String(note.author_name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+				// Use safe text content for author name display
+				var authorName = String(note.author_name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+				var username = String(note.author_username || '');
 
 				html += `
 					<div style="border-bottom: 1px solid #eee; padding: 10px 0;">
 						<div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-							<strong class="author-name-clickable" data-username="${escapedUsername}" data-entity-id="${entityId}" style="cursor: pointer; color: #0073aa;">${escapedAuthorName}</strong>
+							<strong class="author-name-clickable" data-username="${username}" data-entity-id="${entityId}" style="cursor: pointer; color: #0073aa; user-select: none;">${authorName}</strong>
 							<div>
 								<small style="color: #666;">${note.created_at}</small>
 								${deleteButton}
@@ -322,17 +322,30 @@ window.SimpleNotes = {
 		var $notesList = jQuery("#notes-list-" + entityId);
 		$notesList.html(html);
 
-		// Attach click handlers using event delegation (safer and handles special characters)
-		$notesList.off('click', '.author-name-clickable').on('click', '.author-name-clickable', function() {
-			var username = jQuery(this).data('username');
-			var entityId = jQuery(this).data('entity-id');
-			self.mentionUser(username, entityId);
+		// Attach click handlers using event delegation
+		$notesList.off('click', '.author-name-clickable').on('click', '.author-name-clickable', function(e) {
+			e.preventDefault();
+			e.stopPropagation();
+
+			var username = jQuery(this).attr('data-username');  // Use attr instead of data for reliability
+			var entityId = jQuery(this).attr('data-entity-id');
+
+			console.log('Author clicked:', username, 'entityId:', entityId);
+
+			if (username && entityId) {
+				self.mentionUser(username, entityId);
+			} else {
+				console.error('Missing username or entityId:', {username: username, entityId: entityId});
+			}
 		});
 
 		// Attach delete button click handler
-		$notesList.off('click', '.sn-delete-btn').on('click', '.sn-delete-btn', function() {
-			var noteId = jQuery(this).data('note-id');
-			var entityId = jQuery(this).data('entity-id');
+		$notesList.off('click', '.sn-delete-btn').on('click', '.sn-delete-btn', function(e) {
+			e.preventDefault();
+			e.stopPropagation();
+
+			var noteId = jQuery(this).attr('data-note-id');
+			var entityId = jQuery(this).attr('data-entity-id');
 			self.deleteNote(noteId, entityId);
 		});
 	},
