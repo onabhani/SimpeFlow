@@ -216,9 +216,13 @@ class AutoPositioning {
 									deleteButton = '<button onclick="deleteFrontendNote(' + note.id + ', ' + entityId + ')" style="background: #dc3545; color: white; padding: 2px 6px; border: none; border-radius: 3px; cursor: pointer; font-size: 10px; margin-left: 10px;">Delete</button>';
 								}
 
+								// Escape author name and username for safe HTML output
+								var authorName = String(note.author_name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+								var username = String(note.author_username || '').replace(/"/g, '&quot;');
+
 								html += '<div style="border-bottom: 1px solid #eee; padding: 8px 0; font-size: 12px;">';
 								html += '<div style="display: flex; justify-content: space-between; margin-bottom: 4px;">';
-								html += '<strong>' + note.author_name + '</strong>';
+								html += '<strong class="author-name-clickable-frontend" data-username="' + username + '" data-entity-id="' + entityId + '" style="cursor: pointer; color: #0073aa; user-select: none; text-decoration: none;">' + authorName + '</strong>';
 								html += '<div>';
 								html += '<span style="color: #666; font-size: 10px;">' + note.created_at + '</span>';
 								html += deleteButton;
@@ -230,6 +234,30 @@ class AutoPositioning {
 							html = '<div style="text-align: center; color: #666; font-size: 12px; font-style: italic;">No notes yet</div>';
 						}
 						jQuery('#notes-list-frontend-' + entityId).html(html);
+
+						// Attach click handler for author names
+						jQuery('#notes-list-frontend-' + entityId).off('click', '.author-name-clickable-frontend').on('click', '.author-name-clickable-frontend', function(e) {
+							e.preventDefault();
+							e.stopPropagation();
+
+							var username = jQuery(this).attr('data-username');
+							var entityId = jQuery(this).attr('data-entity-id');
+
+							console.log('Frontend author clicked:', username, 'entityId:', entityId);
+
+							if (username && entityId) {
+								var textarea = jQuery("#note-content-frontend-" + entityId);
+								var currentText = textarea.val();
+								var mention = "@" + username + " ";
+
+								if (currentText && !currentText.endsWith(" ")) {
+									mention = " " + mention;
+								}
+
+								textarea.val(currentText + mention);
+								textarea.focus();
+							}
+						});
 					}
 				}
 			});
