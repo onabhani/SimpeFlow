@@ -1,6 +1,27 @@
 /**
- * Simple Notes JavaScript
+ * Simple Notes JavaScript - BACKEND/ADMIN IMPLEMENTATION
  * Handles notes widget, mentions, and AJAX operations
+ *
+ * IMPORTANT: DUAL IMPLEMENTATION ARCHITECTURE
+ * ==========================================
+ * The Simple Notes system has TWO SEPARATE implementations:
+ *
+ * 1. BACKEND (This File - notes.js):
+ *    - Location: Admin entry detail pages
+ *    - Implementation: SimpleNotes JavaScript object
+ *    - Functions: SimpleNotes.addNote(), SimpleNotes.renderNotes(), etc.
+ *    - Element IDs: note-content-{id}, notes-list-{id}
+ *    - CSS Classes: author-name-clickable
+ *
+ * 2. FRONTEND (AutoPositioning.php):
+ *    - Location: Workflow inbox pages (frontend entry view)
+ *    - Implementation: Standalone inline JavaScript
+ *    - Functions: addNoteFrontend(), loadNotesFrontend(), deleteFrontendNote()
+ *    - Element IDs: note-content-frontend-{id}, notes-list-frontend-{id}
+ *    - CSS Classes: author-name-clickable-frontend
+ *
+ * When making changes to features (like clickable author names), you MUST
+ * update BOTH implementations independently. They do not share code.
  */
 
 window.SimpleNotes = {
@@ -11,8 +32,6 @@ window.SimpleNotes = {
 	init: function(container, entityType, entityId) {
 		var self = this;
 		var $container = jQuery(container);
-
-		console.log("SimpleNotes: Initializing", entityType, entityId);
 
 		var html = `
 			<div class="simple-notes-container" style="border: 1px solid #ccc; padding: 15px; margin: 10px 0; background: #fff;">
@@ -336,12 +355,8 @@ window.SimpleNotes = {
 			var username = $target.attr('data-username');
 			var entityId = $target.attr('data-entity-id');
 
-			console.log('Author clicked:', username, 'entityId:', entityId, 'element:', $target[0]);
-
 			if (username && entityId) {
 				self.mentionUser(username, entityId);
-			} else {
-				console.error('Missing username or entityId:', {username: username, entityId: entityId});
 			}
 		});
 
@@ -354,11 +369,8 @@ window.SimpleNotes = {
 			var noteId = $target.attr('data-note-id');
 			var entityId = $target.attr('data-entity-id');
 
-			console.log('Delete button clicked:', noteId, 'entityId:', entityId);
 			self.deleteNote(noteId, entityId);
 		});
-
-		console.log('SimpleNotes: Handlers attached for entity', entityId, 'notes count:', notes.length);
 	},
 
 	processMentions: function(content) {
@@ -421,6 +433,4 @@ jQuery(document).ready(function() {
 			SimpleNotes.init(this, entityType, entityId);
 		}
 	});
-
-	console.log("SimpleNotes: Ready");
 });

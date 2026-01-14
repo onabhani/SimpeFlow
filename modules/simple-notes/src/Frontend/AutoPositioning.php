@@ -3,6 +3,27 @@ namespace SFA\SimpleNotes\Frontend;
 
 /**
  * Auto-positioning for Gravity Forms and GravityFlow pages
+ *
+ * IMPORTANT: DUAL IMPLEMENTATION ARCHITECTURE
+ * ==========================================
+ * The Simple Notes system has TWO SEPARATE implementations:
+ *
+ * 1. FRONTEND (This File - AutoPositioning.php):
+ *    - Location: Workflow inbox pages (frontend entry view)
+ *    - Implementation: Standalone inline JavaScript
+ *    - Functions: addNoteFrontend(), loadNotesFrontend(), deleteFrontendNote()
+ *    - Element IDs: note-content-frontend-{id}, notes-list-frontend-{id}
+ *    - CSS Classes: author-name-clickable-frontend
+ *
+ * 2. BACKEND (notes.js):
+ *    - Location: Admin entry detail pages
+ *    - Implementation: SimpleNotes JavaScript object
+ *    - Functions: SimpleNotes.addNote(), SimpleNotes.renderNotes(), etc.
+ *    - Element IDs: note-content-{id}, notes-list-{id}
+ *    - CSS Classes: author-name-clickable
+ *
+ * When making changes to features (like clickable author names), you MUST
+ * update BOTH implementations independently. They do not share code.
  */
 class AutoPositioning {
 
@@ -242,8 +263,6 @@ class AutoPositioning {
 
 							var username = jQuery(this).attr('data-username');
 							var entityId = jQuery(this).attr('data-entity-id');
-
-							console.log('Frontend author clicked:', username, 'entityId:', entityId);
 
 							if (username && entityId) {
 								var textarea = jQuery("#note-content-frontend-" + entityId);
