@@ -124,9 +124,10 @@ class BillingStepPreview {
 		$all_days = [ 0, 1, 2, 3, 4, 5, 6 ];
 		$off_days = array_values( array_diff( $all_days, $working_days ) );
 
-		// Load capacity overrides for next 90 days
+		// Load capacity overrides and bookings for next 365 days (matches scheduler's search range)
+		// Using 90 days was causing the scheduler to allocate beyond the loaded booking data
 		$end_date = clone $earliest_start;
-		$end_date->modify( '+90 days' );
+		$end_date->modify( '+365 days' );
 
 		$repo = new CapacityRepository();
 		$capacity_overrides = $repo->get_range(
@@ -204,7 +205,11 @@ class BillingStepPreview {
 			$exclude_sql = $wpdb->prepare( ' AND em.entry_id != %d', $exclude_entry_id );
 		}
 
-		// Query all entries with production bookings, their capacity, and status
+		// Query all entries with production bookings that overlap with our date range
+		// We need to find entries where:
+		// - Production start date <= our end date
+		// - Production end date >= our start date
+		// This catches all entries that have ANY overlap with the range we care about
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT
@@ -213,6 +218,12 @@ class BillingStepPreview {
 					cm.meta_value as capacity_at_booking,
 					sm.meta_value as booking_status
 				FROM {$wpdb->prefix}gf_entry_meta em
+				INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
+					ON em.entry_id = start_meta.entry_id
+					AND start_meta.meta_key = '_prod_start_date'
+				INNER JOIN {$wpdb->prefix}gf_entry_meta end_meta
+					ON em.entry_id = end_meta.entry_id
+					AND end_meta.meta_key = '_prod_end_date'
 				LEFT JOIN {$wpdb->prefix}gf_entry_meta cm
 					ON em.entry_id = cm.entry_id
 					AND cm.meta_key = '_prod_daily_capacity_at_booking'
@@ -220,8 +231,10 @@ class BillingStepPreview {
 					ON em.entry_id = sm.entry_id
 					AND sm.meta_key = '_prod_booking_status'
 				WHERE em.meta_key = '_prod_slots_allocation'
-				AND em.meta_value LIKE %s" . $exclude_sql,
-				'%' . $wpdb->esc_like( substr( $start_date, 0, 7 ) ) . '%'
+				AND start_meta.meta_value <= %s
+				AND end_meta.meta_value >= %s" . $exclude_sql,
+				$end_date,
+				$start_date
 			),
 			ARRAY_A
 		);
