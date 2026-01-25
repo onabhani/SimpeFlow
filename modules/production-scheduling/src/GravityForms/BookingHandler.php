@@ -277,20 +277,27 @@ class BookingHandler {
 		// Determine if LM changed
 		$lm_changed = $existing_lm && ( (float) $existing_lm !== (float) $lm_required );
 
+		// Check if this is a manual admin edit (allow date changes) vs workflow update (preserve dates)
+		$is_manual_admin_edit = is_admin() && ! wp_doing_ajax() && ! defined( 'DOING_CRON' );
+		$date_manually_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
+
 		error_log( sprintf(
-			'Production Booking DEBUG for entry %d: existing_lm=%s, new_lm=%s, lm_changed=%s, existing_install=%s, submitted_install=%s',
+			'Production Booking DEBUG for entry %d: existing_lm=%s, new_lm=%s, lm_changed=%s, existing_install=%s, submitted_install=%s, is_manual_admin_edit=%s, date_manually_changed=%s',
 			$entry_id,
 			$existing_lm ? $existing_lm : 'NULL',
 			$lm_required,
 			$lm_changed ? 'TRUE' : 'FALSE',
 			$existing_install_date ? $existing_install_date : 'NULL',
-			$installation_date
+			$installation_date,
+			$is_manual_admin_edit ? 'TRUE' : 'FALSE',
+			$date_manually_changed ? 'TRUE' : 'FALSE'
 		) );
 
-		if ( $existing_install_date && $existing_allocation && ! $lm_changed ) {
-			error_log( sprintf( 'Production Booking: PRESERVING existing dates for entry %d (IGNORING submitted date)', $entry_id ) );
+		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! ( $is_manual_admin_edit && $date_manually_changed ) ) {
+			error_log( sprintf( 'Production Booking: PRESERVING existing dates for entry %d (workflow update, not manual edit)', $entry_id ) );
 			// Re-booking with unchanged LM: Keep ALL existing booking data
 			// IGNORE the submitted installation_date entirely - JavaScript may have changed it
+			// EXCEPTION: Allow date changes when manually editing in admin
 			$installation_date = $existing_install_date;
 			$prod_start_date = $existing_prod_start;
 			$prod_end_date = $existing_prod_end;
@@ -303,7 +310,12 @@ class BookingHandler {
 			// Skip the schedule calculation entirely
 		} else {
 			$use_existing_allocation = false;
-			// New booking OR LM changed: Calculate new schedule
+
+			if ( $is_manual_admin_edit && $date_manually_changed ) {
+				error_log( sprintf( 'Production Booking: MANUAL ADMIN EDIT detected for entry %d - allowing date change from %s to %s', $entry_id, $existing_install_date, $submitted_installation_date ) );
+			}
+
+			// New booking OR LM changed OR manual date change in admin: Calculate new schedule
 			$date_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
 
 			if ( $existing_install_date && $lm_changed ) {
