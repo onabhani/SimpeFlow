@@ -164,9 +164,18 @@ class ScheduleView {
 						$is_holiday = in_array( $day_date, $holidays, true );
 
 						// Get capacity for this day
-						$capacity = isset( $capacity_overrides[ $day_date ] )
-							? $capacity_overrides[ $day_date ]
-							: $daily_capacity;
+						// Priority: historical capacity (if bookings exist) > capacity override > default capacity
+						// This ensures we show the capacity that was in effect when bookings were made
+						if ( isset( $bookings[ $day_date ] ) && $bookings[ $day_date ]['historical_capacity'] !== null ) {
+							// Use historical capacity if bookings exist with capacity info
+							$capacity = $bookings[ $day_date ]['historical_capacity'];
+						} elseif ( isset( $capacity_overrides[ $day_date ] ) ) {
+							// Use capacity override
+							$capacity = $capacity_overrides[ $day_date ];
+						} else {
+							// Use default daily capacity
+							$capacity = $daily_capacity;
+						}
 
 						// Get used capacity
 						$used = isset( $bookings[ $day_date ] ) ? $bookings[ $day_date ]['total_lm'] : 0;
@@ -192,6 +201,15 @@ class ScheduleView {
 						echo '<td style="padding: 10px; border: 1px solid #ddd; background: ' . $bg_color . '; vertical-align: top; height: 80px; position: relative;">';
 						echo '<div style="font-weight: bold; margin-bottom: 5px;">' . $current_day . '</div>';
 						echo '<div style="font-size: 12px;">' . $text . '</div>';
+
+						// Add indicator if using historical capacity
+						if ( isset( $bookings[ $day_date ] ) && $bookings[ $day_date ]['historical_capacity'] !== null ) {
+							$current_cap = isset( $capacity_overrides[ $day_date ] ) ? $capacity_overrides[ $day_date ] : $daily_capacity;
+							if ( $capacity !== $current_cap ) {
+								// Historical capacity differs from current - add visual indicator
+								echo '<div style="font-size: 9px; color: #666; margin-top: 2px;" title="Using historical capacity. Bookings were made when capacity was ' . $capacity . ' LM, but current capacity setting is ' . $current_cap . ' LM.">⚠ Historical</div>';
+							}
+						}
 
 						if ( isset( $bookings[ $day_date ] ) && ! empty( $bookings[ $day_date ]['entries'] ) ) {
 							$entry_count = count( $bookings[ $day_date ]['entries'] );
@@ -317,7 +335,7 @@ class ScheduleView {
 			$wpdb->prepare(
 				"SELECT entry_id, meta_key, meta_value
 				FROM {$wpdb->prefix}gf_entry_meta
-				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by')
+				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking')
 				AND entry_id IN (
 					SELECT DISTINCT entry_id
 					FROM {$wpdb->prefix}gf_entry_meta
@@ -366,6 +384,9 @@ class ScheduleView {
 			// Get booking status (default to confirmed for backwards compatibility)
 			$booking_status = isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'confirmed';
 
+			// Get capacity at time of booking
+			$capacity_at_booking = isset( $entry_data['daily_capacity_at_booking'] ) ? (int) $entry_data['daily_capacity_at_booking'] : null;
+
 			// Sync booking status with GravityFlow workflow status
 			// This ensures cancelled workflows show as canceled even if hooks didn't fire
 			$workflow_status = gform_get_meta( $entry_id, 'workflow_final_status' );
@@ -383,7 +404,17 @@ class ScheduleView {
 					$bookings[ $date ] = [
 						'total_lm' => 0,
 						'entries' => [],
+						'historical_capacity' => null,  // Track the maximum capacity that was in effect for bookings
 					];
+				}
+
+				// Track historical capacity (use the maximum capacity seen for this date)
+				if ( $capacity_at_booking ) {
+					if ( $bookings[ $date ]['historical_capacity'] === null ) {
+						$bookings[ $date ]['historical_capacity'] = $capacity_at_booking;
+					} else {
+						$bookings[ $date ]['historical_capacity'] = max( $bookings[ $date ]['historical_capacity'], $capacity_at_booking );
+					}
 				}
 
 				// Only count confirmed bookings toward capacity usage
