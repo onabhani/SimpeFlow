@@ -166,6 +166,19 @@ class BookingHandler {
 	 */
 	private function process_production_booking( $entry, $form ) {
 
+		$entry_id = isset( $entry['id'] ) ? (int) $entry['id'] : 0;
+
+		// Register shutdown handler to capture ANY fatal error (TypeError, class not found, etc.)
+		register_shutdown_function( function () use ( $entry_id ) {
+			$error = error_get_last();
+			if ( $error && ( $error['type'] & ( E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR ) ) ) {
+				error_log( sprintf(
+					'Production Booking SHUTDOWN FATAL for entry %d: [%s] %s in %s on line %d',
+					$entry_id, $error['type'], $error['message'], $error['file'], $error['line']
+				) );
+			}
+		} );
+
 		// CRITICAL: Acquire distributed lock to prevent race conditions
 		// Multiple concurrent bookings can cause overbooking without this lock
 		$lock_acquired = false;
