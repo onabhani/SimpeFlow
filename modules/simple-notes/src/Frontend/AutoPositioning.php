@@ -41,7 +41,7 @@ class AutoPositioning {
 		}
 
 		$entry_id           = intval( $_GET['lid'] );
-		$is_workflow_inbox  = ( strpos( $_SERVER['REQUEST_URI'], 'workflow-inbox' ) !== false );
+		$is_workflow_inbox  = ( strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) !== false );
 		$is_admin           = is_admin();
 
 		if ( $is_workflow_inbox ) {

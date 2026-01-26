@@ -109,7 +109,7 @@ add_action( 'admin_enqueue_scripts', function ( $hook ) {
  */
 add_action( 'wp_enqueue_scripts', function () {
 	// Only enqueue on workflow-inbox pages
-	if ( strpos( $_SERVER['REQUEST_URI'], 'workflow-inbox' ) !== false ) {
+	if ( strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) !== false ) {
 		wp_enqueue_script(
 			'sfa-simple-notes-frontend',
 			SFA_NOTES_URL . 'assets/js/notes.js',

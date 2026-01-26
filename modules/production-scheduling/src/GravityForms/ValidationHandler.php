@@ -36,7 +36,7 @@ class ValidationHandler {
 		}
 
 		// Skip validation if this is a workflow inbox update (admin changing steps manually)
-		if ( isset( $_POST['action'] ) && strpos( $_POST['action'], 'gravityflow' ) !== false ) {
+		if ( isset( $_POST['action'] ) && strpos( (string) $_POST['action'], 'gravityflow' ) !== false ) {
 			return $validation_result;
 		}
 

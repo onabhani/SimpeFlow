@@ -24,7 +24,7 @@ class FileVersionWidget {
 	 */
 	public function enqueue_assets( $hook ) {
 		// Only load on GravityFlow pages
-		if ( strpos( $hook, 'gravityflow' ) === false && strpos( $_SERVER['REQUEST_URI'], 'workflow-inbox' ) === false ) {
+		if ( strpos( (string) $hook, 'gravityflow' ) === false && strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) === false ) {
 			return;
 		}
 

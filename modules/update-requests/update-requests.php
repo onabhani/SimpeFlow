@@ -65,7 +65,7 @@ add_action( 'plugins_loaded', function () {
 	new SFA\UpdateRequests\GravityForms\FileVersionApplier();
 
 	// Initialize admin components
-	if ( is_admin() || strpos( $_SERVER['REQUEST_URI'], 'workflow-inbox' ) !== false ) {
+	if ( is_admin() || strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) !== false ) {
 		// Parent panel (shows all update requests in sidebar)
 		require_once SFA_UR_DIR . 'src/Admin/ParentPanel.php';
 		new SFA\UpdateRequests\Admin\ParentPanel();
