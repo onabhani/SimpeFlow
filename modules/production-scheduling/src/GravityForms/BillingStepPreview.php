@@ -185,6 +185,114 @@ class BillingStepPreview {
 	}
 
 	/**
+	 * Calculate schedule backwards from a specific installation date
+	 *
+	 * Production is allocated backwards from (install_date - buffer) so that
+	 * production ends as close to the installation date as the buffer allows.
+	 *
+	 * @param string    $installation_date  Target installation date (Y-m-d)
+	 * @param int|array $lm_or_field_values Legacy: int LM value, or array of field_id => value
+	 * @param array|null $field_configs     Field configurations (required if using multi-field)
+	 * @param int|null  $entry_id           Entry ID to exclude from bookings (for edit mode)
+	 * @return array|\WP_Error
+	 */
+	public static function calculate_schedule_for_date( $installation_date, $lm_or_field_values, $field_configs = null, $entry_id = null ) {
+		// Resolve total slots needed
+		if ( is_int( $lm_or_field_values ) || is_numeric( $lm_or_field_values ) ) {
+			$total_slots = (int) $lm_or_field_values;
+			if ( $total_slots <= 0 ) {
+				return new \WP_Error( 'invalid_lm', 'LM must be greater than 0' );
+			}
+		} else {
+			if ( empty( $field_configs ) || ! is_array( $field_configs ) ) {
+				return new \WP_Error( 'invalid_config', 'Field configurations required for multi-field calculation' );
+			}
+			$field_values = is_array( $lm_or_field_values ) ? $lm_or_field_values : array();
+			$total_slots = FormSettings::calculate_total_slots( $field_values, $field_configs );
+			if ( $total_slots <= 0 ) {
+				return new \WP_Error( 'invalid_values', 'Total production slots must be greater than 0' );
+			}
+		}
+
+		// Load settings
+		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+		$installation_buffer = (int) get_option( 'sfa_prod_installation_buffer', 0 );
+		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
+		$working_days = json_decode( $working_days_json, true );
+		$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
+		$holidays = json_decode( $holidays_json, true );
+		$earliest_start_str = get_option( 'sfa_prod_earliest_start_date', '' );
+
+		// Determine earliest start date (floor for production)
+		if ( $earliest_start_str && strtotime( $earliest_start_str ) ) {
+			$earliest_start = new \DateTime( $earliest_start_str );
+		} else {
+			$earliest_start = new \DateTime( 'today' );
+		}
+		$today = new \DateTime( 'today' );
+		if ( $earliest_start < $today ) {
+			$earliest_start = $today;
+		}
+
+		// Calculate off days
+		$all_days = [ 0, 1, 2, 3, 4, 5, 6 ];
+		$off_days = array_values( array_diff( $all_days, $working_days ) );
+
+		// Load capacity overrides and bookings covering the range from earliest_start to install_date
+		$install_dt = new \DateTime( $installation_date );
+		$range_end = clone $install_dt;
+		$range_end->modify( '+1 day' ); // Include install date itself
+
+		$repo = new CapacityRepository();
+		$capacity_overrides = $repo->get_range(
+			$earliest_start->format( 'Y-m-d' ),
+			$range_end->format( 'Y-m-d' )
+		);
+
+		// Load existing bookings (exclude current entry if editing)
+		$booking_data = self::load_existing_bookings(
+			$earliest_start->format( 'Y-m-d' ),
+			$range_end->format( 'Y-m-d' ),
+			$entry_id
+		);
+
+		$existing_bookings = $booking_data['bookings'];
+		$last_filled_date = $booking_data['last_filled_date'];
+		$historical_capacity = $booking_data['capacity_per_date'];
+
+		// Build effective capacity overrides (same logic as forward scheduling)
+		$effective_capacity_overrides = $capacity_overrides;
+		if ( $last_filled_date ) {
+			foreach ( $historical_capacity as $date => $capacity ) {
+				if ( $date <= $last_filled_date && ! isset( $effective_capacity_overrides[ $date ] ) ) {
+					$effective_capacity_overrides[ $date ] = $capacity;
+				}
+			}
+		}
+
+		// Calculate backward schedule
+		$scheduler = new Scheduler();
+
+		try {
+			$schedule = $scheduler->calculate_schedule_backward(
+				$total_slots,
+				$install_dt,
+				$earliest_start,
+				$daily_capacity,
+				$effective_capacity_overrides,
+				$existing_bookings,
+				$off_days,
+				$holidays,
+				$installation_buffer
+			);
+
+			return $schedule;
+		} catch ( \Exception $e ) {
+			return new \WP_Error( 'schedule_error', $e->getMessage() );
+		}
+	}
+
+	/**
 	 * Load existing bookings from entry meta with capacity tracking
 	 *
 	 * Made public for use by BookingHandler admin warnings

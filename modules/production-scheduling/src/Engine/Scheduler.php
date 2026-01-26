@@ -129,6 +129,138 @@ class Scheduler {
 	}
 
 	/**
+	 * Calculate production schedule backwards from an installation date
+	 *
+	 * Production is allocated backwards from (install_date - buffer) so that
+	 * production ends as close to the installation date as possible, respecting
+	 * capacity constraints, off days, and holidays.
+	 *
+	 * @param int      $lm_required        Linear meters needed
+	 * @param DateTime $installation_date  Target installation date
+	 * @param DateTime $earliest_start     Floor date - production cannot start before this
+	 * @param int      $daily_capacity     Default production capacity (LM/day)
+	 * @param array    $capacity_overrides [date_string => custom_capacity]
+	 * @param array    $existing_bookings  [date_string => total_lm_used]
+	 * @param array    $off_days           [0,5] = Sunday, Friday off (0=Sun, 6=Sat)
+	 * @param array    $holidays           ["2025-12-25", "2026-01-01"]
+	 * @param int      $install_buffer     Days after production before install (0 = same day)
+	 *
+	 * @return array Same structure as calculate_schedule()
+	 */
+	public function calculate_schedule_backward(
+		int $lm_required,
+		DateTime $installation_date,
+		DateTime $earliest_start,
+		int $daily_capacity,
+		array $capacity_overrides = [],
+		array $existing_bookings = [],
+		array $off_days = [],
+		array $holidays = [],
+		int $install_buffer = 0
+	): array {
+		if ( $lm_required <= 0 ) {
+			throw new \InvalidArgumentException( 'LM required must be greater than 0' );
+		}
+
+		if ( $daily_capacity <= 0 ) {
+			throw new \InvalidArgumentException( 'Daily capacity must be greater than 0' );
+		}
+
+		// Latest production date = installation_date - buffer
+		$latest_prod_date = clone $installation_date;
+		if ( $install_buffer > 0 ) {
+			$latest_prod_date->modify( "-{$install_buffer} days" );
+		}
+
+		// Cannot schedule if latest production date is before earliest start
+		if ( $latest_prod_date < $earliest_start ) {
+			throw new \RuntimeException(
+				sprintf(
+					'Installation date %s with buffer %d results in production date %s before earliest start %s',
+					$installation_date->format( 'Y-m-d' ),
+					$install_buffer,
+					$latest_prod_date->format( 'Y-m-d' ),
+					$earliest_start->format( 'Y-m-d' )
+				)
+			);
+		}
+
+		$allocation = [];
+		$lm_remaining = $lm_required;
+		$current_date = clone $latest_prod_date;
+		$max_iterations = 365;
+		$iterations = 0;
+
+		// Allocate backwards from latest production date
+		while ( $lm_remaining > 0 && $iterations < $max_iterations ) {
+			$iterations++;
+			$date_str = $current_date->format( 'Y-m-d' );
+
+			// Cannot go before earliest start
+			if ( $current_date < $earliest_start ) {
+				break;
+			}
+
+			// Skip if off day or holiday
+			if ( $this->is_off_day( $current_date, $off_days, $holidays ) ) {
+				$current_date->modify( '-1 day' );
+				continue;
+			}
+
+			// Get capacity for this day
+			$capacity = isset( $capacity_overrides[ $date_str ] )
+				? (int) $capacity_overrides[ $date_str ]
+				: $daily_capacity;
+
+			if ( $capacity <= 0 ) {
+				$current_date->modify( '-1 day' );
+				continue;
+			}
+
+			// Get already used slots
+			$used = isset( $existing_bookings[ $date_str ] )
+				? (int) $existing_bookings[ $date_str ]
+				: 0;
+
+			$available = max( 0, $capacity - $used );
+
+			if ( $available > 0 ) {
+				$to_allocate = min( $lm_remaining, $available );
+				$allocation[ $date_str ] = $to_allocate;
+				$lm_remaining -= $to_allocate;
+			}
+
+			$current_date->modify( '-1 day' );
+		}
+
+		if ( $lm_remaining > 0 ) {
+			throw new \RuntimeException(
+				sprintf(
+					'Unable to allocate %d LM between %s and %s (capacity exhausted)',
+					$lm_required,
+					$earliest_start->format( 'Y-m-d' ),
+					$latest_prod_date->format( 'Y-m-d' )
+				)
+			);
+		}
+
+		// Sort allocation chronologically (built backwards)
+		ksort( $allocation );
+
+		$dates = array_keys( $allocation );
+		$production_start = reset( $dates );
+		$production_end = end( $dates );
+
+		return [
+			'allocation'            => $allocation,
+			'production_start'      => $production_start,
+			'production_end'        => $production_end,
+			'installation_minimum'  => $installation_date->format( 'Y-m-d' ),
+			'total_days'            => count( $allocation ),
+		];
+	}
+
+	/**
 	 * Check if a date is an off day (weekend or holiday)
 	 *
 	 * @param DateTime $date

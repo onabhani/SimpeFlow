@@ -413,9 +413,7 @@ class BookingHandler {
 				error_log( sprintf( 'Production Booking: MANUAL ADMIN EDIT detected for entry %d - allowing date change from %s to %s', $entry_id, $existing_install_date, $submitted_installation_date ) );
 			}
 
-			// New booking OR LM changed OR manual date change in admin: Calculate new schedule
-			$date_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
-
+			// Determine final installation date based on the scenario
 			if ( $existing_install_date && $lm_changed ) {
 				// LM changed: Use submitted date if valid, otherwise use calculated minimum
 				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
@@ -431,105 +429,47 @@ class BookingHandler {
 					$installation_date = $schedule['installation_minimum'];
 				}
 			} elseif ( $is_manual_admin_edit && $date_manually_changed ) {
-				// FIX: Manual admin date change without LM change
-				// Use the manually submitted installation date and recalculate schedule
+				// Manual admin date change: use the submitted date
 				$installation_date = $submitted_installation_date;
-
-				error_log( sprintf(
-					'Production Booking: Recalculating schedule for entry %d with new installation date %s (LM=%s)',
-					$entry_id,
-					$installation_date,
-					$lm_required
-				) );
-
-				// Recalculate schedule via BillingStepPreview (loads all settings, capacity, bookings correctly)
-				try {
-					error_log( sprintf(
-						'Production Booking DEBUG: Recalculating via BillingStepPreview for entry %d (manual date change), lm_required=%s, multi_field=%s',
-						$entry_id, $lm_required, ! empty( $production_fields ) ? 'YES' : 'NO'
-					) );
-
-					if ( ! empty( $production_fields ) ) {
-						$new_schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
-					} else {
-						$new_schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
-					}
-
-					if ( is_wp_error( $new_schedule ) ) {
-						error_log( sprintf(
-							'Production Booking ERROR: Failed to recalculate schedule for entry %d: %s',
-							$entry_id,
-							$new_schedule->get_error_message()
-						) );
-						// Keep using the original schedule calculated at the beginning
-					} else {
-						// Use the newly calculated schedule
-						$schedule = $new_schedule;
-						error_log( sprintf(
-							'Production Booking: Successfully recalculated schedule for entry %d (manual date change) - prod_start=%s, prod_end=%s, install_min=%s',
-							$entry_id,
-							$schedule['production_start'],
-							$schedule['production_end'],
-							isset( $schedule['installation_minimum'] ) ? $schedule['installation_minimum'] : 'N/A'
-						) );
-					}
-				} catch ( \Throwable $e ) {
-					error_log( sprintf(
-						'Production Booking THROWABLE: Failed to recalculate for entry %d: %s (Type: %s, File: %s, Line: %d)',
-						$entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine()
-					) );
-					// Keep using the original schedule
-				}
 			} elseif ( $dates_inconsistent ) {
-				// FIX: Stale/inconsistent production dates detected
-				// Recalculate schedule to fix inconsistency
-				$installation_date = $existing_install_date; // Keep same install date
+				// Inconsistent dates: keep existing install date
+				$installation_date = $existing_install_date;
+			}
 
-				error_log( sprintf(
-					'Production Booking: Fixing inconsistent dates for entry %d - recalculating with install_date=%s (LM=%s)',
-					$entry_id,
-					$installation_date,
-					$lm_required
-				) );
+			// Schedule BACKWARD from installation date so production aligns with it.
+			// The installation date is the anchor; production dates are derived from it,
+			// respecting the installation buffer setting (0 = same day allowed).
+			error_log( sprintf(
+				'Production Booking: Scheduling backward from install_date=%s for entry %d (reason: %s, lm=%s, multi_field=%s)',
+				$installation_date, $entry_id, $recalc_reason, $lm_required, ! empty( $production_fields ) ? 'YES' : 'NO'
+			) );
 
-				// Recalculate schedule via BillingStepPreview (loads all settings, capacity, bookings correctly)
-				try {
-					error_log( sprintf(
-						'Production Booking DEBUG: Recalculating via BillingStepPreview for entry %d (inconsistent dates fix), lm_required=%s, multi_field=%s',
-						$entry_id, $lm_required, ! empty( $production_fields ) ? 'YES' : 'NO'
-					) );
-
-					if ( ! empty( $production_fields ) ) {
-						$new_schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
-					} else {
-						$new_schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
-					}
-
-					if ( is_wp_error( $new_schedule ) ) {
-						error_log( sprintf(
-							'Production Booking ERROR: Failed to fix inconsistent dates for entry %d: %s',
-							$entry_id,
-							$new_schedule->get_error_message()
-						) );
-						// Keep using the original schedule
-					} else {
-						// Use the newly calculated schedule
-						$schedule = $new_schedule;
-						error_log( sprintf(
-							'Production Booking: Successfully fixed inconsistent dates for entry %d - prod_start=%s, prod_end=%s, install_min=%s',
-							$entry_id,
-							$schedule['production_start'],
-							$schedule['production_end'],
-							isset( $schedule['installation_minimum'] ) ? $schedule['installation_minimum'] : 'N/A'
-						) );
-					}
-				} catch ( \Throwable $e ) {
-					error_log( sprintf(
-						'Production Booking THROWABLE: Failed to fix inconsistent dates for entry %d: %s (Type: %s, File: %s, Line: %d)',
-						$entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine()
-					) );
-					// Keep using the original schedule
+			try {
+				if ( ! empty( $production_fields ) ) {
+					$new_schedule = BillingStepPreview::calculate_schedule_for_date( $installation_date, $field_values, $production_fields, $entry_id );
+				} else {
+					$new_schedule = BillingStepPreview::calculate_schedule_for_date( $installation_date, $lm_required, null, $entry_id );
 				}
+
+				if ( is_wp_error( $new_schedule ) ) {
+					error_log( sprintf(
+						'Production Booking ERROR: Backward scheduling failed for entry %d: %s. Using forward-scheduled fallback.',
+						$entry_id, $new_schedule->get_error_message()
+					) );
+					// Keep using the forward-scheduled $schedule as fallback
+				} else {
+					$schedule = $new_schedule;
+					error_log( sprintf(
+						'Production Booking: Backward schedule OK for entry %d - prod_start=%s, prod_end=%s, install=%s',
+						$entry_id, $schedule['production_start'], $schedule['production_end'], $installation_date
+					) );
+				}
+			} catch ( \Throwable $e ) {
+				error_log( sprintf(
+					'Production Booking THROWABLE: Backward scheduling failed for entry %d: %s (Type: %s, File: %s, Line: %d)',
+					$entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine()
+				) );
+				// Keep using the forward-scheduled $schedule as fallback
 			}
 
 			// SAFETY CHECK: Verify schedule is valid array before accessing keys
@@ -1319,7 +1259,7 @@ class BookingHandler {
 		// Normalize installation date
 		$install_date = $this->normalize_date( $install_date );
 
-		// Calculate schedule via BillingStepPreview (loads all settings, capacity, bookings correctly)
+		// Calculate schedule backward from the target installation date
 		$production_fields = FormSettings::get_production_fields( $form );
 		if ( ! empty( $production_fields ) ) {
 			$field_values = [];
@@ -1327,9 +1267,9 @@ class BookingHandler {
 				$fid = $pf['field_id'];
 				$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
 			}
-			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
+			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $field_values, $production_fields, $entry_id );
 		} else {
-			$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
+			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $lm_required, null, $entry_id );
 		}
 
 		if ( is_wp_error( $schedule ) || ! $schedule || empty( $schedule['allocation'] ) ) {
