@@ -426,10 +426,16 @@ class BookingHandler {
 					$lm_required
 				) );
 
-				// Recalculate schedule with exception handling
+				// Recalculate schedule with comprehensive error handling
+				// NOTE: Using Throwable to catch both Exception and Error (PHP 7+ fatal errors)
 				try {
+					error_log( sprintf( 'Production Booking DEBUG: About to create Scheduler for entry %d', $entry_id ) );
 					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+
+					error_log( sprintf( 'Production Booking DEBUG: Calling calculate_schedule for entry %d', $entry_id ) );
 					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+
+					error_log( sprintf( 'Production Booking DEBUG: calculate_schedule returned for entry %d', $entry_id ) );
 
 					if ( is_wp_error( $new_schedule ) ) {
 						error_log( sprintf(
@@ -438,7 +444,7 @@ class BookingHandler {
 							$new_schedule->get_error_message()
 						) );
 						// Keep using the original schedule calculated at the beginning
-						// $schedule is already set from line 278 or 294
+						// $schedule is already set from line 286 or 302
 					} else {
 						// Use the newly calculated schedule
 						$schedule = $new_schedule;
@@ -449,11 +455,15 @@ class BookingHandler {
 							$schedule['production_end']
 						) );
 					}
-				} catch ( Exception $e ) {
+				} catch ( Throwable $e ) {
+					// Catch both Exception and Error (PHP 7+ fatal errors)
 					error_log( sprintf(
-						'Production Booking EXCEPTION: Failed to recalculate schedule for entry %d: %s',
+						'Production Booking THROWABLE: Failed to recalculate schedule for entry %d: %s (Type: %s, File: %s, Line: %d)',
 						$entry_id,
-						$e->getMessage()
+						$e->getMessage(),
+						get_class( $e ),
+						$e->getFile(),
+						$e->getLine()
 					) );
 					// Keep using the original schedule
 				}
@@ -469,10 +479,16 @@ class BookingHandler {
 					$lm_required
 				) );
 
-				// Recalculate schedule with exception handling
+				// Recalculate schedule with comprehensive error handling
+				// NOTE: Using Throwable to catch both Exception and Error (PHP 7+ fatal errors)
 				try {
+					error_log( sprintf( 'Production Booking DEBUG: About to create Scheduler for inconsistent fix on entry %d', $entry_id ) );
 					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+
+					error_log( sprintf( 'Production Booking DEBUG: Calling calculate_schedule for inconsistent fix on entry %d', $entry_id ) );
 					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+
+					error_log( sprintf( 'Production Booking DEBUG: calculate_schedule returned for inconsistent fix on entry %d', $entry_id ) );
 
 					if ( is_wp_error( $new_schedule ) ) {
 						error_log( sprintf(
@@ -491,14 +507,41 @@ class BookingHandler {
 							$schedule['production_end']
 						) );
 					}
-				} catch ( Exception $e ) {
+				} catch ( Throwable $e ) {
+					// Catch both Exception and Error (PHP 7+ fatal errors)
 					error_log( sprintf(
-						'Production Booking EXCEPTION: Failed to fix inconsistent dates for entry %d: %s',
+						'Production Booking THROWABLE: Failed to fix inconsistent dates for entry %d: %s (Type: %s, File: %s, Line: %d)',
 						$entry_id,
-						$e->getMessage()
+						$e->getMessage(),
+						get_class( $e ),
+						$e->getFile(),
+						$e->getLine()
 					) );
 					// Keep using the original schedule
 				}
+			}
+
+			// SAFETY CHECK: Verify schedule is valid array before accessing keys
+			if ( ! is_array( $schedule ) || is_wp_error( $schedule ) ) {
+				error_log( sprintf(
+					'Production Booking CRITICAL ERROR: Schedule is not a valid array for entry %d. Type: %s. Cannot save booking.',
+					$entry_id,
+					is_wp_error( $schedule ) ? 'WP_Error: ' . $schedule->get_error_message() : gettype( $schedule )
+				) );
+
+				// Cannot proceed without valid schedule - this should never happen as initial schedule
+				// calculation would have failed and returned early, but adding safety check
+				return;
+			}
+
+			// SAFETY CHECK: Verify required schedule keys exist
+			if ( ! isset( $schedule['production_start'] ) || ! isset( $schedule['production_end'] ) ) {
+				error_log( sprintf(
+					'Production Booking CRITICAL ERROR: Schedule missing required keys for entry %d. Keys: %s. Cannot save booking.',
+					$entry_id,
+					implode( ', ', array_keys( $schedule ) )
+				) );
+				return;
 			}
 
 			// Get production dates from calculated schedule
@@ -538,8 +581,20 @@ class BookingHandler {
 			$allocation_array = json_decode( $existing_allocation, true );
 		} else {
 			// Use newly calculated allocation
-			$allocation_to_save = wp_json_encode( $schedule['allocation'] );
-			$allocation_array = $schedule['allocation'];
+			// SAFETY CHECK: Verify allocation key exists
+			if ( ! isset( $schedule['allocation'] ) ) {
+				error_log( sprintf(
+					'Production Booking ERROR: Schedule missing allocation key for entry %d. Available keys: %s',
+					$entry_id,
+					implode( ', ', array_keys( $schedule ) )
+				) );
+				// Fall back to existing allocation if available, otherwise use empty array
+				$allocation_to_save = $existing_allocation ? $existing_allocation : wp_json_encode( array() );
+				$allocation_array = json_decode( $allocation_to_save, true );
+			} else {
+				$allocation_to_save = wp_json_encode( $schedule['allocation'] );
+				$allocation_array = $schedule['allocation'];
+			}
 		}
 
 		// P1 FIX: Wrap meta updates in database transaction to ensure atomicity
