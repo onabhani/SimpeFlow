@@ -554,6 +554,32 @@ function simpleflow_frontend_entry_link( $form, $entry ) {
 }
 
 /**
+ * Frontend Entry Link — entries list table.
+ *
+ * Adds a "Frontend" hover action link to every entry row in the GF entries
+ * list, matching the clickable entry links in the production calendar.
+ */
+add_filter( 'gform_entries_action_links', 'simpleflow_entries_action_frontend_link', 10, 4 );
+
+function simpleflow_entries_action_frontend_link( $actions, $filter, $entry, $form_id ) {
+	if ( empty( $entry['id'] ) || empty( $form_id ) ) {
+		return $actions;
+	}
+
+	$frontend_url = home_url( '/workflow-inbox/' )
+		. '?page=gravityflow-inbox&view=entry&id=' . (int) $form_id
+		. '&lid=' . (int) $entry['id'];
+
+	$actions['frontend'] = array(
+		'class' => 'frontend',
+		'link'  => '<a href="' . esc_url( $frontend_url ) . '" target="_blank">'
+			. esc_html__( 'Frontend', 'simpleflow' ) . '</a>',
+	);
+
+	return $actions;
+}
+
+/**
  * BOOT: Load modules immediately
  */
 simpleflow_load_modules();
