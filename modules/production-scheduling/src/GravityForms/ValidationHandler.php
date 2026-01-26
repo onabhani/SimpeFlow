@@ -198,7 +198,8 @@ class ValidationHandler {
 		}
 
 		// Validate installation date is not in the past
-		if ( $installation_date && $installation_date < date( 'Y-m-d' ) ) {
+		// P3 FIX: Use WordPress timezone function instead of PHP date()
+		if ( $installation_date && $installation_date < current_time( 'Y-m-d' ) ) {
 			$validation_result['is_valid'] = false;
 
 			foreach ( $form['fields'] as &$field ) {

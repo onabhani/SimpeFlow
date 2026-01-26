@@ -69,6 +69,23 @@ class FormSettings {
 			$production_fields = array();
 		}
 
+		// Get workflow step setting
+		$booking_step_id = rgar( $form, 'sfa_prod_booking_step' );
+
+		// Get GravityFlow steps if available
+		$workflow_steps = [];
+		if ( class_exists( 'Gravity_Flow_API' ) ) {
+			$api = new \Gravity_Flow_API( $form_id );
+			$steps = $api->get_steps();
+			foreach ( $steps as $step ) {
+				$workflow_steps[] = [
+					'id'    => $step->get_id(),
+					'name'  => $step->get_name(),
+					'type'  => $step->get_type(),
+				];
+			}
+		}
+
 		// Build field options
 		$number_fields = [];
 		$date_fields = [];
@@ -325,6 +342,37 @@ class FormSettings {
 						</td>
 					</tr>
 					<?php endif; ?>
+
+					<?php if ( ! empty( $workflow_steps ) ): ?>
+					<tr>
+						<td colspan="2">
+							<hr style="margin: 20px 0;">
+							<h4 style="margin: 10px 0;">Booking Trigger</h4>
+							<p class="description">Choose when production bookings should be created.</p>
+						</td>
+					</tr>
+
+					<tr id="sfa_prod_booking_step_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<th scope="row">
+							<label for="sfa_prod_booking_step">Create Booking After Step</label>
+						</th>
+						<td>
+							<select name="sfa_prod_booking_step" id="sfa_prod_booking_step" class="widefat">
+								<option value="">On Form Submission (Default)</option>
+								<?php foreach ( $workflow_steps as $step ): ?>
+									<option value="<?php echo esc_attr( $step['id'] ); ?>" <?php selected( $booking_step_id, $step['id'] ); ?>>
+										<?php echo esc_html( $step['name'] . ' (' . ucfirst( str_replace( '_', ' ', $step['type'] ) ) . ')' ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description">
+								Select which workflow step should trigger the production booking.
+								Leave as "On Form Submission" to create bookings immediately when the form is submitted.
+								Choose a specific step (e.g., "Billing and Payment") to defer booking creation until that step is completed.
+							</p>
+						</td>
+					</tr>
+					<?php endif; ?>
 				</table>
 
 				<?php submit_button( 'Save Production Scheduling Settings' ); ?>
@@ -338,9 +386,9 @@ class FormSettings {
 			// Toggle visibility of all production scheduling rows
 			$("#sfa_prod_enabled").on("change", function() {
 				if ($(this).is(":checked")) {
-					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row").show();
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row, #sfa_prod_booking_step_row").show();
 				} else {
-					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row").hide();
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row, #sfa_prod_booking_step_row").hide();
 				}
 			}).trigger("change");
 
@@ -428,6 +476,7 @@ class FormSettings {
 		$form['sfa_prod_install_field'] = isset( $_POST['sfa_prod_install_field'] ) ? absint( $_POST['sfa_prod_install_field'] ) : 0;
 		$form['sfa_prod_start_field'] = isset( $_POST['sfa_prod_start_field'] ) ? absint( $_POST['sfa_prod_start_field'] ) : 0;
 		$form['sfa_prod_end_field'] = isset( $_POST['sfa_prod_end_field'] ) ? absint( $_POST['sfa_prod_end_field'] ) : 0;
+		$form['sfa_prod_booking_step'] = isset( $_POST['sfa_prod_booking_step'] ) ? absint( $_POST['sfa_prod_booking_step'] ) : 0;
 
 		// Save production fields configuration
 		$production_fields = array();
@@ -508,6 +557,14 @@ class FormSettings {
 	}
 
 	/**
+	 * Get booking trigger step ID
+	 * Returns 0 if booking should happen on form submission
+	 */
+	public static function get_booking_step_id( $form ) {
+		return (int) rgar( $form, 'sfa_prod_booking_step' );
+	}
+
+	/**
 	 * Get available field types and their conversion rules
 	 */
 	public static function get_field_types() {
@@ -522,15 +579,14 @@ class FormSettings {
 			),
 			'vanity' => array(
 				'label' => 'Vanity Shelf',
-				'description' => '0-0.5 = 0 slots, 0.5-2 = 1 slot, 2+ = 2 slots',
+				'description' => '0-0.5 LM = 0 slots, then 1 slot for each 2 LM (e.g., 0.51-2 = 1 slot, 2.01-4 = 2 slots)',
 				'calculate' => function( $value ) {
+					// 0-0.5 LM doesn't count as a slot
 					if ( $value <= 0.5 ) {
-						return 0; // Shares slot with LM
-					} elseif ( $value <= 2 ) {
-						return 1;
-					} else {
-						return 2;
+						return 0;
 					}
+					// 1 slot for each 2 LM, round up
+					return ceil( $value / 2 );
 				},
 			),
 			'sqm' => array(

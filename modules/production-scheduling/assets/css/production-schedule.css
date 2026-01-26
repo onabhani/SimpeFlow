@@ -2,6 +2,78 @@
  * Production Scheduling Styles
  */
 
+/* Production Schedule Preview Container */
+.sfa-prod-preview {
+	/* Force full width and break grid layout */
+	grid-column: 1 / -1 !important;
+	flex-basis: 100% !important;
+	width: 100% !important;
+	max-width: 100% !important;
+
+	/* Ensure proper spacing and clearing */
+	clear: both !important;
+	display: block !important;
+	float: none !important;
+
+	/* Visual styling */
+	margin: 15px 0 !important;
+	padding: 15px;
+	background: #f0f9ff;
+	border-left: 4px solid #0073aa;
+	box-sizing: border-box;
+}
+
+/* Clear layout disruption after preview */
+.sfa-prod-clear {
+	clear: both !important;
+	display: block !important;
+	height: 0 !important;
+	line-height: 0 !important;
+	overflow: hidden !important;
+	visibility: hidden !important;
+
+	/* Force grid/flex reset */
+	grid-column: 1 / -1 !important;
+	flex-basis: 100% !important;
+	width: 100% !important;
+}
+
+/* Ensure next field after preview starts fresh */
+.sfa-prod-clear + .gfield,
+.sfa-prod-clear ~ .gfield {
+	clear: both;
+}
+
+/* Schedule table styling */
+.sfa-prod-schedule-table {
+	width: 100% !important;
+	min-width: 100%;
+	max-width: 100%;
+	border-collapse: collapse;
+	table-layout: fixed;
+	display: table;
+}
+
+.sfa-prod-schedule-table td {
+	padding: 8px;
+	border: 1px solid #ddd;
+}
+
+/* Loading and error states */
+.sfa-prod-loading {
+	padding: 10px;
+	text-align: center;
+	font-style: italic;
+	color: #666;
+}
+
+.sfa-prod-error {
+	background: #fee;
+	padding: 10px;
+	border-left: 3px solid #c00;
+	margin: 10px 0;
+}
+
 /* TODO: Add calendar styles */
 /* TODO: Add capacity indicator colors */
 /* TODO: Add responsive grid */

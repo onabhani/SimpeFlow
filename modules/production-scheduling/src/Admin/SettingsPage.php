@@ -7,7 +7,7 @@ namespace SFA\ProductionScheduling\Admin;
 class SettingsPage {
 
 	public function __construct() {
-		add_action( 'admin_menu', [ $this, 'add_menu_page' ] );
+		add_action( 'admin_menu', [ $this, 'add_menu_page' ], 110 ); // Load after Schedule View
 		add_action( 'admin_init', [ $this, 'register_settings' ] );
 	}
 
@@ -15,11 +15,12 @@ class SettingsPage {
 	 * Add settings page to admin menu
 	 */
 	public function add_menu_page() {
-		add_options_page(
+		add_submenu_page(
+			'simpleflow', // Parent is SimpleFlow menu (not sfa-production-schedule)
 			'Production Scheduling Settings',
-			'Production Scheduling',
+			'Production Settings',
 			'manage_options',
-			'sfa-production-scheduling',
+			'sfa-production-scheduling-settings',
 			[ $this, 'render_settings_page' ]
 		);
 	}
@@ -54,6 +55,59 @@ class SettingsPage {
 			'type'              => 'string',
 			'sanitize_callback' => [ $this, 'sanitize_date' ],
 		] );
+	}
+
+	/**
+	 * Cleanup invalid bookings (0 LM)
+	 *
+	 * @return int Number of bookings deleted
+	 */
+	private function cleanup_invalid_bookings() {
+		global $wpdb;
+
+		// Find all entries with 0 or null LM (check both _prod_lm_required and _prod_total_slots)
+		$entries_to_clean = $wpdb->get_results(
+			"SELECT DISTINCT entry_id
+			FROM {$wpdb->prefix}gf_entry_meta
+			WHERE (
+				(meta_key = '_prod_lm_required' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+				OR
+				(meta_key = '_prod_total_slots' AND (meta_value = '0' OR meta_value IS NULL OR meta_value = ''))
+			)",
+			ARRAY_A
+		);
+
+		$deleted_count = 0;
+
+		foreach ( $entries_to_clean as $row ) {
+			$entry_id = $row['entry_id'];
+
+			// Delete all production-related meta for this entry
+			$meta_keys = [
+				'_prod_lm_required',
+				'_prod_total_slots',
+				'_prod_field_breakdown',
+				'_prod_slots_allocation',
+				'_prod_start_date',
+				'_prod_end_date',
+				'_install_date',
+				'_prod_booking_status',
+				'_prod_booked_at',
+				'_prod_booked_by',
+				'_prod_daily_capacity_at_booking',
+			];
+
+			foreach ( $meta_keys as $meta_key ) {
+				gform_delete_meta( $entry_id, $meta_key );
+			}
+
+			$deleted_count++;
+		}
+
+		// Clear cache
+		wp_cache_flush();
+
+		return $deleted_count;
 	}
 
 	/**
@@ -131,6 +185,12 @@ class SettingsPage {
 		$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
 		$holidays = json_decode( $holidays_json, true );
 		$earliest_start = get_option( 'sfa_prod_earliest_start_date', '' );
+
+		// Handle cleanup of invalid bookings
+		if ( isset( $_POST['sfa_prod_cleanup_bookings'] ) && check_admin_referer( 'sfa_prod_cleanup' ) ) {
+			$deleted = $this->cleanup_invalid_bookings();
+			echo '<div class="notice notice-success"><p>Cleanup complete! Removed ' . $deleted . ' invalid booking(s) with 0 LM.</p></div>';
+		}
 
 		// Save settings
 		if ( isset( $_POST['sfa_prod_save_settings'] ) && check_admin_referer( 'sfa_prod_settings' ) ) {
@@ -256,8 +316,27 @@ class SettingsPage {
 			<?php if ( $earliest_start ): ?>
 				<p><strong>Next Available Production Slot:</strong> <?php echo date( 'F j, Y', strtotime( $earliest_start ) ); ?></p>
 			<?php else: ?>
-				<p><strong>Next Available Production Slot:</strong> Today (<?php echo date( 'F j, Y' ); ?>)</p>
+				<!-- P3 FIX: Use WordPress timezone function for current date -->
+				<p><strong>Next Available Production Slot:</strong> Today (<?php echo current_time( 'F j, Y' ); ?>)</p>
 			<?php endif; ?>
+
+			<hr>
+
+			<h2>Database Maintenance</h2>
+			<p>Clean up invalid production bookings that were created before the booking validation fixes.</p>
+
+			<form method="post" action="" onsubmit="return confirm('Are you sure you want to remove all invalid bookings with 0 LM? This cannot be undone.');">
+				<?php wp_nonce_field( 'sfa_prod_cleanup' ); ?>
+				<p>
+					<button type="submit" name="sfa_prod_cleanup_bookings" class="button button-secondary">
+						🗑️ Clean Up Invalid Bookings (0 LM)
+					</button>
+				</p>
+				<p class="description">
+					This will remove all production booking data from entries that have 0 LM or empty production fields.
+					The entries themselves will not be deleted, only the production scheduling metadata.
+				</p>
+			</form>
 		</div>
 		<?php
 	}

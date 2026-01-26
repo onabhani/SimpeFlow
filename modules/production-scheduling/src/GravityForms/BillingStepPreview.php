@@ -42,10 +42,24 @@ class BillingStepPreview {
 
 		wp_enqueue_script( 'sfa-prod-billing' );
 
+		// Get entry ID if editing (for Gravity Flow or Gravity Forms edit context)
+		$entry_id = 0;
+		if ( isset( $_GET['lid'] ) ) {
+			// Gravity Flow context
+			$entry_id = absint( $_GET['lid'] );
+		} elseif ( isset( $_GET['entry_id'] ) ) {
+			// Gravity Forms edit entry context
+			$entry_id = absint( $_GET['entry_id'] );
+		} elseif ( function_exists( 'rgget' ) && rgget( 'entry' ) ) {
+			// Gravity Forms helper function
+			$entry_id = absint( rgget( 'entry' ) );
+		}
+
 		wp_localize_script( 'sfa-prod-billing', 'sfaProdConfig', [
 			'ajaxurl'          => admin_url( 'admin-ajax.php' ),
 			'nonce'            => wp_create_nonce( 'sfa_prod_preview' ),
 			'formId'           => $form['id'],
+			'entryId'          => $entry_id, // Pass entry ID for edit mode
 			'lmFieldId'        => $lm_field_id, // Legacy support
 			'installFieldId'   => $install_field_id,
 			'prodStartFieldId' => $prod_start_field_id,
@@ -110,9 +124,10 @@ class BillingStepPreview {
 		$all_days = [ 0, 1, 2, 3, 4, 5, 6 ];
 		$off_days = array_values( array_diff( $all_days, $working_days ) );
 
-		// Load capacity overrides for next 90 days
+		// Load capacity overrides and bookings for next 365 days (matches scheduler's search range)
+		// Using 90 days was causing the scheduler to allocate beyond the loaded booking data
 		$end_date = clone $earliest_start;
-		$end_date->modify( '+90 days' );
+		$end_date->modify( '+365 days' );
 
 		$repo = new CapacityRepository();
 		$capacity_overrides = $repo->get_range(
@@ -172,6 +187,8 @@ class BillingStepPreview {
 	/**
 	 * Load existing bookings from entry meta with capacity tracking
 	 *
+	 * Made public for use by BookingHandler admin warnings
+	 *
 	 * @param string   $start_date
 	 * @param string   $end_date
 	 * @param int|null $exclude_entry_id Entry ID to exclude (for edit mode)
@@ -181,7 +198,7 @@ class BillingStepPreview {
 	 *   'capacity_per_date' => [date => capacity]
 	 * ]
 	 */
-	private static function load_existing_bookings( string $start_date, string $end_date, $exclude_entry_id = null ): array {
+	public static function load_existing_bookings( string $start_date, string $end_date, $exclude_entry_id = null ): array {
 		global $wpdb;
 
 		// Build exclude condition
@@ -190,19 +207,36 @@ class BillingStepPreview {
 			$exclude_sql = $wpdb->prepare( ' AND em.entry_id != %d', $exclude_entry_id );
 		}
 
-		// Query all entries with production bookings and their capacity at booking time
+		// Query all entries with production bookings that overlap with our date range
+		// We need to find entries where:
+		// - Production start date <= our end date
+		// - Production end date >= our start date
+		// This catches all entries that have ANY overlap with the range we care about
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT
+					em.entry_id,
 					em.meta_value as allocation,
-					cm.meta_value as capacity_at_booking
+					cm.meta_value as capacity_at_booking,
+					sm.meta_value as booking_status
 				FROM {$wpdb->prefix}gf_entry_meta em
+				INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
+					ON em.entry_id = start_meta.entry_id
+					AND start_meta.meta_key = '_prod_start_date'
+				INNER JOIN {$wpdb->prefix}gf_entry_meta end_meta
+					ON em.entry_id = end_meta.entry_id
+					AND end_meta.meta_key = '_prod_end_date'
 				LEFT JOIN {$wpdb->prefix}gf_entry_meta cm
 					ON em.entry_id = cm.entry_id
 					AND cm.meta_key = '_prod_daily_capacity_at_booking'
+				LEFT JOIN {$wpdb->prefix}gf_entry_meta sm
+					ON em.entry_id = sm.entry_id
+					AND sm.meta_key = '_prod_booking_status'
 				WHERE em.meta_key = '_prod_slots_allocation'
-				AND em.meta_value LIKE %s" . $exclude_sql,
-				'%' . $wpdb->esc_like( substr( $start_date, 0, 7 ) ) . '%'
+				AND start_meta.meta_value <= %s
+				AND end_meta.meta_value >= %s" . $exclude_sql,
+				$end_date,
+				$start_date
 			),
 			ARRAY_A
 		);
@@ -214,6 +248,12 @@ class BillingStepPreview {
 		foreach ( $results as $row ) {
 			$allocation = json_decode( $row['allocation'], true );
 			$capacity_at_booking = isset( $row['capacity_at_booking'] ) ? (int) $row['capacity_at_booking'] : null;
+			$booking_status = isset( $row['booking_status'] ) ? $row['booking_status'] : 'confirmed';
+
+			// Skip canceled bookings - they don't consume capacity
+			if ( 'canceled' === $booking_status ) {
+				continue;
+			}
 
 			if ( ! is_array( $allocation ) ) {
 				continue;

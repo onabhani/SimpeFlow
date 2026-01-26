@@ -19,11 +19,12 @@ class ScheduleView {
 	 * Add schedule view page to admin menu
 	 */
 	public function add_menu_page() {
+		// Add Production Scheduling under SimpleFlow
 		add_submenu_page(
-			'simpleflow', // Parent slug
-			'Production Schedule',
-			'Production Schedule',
-			'manage_options', // Match parent menu capability
+			'simpleflow',
+			'Production Scheduling',
+			'Production Scheduling',
+			'manage_options',
 			'sfa-production-schedule',
 			[ $this, 'render_schedule_page' ]
 		);
@@ -51,7 +52,8 @@ class ScheduleView {
 		}
 
 		// Get current month or requested month
-		$month = isset( $_GET['month'] ) ? sanitize_text_field( $_GET['month'] ) : date( 'Y-m' );
+		// P3 FIX: Use WordPress timezone function for current month
+		$month = isset( $_GET['month'] ) ? sanitize_text_field( $_GET['month'] ) : current_time( 'Y-m' );
 
 		// Parse month
 		$date = new \DateTime( $month . '-01' );
@@ -163,9 +165,18 @@ class ScheduleView {
 						$is_holiday = in_array( $day_date, $holidays, true );
 
 						// Get capacity for this day
-						$capacity = isset( $capacity_overrides[ $day_date ] )
-							? $capacity_overrides[ $day_date ]
-							: $daily_capacity;
+						// Priority: historical capacity (if bookings exist) > capacity override > default capacity
+						// This ensures we show the capacity that was in effect when bookings were made
+						if ( isset( $bookings[ $day_date ] ) && $bookings[ $day_date ]['historical_capacity'] !== null ) {
+							// Use historical capacity if bookings exist with capacity info
+							$capacity = $bookings[ $day_date ]['historical_capacity'];
+						} elseif ( isset( $capacity_overrides[ $day_date ] ) ) {
+							// Use capacity override
+							$capacity = $capacity_overrides[ $day_date ];
+						} else {
+							// Use default daily capacity
+							$capacity = $daily_capacity;
+						}
 
 						// Get used capacity
 						$used = isset( $bookings[ $day_date ] ) ? $bookings[ $day_date ]['total_lm'] : 0;
@@ -188,13 +199,39 @@ class ScheduleView {
 							$text = "$used/$capacity";
 						}
 
-						echo '<td style="padding: 10px; border: 1px solid #ddd; background: ' . $bg_color . '; vertical-align: top; height: 80px;">';
+						echo '<td style="padding: 10px; border: 1px solid #ddd; background: ' . $bg_color . '; vertical-align: top; height: 80px; position: relative;">';
 						echo '<div style="font-weight: bold; margin-bottom: 5px;">' . $current_day . '</div>';
 						echo '<div style="font-size: 12px;">' . $text . '</div>';
 
+						// Add indicator if using historical capacity
+						if ( isset( $bookings[ $day_date ] ) && $bookings[ $day_date ]['historical_capacity'] !== null ) {
+							$current_cap = isset( $capacity_overrides[ $day_date ] ) ? $capacity_overrides[ $day_date ] : $daily_capacity;
+							if ( $capacity !== $current_cap ) {
+								// Historical capacity differs from current - add visual indicator
+								echo '<div style="font-size: 9px; color: #666; margin-top: 2px;" title="Using historical capacity. Bookings were made when capacity was ' . $capacity . ' LM, but current capacity setting is ' . $current_cap . ' LM.">⚠ Historical</div>';
+							}
+						}
+
 						if ( isset( $bookings[ $day_date ] ) && ! empty( $bookings[ $day_date ]['entries'] ) ) {
-							echo '<div style="font-size: 11px; color: #666; margin-top: 3px;">';
-							echo count( $bookings[ $day_date ]['entries'] ) . ' order' . ( count( $bookings[ $day_date ]['entries'] ) > 1 ? 's' : '' );
+							$entry_count = count( $bookings[ $day_date ]['entries'] );
+							echo '<div class="sfa-day-entries" style="font-size: 11px; color: #0073aa; margin-top: 3px; cursor: help; position: relative;">';
+							echo '<span style="text-decoration: underline dotted;">';
+							echo $entry_count . ' order' . ( $entry_count > 1 ? 's' : '' );
+							echo '</span>';
+
+							// Tooltip with entry details
+							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 10px; min-width: 200px; left: 0; top: 20px; border-radius: 3px;">';
+							echo '<div style="font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #eee;">Entries on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
+							foreach ( $bookings[ $day_date ]['entries'] as $entry_info ) {
+								$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_info['form_id'] . '&lid=' . $entry_info['entry_id'];
+								echo '<div style="padding: 3px 0; border-bottom: 1px solid #f0f0f0;">';
+								echo '<a href="' . esc_url( $workflow_url ) . '" target="_blank" style="color: #0073aa; text-decoration: none; font-weight: 500;">';
+								echo '#' . $entry_info['entry_id'];
+								echo '</a>';
+								echo ' - <span style="color: #666;">' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' ) . '</span>';
+								echo '</div>';
+							}
+							echo '</div>';
 							echo '</div>';
 						}
 
@@ -257,9 +294,12 @@ class ScheduleView {
 					foreach ( $all_entries as $entry_data ):
 						$user = get_userdata( $entry_data['booked_by'] );
 						$username = $user ? $user->display_name : 'Unknown';
+
+						// Build workflow-inbox URL
+						$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id'];
 						?>
 						<tr>
-							<td><a href="<?php echo admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id'] ); ?>">
+							<td><a href="<?php echo esc_url( $workflow_url ); ?>" target="_blank">
 								#<?php echo $entry_data['entry_id']; ?>
 							</a></td>
 							<td><?php echo $entry_data['lm_required']; ?> LM</td>
@@ -267,7 +307,16 @@ class ScheduleView {
 							<td><?php echo date( 'M j, Y', strtotime( $entry_data['install_date'] ) ); ?></td>
 							<td><?php echo esc_html( $username ); ?></td>
 							<td><?php echo date( 'M j, Y g:i a', strtotime( $entry_data['booked_at'] ) ); ?></td>
-							<td><?php echo ucfirst( $entry_data['status'] ); ?></td>
+							<td>
+								<?php
+								$status = $entry_data['status'];
+								$status_color = 'confirmed' === $status ? '#28a745' : ( 'canceled' === $status ? '#dc3545' : '#6c757d' );
+								$status_bg = 'confirmed' === $status ? '#d4edda' : ( 'canceled' === $status ? '#f8d7da' : '#e9ecef' );
+								?>
+								<span style="display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; background: <?php echo $status_bg; ?>; color: <?php echo $status_color; ?>; text-transform: uppercase;">
+									<?php echo esc_html( $status ); ?>
+								</span>
+							</td>
 						</tr>
 					<?php endforeach; ?>
 				</tbody>
@@ -287,7 +336,7 @@ class ScheduleView {
 			$wpdb->prepare(
 				"SELECT entry_id, meta_key, meta_value
 				FROM {$wpdb->prefix}gf_entry_meta
-				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by')
+				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking')
 				AND entry_id IN (
 					SELECT DISTINCT entry_id
 					FROM {$wpdb->prefix}gf_entry_meta
@@ -309,7 +358,8 @@ class ScheduleView {
 			if ( ! isset( $entries[ $entry_id ] ) ) {
 				$entries[ $entry_id ] = [ 'entry_id' => $entry_id ];
 			}
-			$entries[ $entry_id ][ str_replace( '_prod_', '', str_replace( '_install_', 'install_', $row['meta_key'] ) ) ] = $row['meta_value'];
+			$key = str_replace( '_prod_', '', str_replace( '_install_', 'install_', $row['meta_key'] ) );
+			$entries[ $entry_id ][ $key ] = $row['meta_value'];
 		}
 
 		// Organize by date
@@ -332,15 +382,48 @@ class ScheduleView {
 				$entry_id
 			) );
 
+			// Get booking status (default to confirmed for backwards compatibility)
+			$booking_status = isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'confirmed';
+
+			// Get capacity at time of booking
+			$capacity_at_booking = isset( $entry_data['daily_capacity_at_booking'] ) ? (int) $entry_data['daily_capacity_at_booking'] : null;
+
+			// Sync booking status with GravityFlow workflow status
+			// This ensures cancelled workflows show as canceled even if hooks didn't fire
+			$workflow_status = gform_get_meta( $entry_id, 'workflow_final_status' );
+			if ( 'cancelled' === $workflow_status || 'canceled' === $workflow_status ) {
+				if ( 'canceled' !== $booking_status ) {
+					// Workflow is cancelled but booking status doesn't reflect it - fix it now
+					gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
+					$booking_status = 'canceled';
+					error_log( sprintf( 'Production Booking: Synced canceled status for entry %d (workflow was cancelled)', $entry_id ) );
+				}
+			}
+
 			foreach ( $allocation as $date => $lm ) {
 				if ( ! isset( $bookings[ $date ] ) ) {
 					$bookings[ $date ] = [
 						'total_lm' => 0,
 						'entries' => [],
+						'historical_capacity' => null,  // Track the maximum capacity that was in effect for bookings
 					];
 				}
 
-				$bookings[ $date ]['total_lm'] += (int) $lm;
+				// Track historical capacity (use the maximum capacity seen for this date)
+				if ( $capacity_at_booking ) {
+					if ( $bookings[ $date ]['historical_capacity'] === null ) {
+						$bookings[ $date ]['historical_capacity'] = $capacity_at_booking;
+					} else {
+						$bookings[ $date ]['historical_capacity'] = max( $bookings[ $date ]['historical_capacity'], $capacity_at_booking );
+					}
+				}
+
+				// Only count confirmed bookings toward capacity usage
+				// Canceled bookings are shown but don't consume capacity
+				if ( 'canceled' !== $booking_status ) {
+					$bookings[ $date ]['total_lm'] += (int) $lm;
+				}
+
 				$bookings[ $date ]['entries'][] = [
 					'entry_id' => $entry_id,
 					'form_id' => $form_id,
@@ -348,7 +431,7 @@ class ScheduleView {
 					'lm_required' => isset( $entry_data['lm_required'] ) ? $entry_data['lm_required'] : 0,
 					'prod_start' => isset( $entry_data['start_date'] ) ? $entry_data['start_date'] : '',
 					'prod_end' => isset( $entry_data['end_date'] ) ? $entry_data['end_date'] : '',
-					'install_date' => isset( $entry_data['date'] ) ? $entry_data['date'] : '',
+					'install_date' => isset( $entry_data['install_date'] ) ? $entry_data['install_date'] : '',
 					'status' => isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'unknown',
 					'booked_at' => isset( $entry_data['booked_at'] ) ? $entry_data['booked_at'] : '',
 					'booked_by' => isset( $entry_data['booked_by'] ) ? $entry_data['booked_by'] : 0,

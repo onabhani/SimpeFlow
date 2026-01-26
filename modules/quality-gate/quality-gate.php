@@ -1044,7 +1044,7 @@ if ( ! function_exists( 'sfa_qg_report_admin_menu' ) ) {
 	function sfa_qg_report_admin_menu() {
 		$cap = current_user_can( 'gravityflow_workflow' ) ? 'gravityflow_workflow' : 'gravityforms_view_entries';
 		add_submenu_page(
-			'gravityflow-inbox',
+			'simpleflow', // Changed from 'gravityflow-inbox' to 'simpleflow'
 			__( 'Quality Gate Report', 'sfa-quality-gate' ),
 			__( 'Quality Gate Report', 'sfa-quality-gate' ),
 			$cap,

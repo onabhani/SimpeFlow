@@ -21,13 +21,16 @@ class AjaxEndpoints {
 	public function ajax_preview_schedule() {
 		check_ajax_referer( 'sfa_prod_preview', 'nonce' );
 
+		// Get entry ID if editing (to exclude from booking calculations)
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : null;
+
 		// Check if using multi-field or legacy single-field
 		$field_values = isset( $_POST['field_values'] ) ? $_POST['field_values'] : null;
 		$field_configs = isset( $_POST['field_configs'] ) ? $_POST['field_configs'] : null;
 
 		if ( $field_values && $field_configs ) {
 			// Multi-field mode
-			$schedule = BillingStepPreview::calculate_schedule( $field_values, $field_configs );
+			$schedule = BillingStepPreview::calculate_schedule( $field_values, $field_configs, $entry_id );
 		} else {
 			// Legacy mode (single LM field)
 			$lm_required = isset( $_POST['lm_required'] ) ? absint( $_POST['lm_required'] ) : 0;
@@ -38,7 +41,7 @@ class AjaxEndpoints {
 				] );
 			}
 
-			$schedule = BillingStepPreview::calculate_schedule( $lm_required );
+			$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
 		}
 
 		if ( is_wp_error( $schedule ) ) {
