@@ -426,27 +426,36 @@ class BookingHandler {
 					$lm_required
 				) );
 
-				// Recalculate schedule with the new installation date
-				$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
-				$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+				// Recalculate schedule with exception handling
+				try {
+					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
 
-				if ( is_wp_error( $new_schedule ) ) {
+					if ( is_wp_error( $new_schedule ) ) {
+						error_log( sprintf(
+							'Production Booking ERROR: Failed to recalculate schedule for entry %d: %s',
+							$entry_id,
+							$new_schedule->get_error_message()
+						) );
+						// Keep using the original schedule calculated at the beginning
+						// $schedule is already set from line 278 or 294
+					} else {
+						// Use the newly calculated schedule
+						$schedule = $new_schedule;
+						error_log( sprintf(
+							'Production Booking: Successfully recalculated schedule for entry %d - prod_start=%s, prod_end=%s',
+							$entry_id,
+							$schedule['production_start'],
+							$schedule['production_end']
+						) );
+					}
+				} catch ( Exception $e ) {
 					error_log( sprintf(
-						'Production Booking ERROR: Failed to recalculate schedule for entry %d: %s',
+						'Production Booking EXCEPTION: Failed to recalculate schedule for entry %d: %s',
 						$entry_id,
-						$new_schedule->get_error_message()
+						$e->getMessage()
 					) );
-					// Keep using the original schedule calculated at the beginning
-					// $schedule is already set from line 278 or 294
-				} else {
-					// Use the newly calculated schedule
-					$schedule = $new_schedule;
-					error_log( sprintf(
-						'Production Booking: Successfully recalculated schedule for entry %d - prod_start=%s, prod_end=%s',
-						$entry_id,
-						$schedule['production_start'],
-						$schedule['production_end']
-					) );
+					// Keep using the original schedule
 				}
 			} elseif ( $dates_inconsistent ) {
 				// FIX: Stale/inconsistent production dates detected
@@ -460,26 +469,35 @@ class BookingHandler {
 					$lm_required
 				) );
 
-				// Recalculate schedule
-				$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
-				$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+				// Recalculate schedule with exception handling
+				try {
+					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
 
-				if ( is_wp_error( $new_schedule ) ) {
+					if ( is_wp_error( $new_schedule ) ) {
+						error_log( sprintf(
+							'Production Booking ERROR: Failed to fix inconsistent dates for entry %d: %s',
+							$entry_id,
+							$new_schedule->get_error_message()
+						) );
+						// Keep using the original schedule
+					} else {
+						// Use the newly calculated schedule
+						$schedule = $new_schedule;
+						error_log( sprintf(
+							'Production Booking: Successfully fixed inconsistent dates for entry %d - prod_start=%s, prod_end=%s',
+							$entry_id,
+							$schedule['production_start'],
+							$schedule['production_end']
+						) );
+					}
+				} catch ( Exception $e ) {
 					error_log( sprintf(
-						'Production Booking ERROR: Failed to fix inconsistent dates for entry %d: %s',
+						'Production Booking EXCEPTION: Failed to fix inconsistent dates for entry %d: %s',
 						$entry_id,
-						$new_schedule->get_error_message()
+						$e->getMessage()
 					) );
 					// Keep using the original schedule
-				} else {
-					// Use the newly calculated schedule
-					$schedule = $new_schedule;
-					error_log( sprintf(
-						'Production Booking: Successfully fixed inconsistent dates for entry %d - prod_start=%s, prod_end=%s',
-						$entry_id,
-						$schedule['production_start'],
-						$schedule['production_end']
-					) );
 				}
 			}
 
