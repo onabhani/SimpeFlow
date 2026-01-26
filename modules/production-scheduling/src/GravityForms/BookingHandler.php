@@ -393,6 +393,24 @@ class BookingHandler {
 		} else {
 			$use_existing_allocation = false;
 
+			// Log which condition triggered recalculation
+			$recalc_reason = 'new booking';
+			if ( $lm_changed ) {
+				$recalc_reason = 'LM changed';
+			} elseif ( $is_manual_admin_edit && $date_manually_changed ) {
+				$recalc_reason = 'manual admin date change';
+			} elseif ( $dates_inconsistent ) {
+				$recalc_reason = 'dates inconsistent';
+			}
+			error_log( sprintf(
+				'Production Booking: RECALCULATING for entry %d - reason: %s, existing_install=%s, submitted_install=%s, existing_allocation=%s',
+				$entry_id,
+				$recalc_reason,
+				$existing_install_date ? $existing_install_date : 'NULL',
+				$submitted_installation_date ? $submitted_installation_date : 'NULL',
+				$existing_allocation ? 'YES (len=' . strlen( $existing_allocation ) . ')' : 'NO'
+			) );
+
 			if ( $is_manual_admin_edit && $date_manually_changed ) {
 				error_log( sprintf( 'Production Booking: MANUAL ADMIN EDIT detected for entry %d - allowing date change from %s to %s', $entry_id, $existing_install_date, $submitted_installation_date ) );
 			}
@@ -426,16 +444,18 @@ class BookingHandler {
 					$lm_required
 				) );
 
-				// Recalculate schedule with comprehensive error handling
-				// NOTE: Using Throwable to catch both Exception and Error (PHP 7+ fatal errors)
+				// Recalculate schedule via BillingStepPreview (loads all settings, capacity, bookings correctly)
 				try {
-					error_log( sprintf( 'Production Booking DEBUG: About to create Scheduler for entry %d', $entry_id ) );
-					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+					error_log( sprintf(
+						'Production Booking DEBUG: Recalculating via BillingStepPreview for entry %d (manual date change), lm_required=%s, multi_field=%s',
+						$entry_id, $lm_required, ! empty( $production_fields ) ? 'YES' : 'NO'
+					) );
 
-					error_log( sprintf( 'Production Booking DEBUG: Calling calculate_schedule for entry %d', $entry_id ) );
-					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
-
-					error_log( sprintf( 'Production Booking DEBUG: calculate_schedule returned for entry %d', $entry_id ) );
+					if ( ! empty( $production_fields ) ) {
+						$new_schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
+					} else {
+						$new_schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
+					}
 
 					if ( is_wp_error( $new_schedule ) ) {
 						error_log( sprintf(
@@ -444,26 +464,21 @@ class BookingHandler {
 							$new_schedule->get_error_message()
 						) );
 						// Keep using the original schedule calculated at the beginning
-						// $schedule is already set from line 286 or 302
 					} else {
 						// Use the newly calculated schedule
 						$schedule = $new_schedule;
 						error_log( sprintf(
-							'Production Booking: Successfully recalculated schedule for entry %d - prod_start=%s, prod_end=%s',
+							'Production Booking: Successfully recalculated schedule for entry %d (manual date change) - prod_start=%s, prod_end=%s, install_min=%s',
 							$entry_id,
 							$schedule['production_start'],
-							$schedule['production_end']
+							$schedule['production_end'],
+							isset( $schedule['installation_minimum'] ) ? $schedule['installation_minimum'] : 'N/A'
 						) );
 					}
-				} catch ( Throwable $e ) {
-					// Catch both Exception and Error (PHP 7+ fatal errors)
+				} catch ( \Throwable $e ) {
 					error_log( sprintf(
-						'Production Booking THROWABLE: Failed to recalculate schedule for entry %d: %s (Type: %s, File: %s, Line: %d)',
-						$entry_id,
-						$e->getMessage(),
-						get_class( $e ),
-						$e->getFile(),
-						$e->getLine()
+						'Production Booking THROWABLE: Failed to recalculate for entry %d: %s (Type: %s, File: %s, Line: %d)',
+						$entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine()
 					) );
 					// Keep using the original schedule
 				}
@@ -479,16 +494,18 @@ class BookingHandler {
 					$lm_required
 				) );
 
-				// Recalculate schedule with comprehensive error handling
-				// NOTE: Using Throwable to catch both Exception and Error (PHP 7+ fatal errors)
+				// Recalculate schedule via BillingStepPreview (loads all settings, capacity, bookings correctly)
 				try {
-					error_log( sprintf( 'Production Booking DEBUG: About to create Scheduler for inconsistent fix on entry %d', $entry_id ) );
-					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+					error_log( sprintf(
+						'Production Booking DEBUG: Recalculating via BillingStepPreview for entry %d (inconsistent dates fix), lm_required=%s, multi_field=%s',
+						$entry_id, $lm_required, ! empty( $production_fields ) ? 'YES' : 'NO'
+					) );
 
-					error_log( sprintf( 'Production Booking DEBUG: Calling calculate_schedule for inconsistent fix on entry %d', $entry_id ) );
-					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
-
-					error_log( sprintf( 'Production Booking DEBUG: calculate_schedule returned for inconsistent fix on entry %d', $entry_id ) );
+					if ( ! empty( $production_fields ) ) {
+						$new_schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
+					} else {
+						$new_schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
+					}
 
 					if ( is_wp_error( $new_schedule ) ) {
 						error_log( sprintf(
@@ -501,21 +518,17 @@ class BookingHandler {
 						// Use the newly calculated schedule
 						$schedule = $new_schedule;
 						error_log( sprintf(
-							'Production Booking: Successfully fixed inconsistent dates for entry %d - prod_start=%s, prod_end=%s',
+							'Production Booking: Successfully fixed inconsistent dates for entry %d - prod_start=%s, prod_end=%s, install_min=%s',
 							$entry_id,
 							$schedule['production_start'],
-							$schedule['production_end']
+							$schedule['production_end'],
+							isset( $schedule['installation_minimum'] ) ? $schedule['installation_minimum'] : 'N/A'
 						) );
 					}
-				} catch ( Throwable $e ) {
-					// Catch both Exception and Error (PHP 7+ fatal errors)
+				} catch ( \Throwable $e ) {
 					error_log( sprintf(
 						'Production Booking THROWABLE: Failed to fix inconsistent dates for entry %d: %s (Type: %s, File: %s, Line: %d)',
-						$entry_id,
-						$e->getMessage(),
-						get_class( $e ),
-						$e->getFile(),
-						$e->getLine()
+						$entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine()
 					) );
 					// Keep using the original schedule
 				}
@@ -610,6 +623,17 @@ class BookingHandler {
 				$allocation_array = $schedule['allocation'];
 			}
 		}
+
+		// DEBUG: Summary of final values about to be saved
+		error_log( sprintf(
+			'Production Booking SAVE SUMMARY for entry %d: install_date=%s, prod_start=%s, prod_end=%s, use_existing_allocation=%s, allocation_len=%d',
+			$entry_id,
+			$installation_date,
+			isset( $prod_start_date ) ? $prod_start_date : 'NOT SET',
+			isset( $prod_end_date ) ? $prod_end_date : 'NOT SET',
+			$use_existing_allocation ? 'YES' : 'NO',
+			isset( $allocation_to_save ) ? strlen( $allocation_to_save ) : 0
+		) );
 
 		// P1 FIX: Wrap meta updates in database transaction to ensure atomicity
 		// This prevents partial booking saves if database fails mid-operation
@@ -1297,11 +1321,20 @@ class BookingHandler {
 		// Normalize installation date
 		$install_date = $this->normalize_date( $install_date );
 
-		// Calculate schedule for the new installation date
-		$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
-		$schedule = $scheduler->calculate_schedule( $install_date, $lm_required );
+		// Calculate schedule via BillingStepPreview (loads all settings, capacity, bookings correctly)
+		$production_fields = FormSettings::get_production_fields( $form );
+		if ( ! empty( $production_fields ) ) {
+			$field_values = [];
+			foreach ( $production_fields as $pf ) {
+				$fid = $pf['field_id'];
+				$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
+			}
+			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
+		} else {
+			$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
+		}
 
-		if ( ! $schedule || empty( $schedule['allocation'] ) ) {
+		if ( is_wp_error( $schedule ) || ! $schedule || empty( $schedule['allocation'] ) ) {
 			wp_send_json_error( [ 'message' => 'Could not calculate schedule' ] );
 		}
 
