@@ -355,7 +355,27 @@ class BookingHandler {
 			$date_manually_changed ? 'TRUE' : 'FALSE'
 		) );
 
-		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! ( $is_manual_admin_edit && $date_manually_changed ) ) {
+		// FIX: Check if existing production dates are consistent with installation date
+		// If not, force recalculation even if date didn't "change"
+		$dates_inconsistent = false;
+		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
+			// Calculate what the production end date SHOULD be (1 day before installation)
+			$expected_prod_end = date( 'Y-m-d', strtotime( $existing_install_date . ' -1 day' ) );
+
+			// If existing prod_end doesn't match expected, dates are stale/inconsistent
+			if ( $existing_prod_end !== $expected_prod_end ) {
+				$dates_inconsistent = true;
+				error_log( sprintf(
+					'Production Booking: INCONSISTENT DATES detected for entry %d - install=%s, existing_prod_end=%s, expected_prod_end=%s. Will recalculate.',
+					$entry_id,
+					$existing_install_date,
+					$existing_prod_end,
+					$expected_prod_end
+				) );
+			}
+		}
+
+		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! ( $is_manual_admin_edit && $date_manually_changed ) && ! $dates_inconsistent ) {
 			error_log( sprintf( 'Production Booking: PRESERVING existing dates for entry %d (workflow update, not manual edit)', $entry_id ) );
 			// Re-booking with unchanged LM: Keep ALL existing booking data
 			// IGNORE the submitted installation_date entirely - JavaScript may have changed it
@@ -423,6 +443,39 @@ class BookingHandler {
 					$schedule = $new_schedule;
 					error_log( sprintf(
 						'Production Booking: Successfully recalculated schedule for entry %d - prod_start=%s, prod_end=%s',
+						$entry_id,
+						$schedule['production_start'],
+						$schedule['production_end']
+					) );
+				}
+			} elseif ( $dates_inconsistent ) {
+				// FIX: Stale/inconsistent production dates detected
+				// Recalculate schedule to fix inconsistency
+				$installation_date = $existing_install_date; // Keep same install date
+
+				error_log( sprintf(
+					'Production Booking: Fixing inconsistent dates for entry %d - recalculating with install_date=%s (LM=%s)',
+					$entry_id,
+					$installation_date,
+					$lm_required
+				) );
+
+				// Recalculate schedule
+				$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+				$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+
+				if ( is_wp_error( $new_schedule ) ) {
+					error_log( sprintf(
+						'Production Booking ERROR: Failed to fix inconsistent dates for entry %d: %s',
+						$entry_id,
+						$new_schedule->get_error_message()
+					) );
+					// Keep using the original schedule
+				} else {
+					// Use the newly calculated schedule
+					$schedule = $new_schedule;
+					error_log( sprintf(
+						'Production Booking: Successfully fixed inconsistent dates for entry %d - prod_start=%s, prod_end=%s',
 						$entry_id,
 						$schedule['production_start'],
 						$schedule['production_end']
