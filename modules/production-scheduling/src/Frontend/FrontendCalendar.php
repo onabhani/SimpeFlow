@@ -154,13 +154,33 @@ class FrontendCalendar {
 					vertical-align: middle;
 					border: 1px solid #ddd;
 				}
+				.sfa-day-entries:hover .sfa-entries-tooltip {
+					display: block !important;
+				}
 			</style>
+			<script>
+			jQuery(document).ready(function($) {
+				// Show/hide entry tooltips on hover
+				$('.sfa-day-entries').hover(
+					function() {
+						$(this).find('.sfa-entries-tooltip').show();
+					},
+					function() {
+						$(this).find('.sfa-entries-tooltip').hide();
+					}
+				);
+			});
+			</script>
 
 			<?php $this->render_month_navigation( $date ); ?>
 
 			<?php $this->render_calendar( $date, $bookings, $daily_capacity, $capacity_overrides, $off_days, $holidays ); ?>
 
 			<?php $this->render_legend(); ?>
+
+			<hr style="margin: 40px 0;">
+
+			<?php $this->render_bookings_list( $bookings, $date ); ?>
 		</div>
 		<?php
 		return ob_get_clean();
@@ -274,8 +294,24 @@ class FrontendCalendar {
 
 						if ( isset( $bookings[ $day_date ] ) && ! empty( $bookings[ $day_date ]['entries'] ) ) {
 							$entry_count = count( $bookings[ $day_date ]['entries'] );
-							echo '<div style="font-size: 12px; color: #666; margin-top: 5px;">';
+							echo '<div class="sfa-day-entries" style="font-size: 12px; color: #0073aa; margin-top: 5px; cursor: help; position: relative;">';
+							echo '<span style="text-decoration: underline dotted;">';
 							echo $entry_count . ' order' . ( $entry_count > 1 ? 's' : '' );
+							echo '</span>';
+
+							// Tooltip with entry details
+							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 10px; min-width: 200px; left: 0; top: 20px; border-radius: 3px;">';
+							echo '<div style="font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #eee;">Orders on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
+							foreach ( $bookings[ $day_date ]['entries'] as $entry_info ) {
+								echo '<div style="padding: 3px 0; border-bottom: 1px solid #f0f0f0;">';
+								echo '<span style="color: #0073aa; font-weight: 500;">#' . $entry_info['entry_id'] . '</span>';
+								echo ' - <span style="color: #666;">' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' ) . '</span>';
+								if ( ! empty( $entry_info['form_name'] ) ) {
+									echo ' <span style="font-size: 11px; color: #999;">(' . esc_html( $entry_info['form_name'] ) . ')</span>';
+								}
+								echo '</div>';
+							}
+							echo '</div>';
 							echo '</div>';
 						}
 
@@ -317,6 +353,139 @@ class FrontendCalendar {
 					Off Day/Holiday
 				</div>
 			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Render bookings list table
+	 */
+	private function render_bookings_list( $bookings, $date ) {
+		// Flatten bookings into a list of entries
+		$entries_list = [];
+
+		foreach ( $bookings as $day_date => $day_info ) {
+			if ( empty( $day_info['entries'] ) ) {
+				continue;
+			}
+
+			foreach ( $day_info['entries'] as $entry_info ) {
+				$entry_id = $entry_info['entry_id'];
+
+				if ( ! isset( $entries_list[ $entry_id ] ) ) {
+					// Load full booking data for this entry
+					$install_date = gform_get_meta( $entry_id, '_install_date' );
+					$prod_start = gform_get_meta( $entry_id, '_prod_start_date' );
+					$prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
+					$lm_required = gform_get_meta( $entry_id, '_prod_lm_required' );
+					$booked_at = gform_get_meta( $entry_id, '_prod_booked_at' );
+					$booked_by = gform_get_meta( $entry_id, '_prod_booked_by' );
+
+					$entries_list[ $entry_id ] = [
+						'entry_id' => $entry_id,
+						'form_name' => $entry_info['form_name'],
+						'install_date' => $install_date,
+						'prod_start' => $prod_start,
+						'prod_end' => $prod_end,
+						'lm_required' => $lm_required,
+						'booked_at' => $booked_at,
+						'booked_by' => $booked_by,
+					];
+				}
+			}
+		}
+
+		// Sort by installation date
+		uasort( $entries_list, function( $a, $b ) {
+			return strcmp( $a['install_date'], $b['install_date'] );
+		} );
+
+		?>
+		<div class="sfa-prod-bookings-list">
+			<h3 style="margin-bottom: 20px;">Production Bookings (<?php echo $date->format( 'F Y' ); ?>)</h3>
+
+			<?php if ( empty( $entries_list ) ): ?>
+				<p style="color: #666; font-style: italic;">No production bookings for this month.</p>
+			<?php else: ?>
+				<style>
+					.sfa-bookings-table {
+						width: 100%;
+						border-collapse: collapse;
+						background: white;
+						box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+					}
+					.sfa-bookings-table th {
+						background: #f5f5f5;
+						padding: 12px;
+						text-align: left;
+						font-weight: 600;
+						border-bottom: 2px solid #ddd;
+					}
+					.sfa-bookings-table td {
+						padding: 12px;
+						border-bottom: 1px solid #eee;
+					}
+					.sfa-bookings-table tr:hover {
+						background: #f9f9f9;
+					}
+				</style>
+				<table class="sfa-bookings-table">
+					<thead>
+						<tr>
+							<th>Entry #</th>
+							<th>Form</th>
+							<th>LM Required</th>
+							<th>Production Dates</th>
+							<th>Install Date</th>
+							<th>Booked At</th>
+							<th>Booked By</th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ( $entries_list as $entry_data ): ?>
+							<tr>
+								<td>
+									<strong>#<?php echo $entry_data['entry_id']; ?></strong>
+								</td>
+								<td><?php echo esc_html( $entry_data['form_name'] ); ?></td>
+								<td><?php echo esc_html( $entry_data['lm_required'] ); ?> LM</td>
+								<td>
+									<?php if ( $entry_data['prod_start'] && $entry_data['prod_end'] ): ?>
+										<?php echo date( 'M j', strtotime( $entry_data['prod_start'] ) ); ?> -
+										<?php echo date( 'M j, Y', strtotime( $entry_data['prod_end'] ) ); ?>
+									<?php else: ?>
+										<span style="color: #999;">—</span>
+									<?php endif; ?>
+								</td>
+								<td>
+									<?php if ( $entry_data['install_date'] ): ?>
+										<?php echo date( 'M j, Y', strtotime( $entry_data['install_date'] ) ); ?>
+									<?php else: ?>
+										<span style="color: #999;">—</span>
+									<?php endif; ?>
+								</td>
+								<td>
+									<?php if ( $entry_data['booked_at'] ): ?>
+										<?php echo date( 'M j, Y g:i a', strtotime( $entry_data['booked_at'] ) ); ?>
+									<?php else: ?>
+										<span style="color: #999;">—</span>
+									<?php endif; ?>
+								</td>
+								<td>
+									<?php if ( $entry_data['booked_by'] ): ?>
+										<?php
+										$user = get_userdata( $entry_data['booked_by'] );
+										echo $user ? esc_html( $user->display_name ) : 'User #' . $entry_data['booked_by'];
+										?>
+									<?php else: ?>
+										<span style="color: #999;">—</span>
+									<?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
 		</div>
 		<?php
 	}

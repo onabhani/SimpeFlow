@@ -332,17 +332,20 @@ class ScheduleView {
 		global $wpdb;
 
 		// Query all entries with production bookings
+		// FIX: Filter out trashed/spam entries like frontend does
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT entry_id, meta_key, meta_value
 				FROM {$wpdb->prefix}gf_entry_meta
 				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking')
 				AND entry_id IN (
-					SELECT DISTINCT entry_id
-					FROM {$wpdb->prefix}gf_entry_meta
-					WHERE meta_key = '_prod_start_date'
-					AND meta_value >= %s
-					AND meta_value <= %s
+					SELECT DISTINCT em.entry_id
+					FROM {$wpdb->prefix}gf_entry_meta em
+					INNER JOIN {$wpdb->prefix}gf_entry e ON em.entry_id = e.id
+					WHERE em.meta_key = '_prod_start_date'
+					AND em.meta_value >= %s
+					AND em.meta_value <= %s
+					AND e.status = 'active'
 				)
 				ORDER BY entry_id",
 				$start_date,

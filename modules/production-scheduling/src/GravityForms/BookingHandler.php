@@ -442,13 +442,13 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
 			gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
 
-			// FIX: Store original entry creator, not current user (who might be editing later)
-			// Only set booked_by if it's not already set (preserve original creator)
+			// FIX: Store who submitted the billing step (current user when booking is first created)
+			// Only set booked_by if it's not already set (preserve original billing submitter)
 			$existing_booked_by = gform_get_meta( $entry_id, '_prod_booked_by' );
 			if ( ! $existing_booked_by ) {
-				// Use entry creator (original submitter), fallback to current user if not available
-				$entry_creator = isset( $entry['created_by'] ) ? $entry['created_by'] : get_current_user_id();
-				gform_update_meta( $entry_id, '_prod_booked_by', $entry_creator );
+				// Use current user = person who submitted the billing step
+				// (NOT entry creator, as creator is who submitted the invoice)
+				gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
 			}
 
 			// Store the daily capacity at time of booking for historical tracking
@@ -851,7 +851,13 @@ class BookingHandler {
 	}
 
 	/**
-	 * Normalize date format from DD/MM/YYYY or YYYY-MM-DD to YYYY-MM-DD
+	 * Normalize date format to YYYY-MM-DD
+	 *
+	 * Handles multiple input formats:
+	 * - YYYY-MM-DD (already normalized)
+	 * - MM/DD/YYYY (US format - Gravity Forms default)
+	 * - DD/MM/YYYY (European format)
+	 * - M/D/YYYY (single digit month/day)
 	 *
 	 * @param string $date_str
 	 * @return string
@@ -859,24 +865,73 @@ class BookingHandler {
 	private function normalize_date( $date_str ) {
 		$date_str = trim( $date_str );
 
+		// Log original input for debugging
+		error_log( sprintf( 'normalize_date INPUT: "%s"', $date_str ) );
+
 		// Check if already in YYYY-MM-DD format
 		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_str ) ) {
+			error_log( sprintf( 'normalize_date OUTPUT (already normalized): "%s"', $date_str ) );
 			return $date_str;
 		}
 
-		// Check if in DD/MM/YYYY format
-		if ( preg_match( '/^(\d{2})\/(\d{2})\/(\d{4})$/', $date_str, $matches ) ) {
-			// Convert DD/MM/YYYY to YYYY-MM-DD
-			return $matches[3] . '-' . $matches[2] . '-' . $matches[1];
+		// Handle M/D/YYYY or MM/DD/YYYY format (1 or 2 digits for month/day)
+		if ( preg_match( '/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $date_str, $matches ) ) {
+			$part1 = (int) $matches[1];
+			$part2 = (int) $matches[2];
+			$year = $matches[3];
+
+			// Determine if MM/DD/YYYY or DD/MM/YYYY based on values
+			// If part1 > 12, it must be day (DD/MM/YYYY format)
+			// If part2 > 12, it must be day (MM/DD/YYYY format)
+			// Otherwise, assume MM/DD/YYYY (US format - Gravity Forms default)
+
+			if ( $part1 > 12 ) {
+				// Must be DD/MM/YYYY (day is > 12)
+				$month = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+				$day = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+				error_log( sprintf( 'normalize_date: Detected DD/MM/YYYY format (%d/%d/%s)', $part1, $part2, $year ) );
+			} elseif ( $part2 > 12 ) {
+				// Must be MM/DD/YYYY (day is > 12)
+				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+				$day = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+				error_log( sprintf( 'normalize_date: Detected MM/DD/YYYY format (%d/%d/%s)', $part1, $part2, $year ) );
+			} else {
+				// Ambiguous - could be either format
+				// Default to MM/DD/YYYY (US format - Gravity Forms default)
+				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+				$day = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+				error_log( sprintf( 'normalize_date: Ambiguous date, assuming MM/DD/YYYY (%d/%d/%s)', $part1, $part2, $year ) );
+			}
+
+			$normalized = $year . '-' . $month . '-' . $day;
+
+			// Validate the resulting date
+			$timestamp = strtotime( $normalized );
+			if ( $timestamp === false ) {
+				error_log( sprintf( 'normalize_date ERROR: Invalid date after normalization: "%s"', $normalized ) );
+				// Try strtotime as fallback
+				$timestamp = strtotime( $date_str );
+				if ( $timestamp !== false ) {
+					$normalized = date( 'Y-m-d', $timestamp );
+					error_log( sprintf( 'normalize_date: Fallback strtotime worked: "%s"', $normalized ) );
+				}
+			} else {
+				error_log( sprintf( 'normalize_date OUTPUT: "%s" (validated)', $normalized ) );
+			}
+
+			return $normalized;
 		}
 
 		// Try to parse with strtotime as fallback
 		$timestamp = strtotime( $date_str );
 		if ( $timestamp !== false ) {
-			return date( 'Y-m-d', $timestamp );
+			$normalized = date( 'Y-m-d', $timestamp );
+			error_log( sprintf( 'normalize_date OUTPUT (strtotime fallback): "%s"', $normalized ) );
+			return $normalized;
 		}
 
 		// Return as-is if we can't parse it
+		error_log( sprintf( 'normalize_date ERROR: Could not parse date, returning as-is: "%s"', $date_str ) );
 		return $date_str;
 	}
 
