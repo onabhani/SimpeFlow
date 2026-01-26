@@ -174,7 +174,8 @@ class BookingHandler {
 		for ( $attempt = 0; $attempt < $max_lock_attempts; $attempt++ ) {
 			// Create a lock key for this booking operation
 			// Using current timestamp in key ensures different operations get different locks
-			$lock_key = 'sfa_prod_booking_lock_' . date( 'Y-m-d-H' );
+			// P3 FIX: Use WordPress timezone function
+			$lock_key = 'sfa_prod_booking_lock_' . current_time( 'Y-m-d-H' );
 
 			// Try to acquire lock (30 second expiration for safety)
 			if ( false === get_transient( $lock_key ) ) {
@@ -425,26 +426,55 @@ class BookingHandler {
 			$allocation_array = $schedule['allocation'];
 		}
 
-		gform_update_meta( $entry_id, '_prod_slots_allocation', $allocation_to_save );
-		gform_update_meta( $entry_id, '_prod_start_date', $prod_start_date );
-		gform_update_meta( $entry_id, '_prod_end_date', $prod_end_date );
-		gform_update_meta( $entry_id, '_install_date', $installation_date );
-		gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
-		gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
-		gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
+		// P1 FIX: Wrap meta updates in database transaction to ensure atomicity
+		// This prevents partial booking saves if database fails mid-operation
+		global $wpdb;
+		$wpdb->query( 'START TRANSACTION' );
 
-		error_log( sprintf(
-			'Production Booking SAVED for entry %d: install_date=%s, prod_start=%s, prod_end=%s, lm=%s',
-			$entry_id,
-			$installation_date,
-			$prod_start_date,
-			$prod_end_date,
-			$lm_required
-		) );
+		try {
+			gform_update_meta( $entry_id, '_prod_slots_allocation', $allocation_to_save );
+			gform_update_meta( $entry_id, '_prod_start_date', $prod_start_date );
+			gform_update_meta( $entry_id, '_prod_end_date', $prod_end_date );
+			gform_update_meta( $entry_id, '_install_date', $installation_date );
+			gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
+			gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
+			gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
 
-		// Store the daily capacity at time of booking for historical tracking
-		$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
-		gform_update_meta( $entry_id, '_prod_daily_capacity_at_booking', $daily_capacity_at_booking );
+			// Store the daily capacity at time of booking for historical tracking
+			$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+			gform_update_meta( $entry_id, '_prod_daily_capacity_at_booking', $daily_capacity_at_booking );
+
+			// All updates successful - commit transaction
+			$wpdb->query( 'COMMIT' );
+
+			error_log( sprintf(
+				'Production Booking SAVED for entry %d: install_date=%s, prod_start=%s, prod_end=%s, lm=%s',
+				$entry_id,
+				$installation_date,
+				$prod_start_date,
+				$prod_end_date,
+				$lm_required
+			) );
+
+			// P2 FIX: Audit log for booking creation
+			$this->log_booking_audit( $entry_id, 'booking_created', [
+				'install_date' => $installation_date,
+				'prod_start' => $prod_start_date,
+				'prod_end' => $prod_end_date,
+				'lm_required' => $lm_required,
+				'capacity_at_booking' => $daily_capacity_at_booking,
+			] );
+
+		} catch ( Exception $e ) {
+			// Transaction failed - rollback all changes
+			$wpdb->query( 'ROLLBACK' );
+			error_log( sprintf(
+				'Production Booking FAILED for entry %d: %s',
+				$entry_id,
+				$e->getMessage()
+			) );
+			throw $e; // Re-throw to trigger outer finally block for lock release
+		}
 
 		// Clear cache for affected dates
 		if ( is_array( $allocation_array ) ) {
@@ -518,13 +548,23 @@ class BookingHandler {
 	public function handle_entry_status_change( $entry_id, $status, $old_status ) {
 		error_log( sprintf( 'Production Booking: Entry %d status changed from %s to %s', $entry_id, $old_status, $status ) );
 
-		// If entry is being trashed or marked as spam, remove the booking
+		// P2 AUDIT: Log status change
+		$this->log_booking_audit( $entry_id, 'status_changed', [
+			'old_status' => $old_status,
+			'new_status' => $status,
+		] );
+
+		// P2 FIX: If entry is being trashed or marked as spam, remove the booking
+		// This handles both individual and BULK trash/spam operations
 		if ( in_array( $status, [ 'trash', 'spam' ], true ) ) {
 			error_log( sprintf( 'Production Booking: Removing booking for trashed/spam entry %d', $entry_id ) );
 			$this->handle_entry_deletion( $entry_id );
 		}
 
-		// If entry is being restored, we don't recreate booking (user must go through workflow again)
+		// P3 FIX: If entry is being restored from trash, restore the booking if it existed
+		if ( 'active' === $status && in_array( $old_status, [ 'trash', 'spam' ], true ) ) {
+			$this->handle_entry_restore( $entry_id );
+		}
 	}
 
 	/**
@@ -655,6 +695,37 @@ class BookingHandler {
 			return; // No booking to remove
 		}
 
+		// P2 FIX: Check workflow state before freeing capacity
+		// Only free capacity if workflow is complete or canceled
+		$workflow_status = gform_get_meta( $entry_id, 'workflow_final_status' );
+		$booking_status = gform_get_meta( $entry_id, '_prod_booking_status' );
+
+		// Don't free capacity if workflow is still active (not complete/canceled)
+		// Active statuses: pending, processing, approved, etc.
+		if ( $workflow_status && ! in_array( $workflow_status, [ 'complete', 'cancelled', 'canceled' ], true ) ) {
+			error_log( sprintf(
+				'Production Booking: Cannot delete booking for entry %d - workflow still active: %s',
+				$entry_id,
+				$workflow_status
+			) );
+
+			// P2 AUDIT: Log blocked deletion attempt
+			$this->log_booking_audit( $entry_id, 'deletion_blocked', [
+				'workflow_status' => $workflow_status,
+				'booking_status' => $booking_status,
+				'reason' => 'Workflow not complete',
+			] );
+
+			return; // Don't delete booking if workflow is still active
+		}
+
+		// P2 AUDIT: Log booking deletion
+		$this->log_booking_audit( $entry_id, 'booking_deleted', [
+			'workflow_status' => $workflow_status,
+			'booking_status' => $booking_status,
+			'allocation' => $existing_allocation,
+		] );
+
 		// Clear cache for allocated dates
 		$allocation = json_decode( $existing_allocation, true );
 		if ( is_array( $allocation ) ) {
@@ -682,6 +753,65 @@ class BookingHandler {
 
 		// Allow other plugins to react
 		do_action( 'sfa_production_booking_deleted', $entry_id );
+	}
+
+	/**
+	 * P3 FIX: Handle entry restore from trash
+	 *
+	 * When an entry is restored from trash, this function:
+	 * 1. Checks if booking still exists (may not have been deleted if workflow was active)
+	 * 2. Restores booking status if it exists
+	 * 3. Does NOT recreate booking if it was deleted (user must resubmit)
+	 *
+	 * @param int $entry_id The entry ID
+	 */
+	public function handle_entry_restore( $entry_id ) {
+		// Check if booking still exists
+		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+
+		if ( $existing_allocation ) {
+			// Booking was preserved during trash (workflow was likely active)
+			// Restore the booking status
+			$booking_status = gform_get_meta( $entry_id, '_prod_booking_status' );
+
+			// If booking was marked as trashed/deleted, restore it to confirmed
+			if ( in_array( $booking_status, [ 'trashed', 'deleted', 'canceled' ], true ) ) {
+				gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
+				error_log( sprintf(
+					'Production Booking: Restored booking for entry %d (status was: %s)',
+					$entry_id,
+					$booking_status
+				) );
+
+				// P2 AUDIT: Log booking restore
+				$this->log_booking_audit( $entry_id, 'booking_restored', [
+					'previous_status' => $booking_status,
+					'new_status' => 'confirmed',
+					'allocation' => $existing_allocation,
+				] );
+
+				// Clear cache
+				$allocation = json_decode( $existing_allocation, true );
+				if ( is_array( $allocation ) ) {
+					foreach ( array_keys( $allocation ) as $date ) {
+						$year_month = substr( $date, 0, 7 );
+						wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+					}
+				}
+			}
+		} else {
+			// Booking was deleted - don't recreate it
+			// User must go through the workflow again to create a new booking
+			error_log( sprintf(
+				'Production Booking: Entry %d restored but booking was deleted - user must resubmit',
+				$entry_id
+			) );
+
+			// P2 AUDIT: Log that booking was not restored
+			$this->log_booking_audit( $entry_id, 'restore_no_booking', [
+				'reason' => 'Booking was deleted during trash',
+			] );
+		}
 	}
 
 	/**
@@ -810,5 +940,56 @@ class BookingHandler {
 				count( $overbooked_dates )
 			) );
 		}
+	}
+
+	/**
+	 * P2 FIX: Log audit trail for booking operations
+	 *
+	 * Logs important booking operations for security audit and debugging.
+	 * This helps track:
+	 * - Who created/modified/deleted bookings
+	 * - When capacity was changed
+	 * - Admin actions that bypassed validation
+	 * - Blocked operations (e.g., deletion of active workflow entries)
+	 *
+	 * @param int    $entry_id The entry ID
+	 * @param string $action   The action type (booking_created, booking_updated, booking_deleted, etc.)
+	 * @param array  $data     Additional data to log
+	 */
+	private function log_booking_audit( $entry_id, $action, $data = [] ) {
+		$user_id = get_current_user_id();
+		$user_info = get_userdata( $user_id );
+		$username = $user_info ? $user_info->user_login : 'unknown';
+
+		// Build audit entry
+		$audit_entry = [
+			'timestamp' => current_time( 'mysql' ),
+			'entry_id' => $entry_id,
+			'user_id' => $user_id,
+			'username' => $username,
+			'action' => $action,
+			'data' => $data,
+			'ip_address' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+			'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+		];
+
+		// Log to error log for immediate visibility
+		error_log( sprintf(
+			'PRODUCTION AUDIT: Entry %d - %s by user %d (%s) - %s',
+			$entry_id,
+			$action,
+			$user_id,
+			$username,
+			wp_json_encode( $data )
+		) );
+
+		// Store in WordPress option for persistent audit trail (last 100 entries)
+		$audit_log = get_option( 'sfa_prod_audit_log', [] );
+		array_unshift( $audit_log, $audit_entry ); // Add to beginning
+		$audit_log = array_slice( $audit_log, 0, 100 ); // Keep only last 100 entries
+		update_option( 'sfa_prod_audit_log', $audit_log, false ); // false = don't autoload
+
+		// Allow other plugins to hook into audit events
+		do_action( 'sfa_production_booking_audit', $entry_id, $action, $data, $audit_entry );
 	}
 }

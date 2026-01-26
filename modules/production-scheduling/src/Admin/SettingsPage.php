@@ -316,7 +316,8 @@ class SettingsPage {
 			<?php if ( $earliest_start ): ?>
 				<p><strong>Next Available Production Slot:</strong> <?php echo date( 'F j, Y', strtotime( $earliest_start ) ); ?></p>
 			<?php else: ?>
-				<p><strong>Next Available Production Slot:</strong> Today (<?php echo date( 'F j, Y' ); ?>)</p>
+				<!-- P3 FIX: Use WordPress timezone function for current date -->
+				<p><strong>Next Available Production Slot:</strong> Today (<?php echo current_time( 'F j, Y' ); ?>)</p>
 			<?php endif; ?>
 
 			<hr>

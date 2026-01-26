@@ -52,7 +52,8 @@ class ScheduleView {
 		}
 
 		// Get current month or requested month
-		$month = isset( $_GET['month'] ) ? sanitize_text_field( $_GET['month'] ) : date( 'Y-m' );
+		// P3 FIX: Use WordPress timezone function for current month
+		$month = isset( $_GET['month'] ) ? sanitize_text_field( $_GET['month'] ) : current_time( 'Y-m' );
 
 		// Parse month
 		$date = new \DateTime( $month . '-01' );
