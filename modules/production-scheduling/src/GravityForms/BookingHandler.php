@@ -385,17 +385,31 @@ class BookingHandler {
 				}
 			}
 
-			// Get production dates from calculated schedule
+			// Get production dates from the freshly calculated schedule.
+			// IMPORTANT: Do NOT read dates back from the entry's form
+			// fields here — they still contain the OLD values when only
+			// the installation date was changed.  Instead, write the
+			// recalculated dates INTO those fields so the entry stays
+			// in sync with the new allocation.
 			$prod_start_date = $schedule['production_start'];
 			$prod_end_date = $schedule['production_end'];
 
-			if ( $prod_start_field_id && isset( $entry[ $prod_start_field_id ] ) && $entry[ $prod_start_field_id ] ) {
-				// Convert DD/MM/YYYY to YYYY-MM-DD if needed
-				$prod_start_date = $this->normalize_date( $entry[ $prod_start_field_id ] );
+			error_log( sprintf(
+				'Production Booking: Recalculated schedule for entry %d - prod_start=%s, prod_end=%s, install=%s',
+				$entry_id, $prod_start_date, $prod_end_date, $installation_date
+			) );
+
+			if ( $prod_start_field_id ) {
+				\GFAPI::update_entry_field( $entry_id, $prod_start_field_id, $prod_start_date );
 			}
-			if ( $prod_end_field_id && isset( $entry[ $prod_end_field_id ] ) && $entry[ $prod_end_field_id ] ) {
-				// Convert DD/MM/YYYY to YYYY-MM-DD if needed
-				$prod_end_date = $this->normalize_date( $entry[ $prod_end_field_id ] );
+			if ( $prod_end_field_id ) {
+				\GFAPI::update_entry_field( $entry_id, $prod_end_field_id, $prod_end_date );
+			}
+			// Also sync the installation date field if it was adjusted
+			// (e.g. LM changed and the new minimum is later than the
+			// submitted date).
+			if ( $install_field_id && $installation_date !== $submitted_installation_date ) {
+				\GFAPI::update_entry_field( $entry_id, $install_field_id, $installation_date );
 			}
 		}
 
