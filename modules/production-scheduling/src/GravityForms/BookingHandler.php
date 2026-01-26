@@ -163,6 +163,39 @@ class BookingHandler {
 	 */
 	private function process_production_booking( $entry, $form ) {
 
+		// CRITICAL: Acquire distributed lock to prevent race conditions
+		// Multiple concurrent bookings can cause overbooking without this lock
+		$lock_acquired = false;
+		$lock_key = null;
+		$max_lock_attempts = 10;
+		$lock_wait_ms = 100;
+
+		// Try to acquire lock with retry logic
+		for ( $attempt = 0; $attempt < $max_lock_attempts; $attempt++ ) {
+			// Create a lock key for this booking operation
+			// Using current timestamp in key ensures different operations get different locks
+			$lock_key = 'sfa_prod_booking_lock_' . date( 'Y-m-d-H' );
+
+			// Try to acquire lock (30 second expiration for safety)
+			if ( false === get_transient( $lock_key ) ) {
+				set_transient( $lock_key, time(), 30 );
+				$lock_acquired = true;
+				error_log( sprintf( 'Production Booking: Lock acquired for entry %d (attempt %d)', $entry['id'], $attempt + 1 ) );
+				break;
+			}
+
+			// Lock is held by another process, wait and retry
+			usleep( $lock_wait_ms * 1000 );
+			$lock_wait_ms *= 2; // Exponential backoff
+		}
+
+		if ( ! $lock_acquired ) {
+			error_log( sprintf( 'Production Booking: FAILED to acquire lock for entry %d after %d attempts', $entry['id'], $max_lock_attempts ) );
+			return; // Abort booking to prevent race condition
+		}
+
+		try {
+
 		$lm_field_id = FormSettings::get_lm_field_id( $form );
 		$install_field_id = FormSettings::get_install_field_id( $form );
 		$prod_start_field_id = FormSettings::get_prod_start_field_id( $form );
@@ -264,7 +297,24 @@ class BookingHandler {
 				$entry_id,
 				$schedule->get_error_message()
 			) );
+
+			// CRITICAL: If admin is manually creating/editing entry, show warning
+			if ( is_admin() && ! wp_doing_ajax() ) {
+				add_action( 'admin_notices', function() use ( $schedule, $entry_id ) {
+					echo '<div class="notice notice-error is-dismissible">';
+					echo '<p><strong>Production Scheduling Error (Entry #' . $entry_id . '):</strong> ' . esc_html( $schedule->get_error_message() ) . '</p>';
+					echo '<p>This usually means production capacity is fully booked for the next 365 days. The entry was NOT given a production schedule.</p>';
+					echo '</div>';
+				} );
+			}
+
 			return;
+		}
+
+		// CRITICAL SECURITY: Check if admin is bypassing capacity validation
+		// Validation is skipped in admin area, so we need to warn about overbooking
+		if ( is_admin() && ! wp_doing_ajax() && ! defined( 'DOING_CRON' ) ) {
+			$this->check_admin_overbooking_warning( $schedule, $entry_id );
 		}
 
 		// Check if this is a re-booking (existing booking meta)
@@ -409,6 +459,14 @@ class BookingHandler {
 
 		// Allow other plugins to react to booking
 		do_action( 'sfa_production_booking_saved', $entry_id, $schedule, $installation_date );
+
+		} finally {
+			// CRITICAL: Always release lock, even if error occurs
+			if ( $lock_acquired && $lock_key ) {
+				delete_transient( $lock_key );
+				error_log( sprintf( 'Production Booking: Lock released for entry %d', $entry['id'] ) );
+			}
+		}
 	}
 
 	/**
@@ -679,5 +737,78 @@ class BookingHandler {
 
 		// Return as-is if we can't parse it
 		return $date_str;
+	}
+
+	/**
+	 * Check if admin is creating an overbooking and show warning
+	 *
+	 * CRITICAL SECURITY: This prevents silent overbooking when admins manually
+	 * create/edit entries, since validation is bypassed in admin area.
+	 *
+	 * @param array $schedule The calculated schedule
+	 * @param int   $entry_id The entry ID
+	 */
+	private function check_admin_overbooking_warning( $schedule, $entry_id ) {
+		if ( ! isset( $schedule['allocation'] ) || ! is_array( $schedule['allocation'] ) ) {
+			return;
+		}
+
+		// Load current capacity settings
+		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
+		$working_days = json_decode( $working_days_json, true );
+		$all_days = [ 0, 1, 2, 3, 4, 5, 6 ];
+		$off_days = array_values( array_diff( $all_days, $working_days ) );
+
+		// Load existing bookings for the dates in this schedule
+		$dates_in_schedule = array_keys( $schedule['allocation'] );
+		$start_date = min( $dates_in_schedule );
+		$end_date = max( $dates_in_schedule );
+
+		$booking_data = BillingStepPreview::load_existing_bookings( $start_date, $end_date, $entry_id );
+		$existing_bookings = $booking_data['bookings'];
+
+		// Check each date in the allocation
+		$overbooked_dates = [];
+		foreach ( $schedule['allocation'] as $date => $lm_to_add ) {
+			$existing_lm = isset( $existing_bookings[ $date ] ) ? $existing_bookings[ $date ] : 0;
+			$new_total = $existing_lm + $lm_to_add;
+
+			if ( $new_total > $daily_capacity ) {
+				$overbooked_dates[] = [
+					'date' => $date,
+					'existing' => $existing_lm,
+					'new_total' => $new_total,
+					'capacity' => $daily_capacity,
+					'overage' => $new_total - $daily_capacity,
+				];
+			}
+		}
+
+		// Show warning if overbooking detected
+		if ( ! empty( $overbooked_dates ) ) {
+			add_action( 'admin_notices', function() use ( $overbooked_dates, $entry_id ) {
+				echo '<div class="notice notice-warning is-dismissible">';
+				echo '<p><strong>⚠️ CAPACITY WARNING (Entry #' . $entry_id . '):</strong></p>';
+				echo '<p>This booking EXCEEDS production capacity on the following dates:</p>';
+				echo '<ul style="list-style: disc; margin-left: 20px;">';
+				foreach ( $overbooked_dates as $info ) {
+					$date_formatted = date( 'F j, Y', strtotime( $info['date'] ) );
+					echo '<li><strong>' . esc_html( $date_formatted ) . '</strong>: ';
+					echo esc_html( $info['new_total'] ) . '/' . esc_html( $info['capacity'] ) . ' LM ';
+					echo '(' . esc_html( $info['overage'] ) . ' LM over capacity)</li>';
+				}
+				echo '</ul>';
+				echo '<p><em>The booking was saved anyway because you are an administrator. ';
+				echo 'Regular users would be blocked from making this booking.</em></p>';
+				echo '</div>';
+			} );
+
+			error_log( sprintf(
+				'Production Booking: ADMIN OVERBOOKING WARNING for entry %d on %d dates',
+				$entry_id,
+				count( $overbooked_dates )
+			) );
+		}
 	}
 }

@@ -187,6 +187,8 @@ class BillingStepPreview {
 	/**
 	 * Load existing bookings from entry meta with capacity tracking
 	 *
+	 * Made public for use by BookingHandler admin warnings
+	 *
 	 * @param string   $start_date
 	 * @param string   $end_date
 	 * @param int|null $exclude_entry_id Entry ID to exclude (for edit mode)
@@ -196,7 +198,7 @@ class BillingStepPreview {
 	 *   'capacity_per_date' => [date => capacity]
 	 * ]
 	 */
-	private static function load_existing_bookings( string $start_date, string $end_date, $exclude_entry_id = null ): array {
+	public static function load_existing_bookings( string $start_date, string $end_date, $exclude_entry_id = null ): array {
 		global $wpdb;
 
 		// Build exclude condition

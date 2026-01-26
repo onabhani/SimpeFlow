@@ -340,6 +340,9 @@
         html += '</tr>';
         html += '</table>';
         html += '<p style="margin: 10px 0; font-size: 13px; color: #666;">✓ Based on current factory capacity and bookings</p>';
+        html += '<p style="margin: 5px 0; padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; font-size: 12px; color: #856404;">';
+        html += '<strong>⚠️ Note:</strong> Availability shown is not reserved. Capacity may change if other users submit orders before you.';
+        html += '</p>';
         html += '</div>';
 
         $container.html(html).show();
