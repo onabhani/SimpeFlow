@@ -45,6 +45,9 @@ class BookingHandler {
 		// Hook into admin_init to catch cancel workflow action
 		add_action( 'admin_init', [ $this, 'check_cancel_workflow_request' ] );
 
+		// AJAX hook for capacity check before admin save
+		add_action( 'wp_ajax_sfa_prod_check_capacity_before_save', [ $this, 'ajax_check_capacity_before_save' ] );
+
 		// Debug: Log all gravityflow hooks
 		error_log( 'Production Booking: BookingHandler initialized with hooks' );
 	}
@@ -215,6 +218,14 @@ class BookingHandler {
 		$entry_id = (int) $entry['id'];
 		$installation_date = isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '';
 
+		// DEBUG: Log raw installation date before normalization
+		error_log( sprintf(
+			'Production Booking RAW: Entry %d - install_field_id=%s, raw_date="%s"',
+			$entry_id,
+			$install_field_id,
+			$installation_date
+		) );
+
 		// Normalize installation date format (convert DD/MM/YYYY to YYYY-MM-DD if needed)
 		if ( $installation_date ) {
 			$installation_date = $this->normalize_date( $installation_date );
@@ -344,7 +355,27 @@ class BookingHandler {
 			$date_manually_changed ? 'TRUE' : 'FALSE'
 		) );
 
-		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! ( $is_manual_admin_edit && $date_manually_changed ) ) {
+		// FIX: Check if existing production dates are consistent with installation date
+		// If not, force recalculation even if date didn't "change"
+		$dates_inconsistent = false;
+		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
+			// Calculate what the production end date SHOULD be (1 day before installation)
+			$expected_prod_end = date( 'Y-m-d', strtotime( $existing_install_date . ' -1 day' ) );
+
+			// If existing prod_end doesn't match expected, dates are stale/inconsistent
+			if ( $existing_prod_end !== $expected_prod_end ) {
+				$dates_inconsistent = true;
+				error_log( sprintf(
+					'Production Booking: INCONSISTENT DATES detected for entry %d - install=%s, existing_prod_end=%s, expected_prod_end=%s. Will recalculate.',
+					$entry_id,
+					$existing_install_date,
+					$existing_prod_end,
+					$expected_prod_end
+				) );
+			}
+		}
+
+		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! ( $is_manual_admin_edit && $date_manually_changed ) && ! $dates_inconsistent ) {
 			error_log( sprintf( 'Production Booking: PRESERVING existing dates for entry %d (workflow update, not manual edit)', $entry_id ) );
 			// Re-booking with unchanged LM: Keep ALL existing booking data
 			// IGNORE the submitted installation_date entirely - JavaScript may have changed it
@@ -383,6 +414,134 @@ class BookingHandler {
 				} else {
 					$installation_date = $schedule['installation_minimum'];
 				}
+			} elseif ( $is_manual_admin_edit && $date_manually_changed ) {
+				// FIX: Manual admin date change without LM change
+				// Use the manually submitted installation date and recalculate schedule
+				$installation_date = $submitted_installation_date;
+
+				error_log( sprintf(
+					'Production Booking: Recalculating schedule for entry %d with new installation date %s (LM=%s)',
+					$entry_id,
+					$installation_date,
+					$lm_required
+				) );
+
+				// Recalculate schedule with comprehensive error handling
+				// NOTE: Using Throwable to catch both Exception and Error (PHP 7+ fatal errors)
+				try {
+					error_log( sprintf( 'Production Booking DEBUG: About to create Scheduler for entry %d', $entry_id ) );
+					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+
+					error_log( sprintf( 'Production Booking DEBUG: Calling calculate_schedule for entry %d', $entry_id ) );
+					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+
+					error_log( sprintf( 'Production Booking DEBUG: calculate_schedule returned for entry %d', $entry_id ) );
+
+					if ( is_wp_error( $new_schedule ) ) {
+						error_log( sprintf(
+							'Production Booking ERROR: Failed to recalculate schedule for entry %d: %s',
+							$entry_id,
+							$new_schedule->get_error_message()
+						) );
+						// Keep using the original schedule calculated at the beginning
+						// $schedule is already set from line 286 or 302
+					} else {
+						// Use the newly calculated schedule
+						$schedule = $new_schedule;
+						error_log( sprintf(
+							'Production Booking: Successfully recalculated schedule for entry %d - prod_start=%s, prod_end=%s',
+							$entry_id,
+							$schedule['production_start'],
+							$schedule['production_end']
+						) );
+					}
+				} catch ( Throwable $e ) {
+					// Catch both Exception and Error (PHP 7+ fatal errors)
+					error_log( sprintf(
+						'Production Booking THROWABLE: Failed to recalculate schedule for entry %d: %s (Type: %s, File: %s, Line: %d)',
+						$entry_id,
+						$e->getMessage(),
+						get_class( $e ),
+						$e->getFile(),
+						$e->getLine()
+					) );
+					// Keep using the original schedule
+				}
+			} elseif ( $dates_inconsistent ) {
+				// FIX: Stale/inconsistent production dates detected
+				// Recalculate schedule to fix inconsistency
+				$installation_date = $existing_install_date; // Keep same install date
+
+				error_log( sprintf(
+					'Production Booking: Fixing inconsistent dates for entry %d - recalculating with install_date=%s (LM=%s)',
+					$entry_id,
+					$installation_date,
+					$lm_required
+				) );
+
+				// Recalculate schedule with comprehensive error handling
+				// NOTE: Using Throwable to catch both Exception and Error (PHP 7+ fatal errors)
+				try {
+					error_log( sprintf( 'Production Booking DEBUG: About to create Scheduler for inconsistent fix on entry %d', $entry_id ) );
+					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+
+					error_log( sprintf( 'Production Booking DEBUG: Calling calculate_schedule for inconsistent fix on entry %d', $entry_id ) );
+					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+
+					error_log( sprintf( 'Production Booking DEBUG: calculate_schedule returned for inconsistent fix on entry %d', $entry_id ) );
+
+					if ( is_wp_error( $new_schedule ) ) {
+						error_log( sprintf(
+							'Production Booking ERROR: Failed to fix inconsistent dates for entry %d: %s',
+							$entry_id,
+							$new_schedule->get_error_message()
+						) );
+						// Keep using the original schedule
+					} else {
+						// Use the newly calculated schedule
+						$schedule = $new_schedule;
+						error_log( sprintf(
+							'Production Booking: Successfully fixed inconsistent dates for entry %d - prod_start=%s, prod_end=%s',
+							$entry_id,
+							$schedule['production_start'],
+							$schedule['production_end']
+						) );
+					}
+				} catch ( Throwable $e ) {
+					// Catch both Exception and Error (PHP 7+ fatal errors)
+					error_log( sprintf(
+						'Production Booking THROWABLE: Failed to fix inconsistent dates for entry %d: %s (Type: %s, File: %s, Line: %d)',
+						$entry_id,
+						$e->getMessage(),
+						get_class( $e ),
+						$e->getFile(),
+						$e->getLine()
+					) );
+					// Keep using the original schedule
+				}
+			}
+
+			// SAFETY CHECK: Verify schedule is valid array before accessing keys
+			if ( ! is_array( $schedule ) || is_wp_error( $schedule ) ) {
+				error_log( sprintf(
+					'Production Booking CRITICAL ERROR: Schedule is not a valid array for entry %d. Type: %s. Cannot save booking.',
+					$entry_id,
+					is_wp_error( $schedule ) ? 'WP_Error: ' . $schedule->get_error_message() : gettype( $schedule )
+				) );
+
+				// Cannot proceed without valid schedule - this should never happen as initial schedule
+				// calculation would have failed and returned early, but adding safety check
+				return;
+			}
+
+			// SAFETY CHECK: Verify required schedule keys exist
+			if ( ! isset( $schedule['production_start'] ) || ! isset( $schedule['production_end'] ) ) {
+				error_log( sprintf(
+					'Production Booking CRITICAL ERROR: Schedule missing required keys for entry %d. Keys: %s. Cannot save booking.',
+					$entry_id,
+					implode( ', ', array_keys( $schedule ) )
+				) );
+				return;
 			}
 
 			// Get production dates from calculated schedule
@@ -422,8 +581,20 @@ class BookingHandler {
 			$allocation_array = json_decode( $existing_allocation, true );
 		} else {
 			// Use newly calculated allocation
-			$allocation_to_save = wp_json_encode( $schedule['allocation'] );
-			$allocation_array = $schedule['allocation'];
+			// SAFETY CHECK: Verify allocation key exists
+			if ( ! isset( $schedule['allocation'] ) ) {
+				error_log( sprintf(
+					'Production Booking ERROR: Schedule missing allocation key for entry %d. Available keys: %s',
+					$entry_id,
+					implode( ', ', array_keys( $schedule ) )
+				) );
+				// Fall back to existing allocation if available, otherwise use empty array
+				$allocation_to_save = $existing_allocation ? $existing_allocation : wp_json_encode( array() );
+				$allocation_array = json_decode( $allocation_to_save, true );
+			} else {
+				$allocation_to_save = wp_json_encode( $schedule['allocation'] );
+				$allocation_array = $schedule['allocation'];
+			}
 		}
 
 		// P1 FIX: Wrap meta updates in database transaction to ensure atomicity
@@ -438,7 +609,15 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_install_date', $installation_date );
 			gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
 			gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
-			gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
+
+			// FIX: Store who submitted the billing step (current user when booking is first created)
+			// Only set booked_by if it's not already set (preserve original billing submitter)
+			$existing_booked_by = gform_get_meta( $entry_id, '_prod_booked_by' );
+			if ( ! $existing_booked_by ) {
+				// Use current user = person who submitted the billing step
+				// (NOT entry creator, as creator is who submitted the invoice)
+				gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
+			}
 
 			// Store the daily capacity at time of booking for historical tracking
 			$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
@@ -840,7 +1019,13 @@ class BookingHandler {
 	}
 
 	/**
-	 * Normalize date format from DD/MM/YYYY or YYYY-MM-DD to YYYY-MM-DD
+	 * Normalize date format to YYYY-MM-DD
+	 *
+	 * Handles multiple input formats:
+	 * - YYYY-MM-DD (already normalized)
+	 * - MM/DD/YYYY (US format - Gravity Forms default)
+	 * - DD/MM/YYYY (European format)
+	 * - M/D/YYYY (single digit month/day)
 	 *
 	 * @param string $date_str
 	 * @return string
@@ -848,24 +1033,73 @@ class BookingHandler {
 	private function normalize_date( $date_str ) {
 		$date_str = trim( $date_str );
 
+		// Log original input for debugging
+		error_log( sprintf( 'normalize_date INPUT: "%s"', $date_str ) );
+
 		// Check if already in YYYY-MM-DD format
 		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_str ) ) {
+			error_log( sprintf( 'normalize_date OUTPUT (already normalized): "%s"', $date_str ) );
 			return $date_str;
 		}
 
-		// Check if in DD/MM/YYYY format
-		if ( preg_match( '/^(\d{2})\/(\d{2})\/(\d{4})$/', $date_str, $matches ) ) {
-			// Convert DD/MM/YYYY to YYYY-MM-DD
-			return $matches[3] . '-' . $matches[2] . '-' . $matches[1];
+		// Handle M/D/YYYY or MM/DD/YYYY format (1 or 2 digits for month/day)
+		if ( preg_match( '/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $date_str, $matches ) ) {
+			$part1 = (int) $matches[1];
+			$part2 = (int) $matches[2];
+			$year = $matches[3];
+
+			// Determine if MM/DD/YYYY or DD/MM/YYYY based on values
+			// If part1 > 12, it must be day (DD/MM/YYYY format)
+			// If part2 > 12, it must be day (MM/DD/YYYY format)
+			// Otherwise, assume MM/DD/YYYY (US format - Gravity Forms default)
+
+			if ( $part1 > 12 ) {
+				// Must be DD/MM/YYYY (day is > 12)
+				$month = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+				$day = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+				error_log( sprintf( 'normalize_date: Detected DD/MM/YYYY format (%d/%d/%s)', $part1, $part2, $year ) );
+			} elseif ( $part2 > 12 ) {
+				// Must be MM/DD/YYYY (day is > 12)
+				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+				$day = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+				error_log( sprintf( 'normalize_date: Detected MM/DD/YYYY format (%d/%d/%s)', $part1, $part2, $year ) );
+			} else {
+				// Ambiguous - could be either format
+				// Default to MM/DD/YYYY (US format - Gravity Forms default)
+				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+				$day = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+				error_log( sprintf( 'normalize_date: Ambiguous date, assuming MM/DD/YYYY (%d/%d/%s)', $part1, $part2, $year ) );
+			}
+
+			$normalized = $year . '-' . $month . '-' . $day;
+
+			// Validate the resulting date
+			$timestamp = strtotime( $normalized );
+			if ( $timestamp === false ) {
+				error_log( sprintf( 'normalize_date ERROR: Invalid date after normalization: "%s"', $normalized ) );
+				// Try strtotime as fallback
+				$timestamp = strtotime( $date_str );
+				if ( $timestamp !== false ) {
+					$normalized = date( 'Y-m-d', $timestamp );
+					error_log( sprintf( 'normalize_date: Fallback strtotime worked: "%s"', $normalized ) );
+				}
+			} else {
+				error_log( sprintf( 'normalize_date OUTPUT: "%s" (validated)', $normalized ) );
+			}
+
+			return $normalized;
 		}
 
 		// Try to parse with strtotime as fallback
 		$timestamp = strtotime( $date_str );
 		if ( $timestamp !== false ) {
-			return date( 'Y-m-d', $timestamp );
+			$normalized = date( 'Y-m-d', $timestamp );
+			error_log( sprintf( 'normalize_date OUTPUT (strtotime fallback): "%s"', $normalized ) );
+			return $normalized;
 		}
 
 		// Return as-is if we can't parse it
+		error_log( sprintf( 'normalize_date ERROR: Could not parse date, returning as-is: "%s"', $date_str ) );
 		return $date_str;
 	}
 
@@ -991,5 +1225,108 @@ class BookingHandler {
 
 		// Allow other plugins to hook into audit events
 		do_action( 'sfa_production_booking_audit', $entry_id, $action, $data, $audit_entry );
+	}
+
+	/**
+	 * AJAX handler: Check capacity before admin saves entry
+	 *
+	 * Called by JavaScript before form submission to show confirmation dialog
+	 * if the new installation date would cause overbooking.
+	 */
+	public function ajax_check_capacity_before_save() {
+		// Verify nonce
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'sfa_prod_admin_capacity_check' ) ) {
+			wp_send_json_error( [ 'message' => 'Invalid nonce' ] );
+		}
+
+		// Verify user is admin
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
+		}
+
+		// Get parameters
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : 0;
+		$install_date = isset( $_POST['install_date'] ) ? sanitize_text_field( $_POST['install_date'] ) : '';
+
+		if ( ! $entry_id || ! $install_date ) {
+			wp_send_json_error( [ 'message' => 'Missing entry_id or install_date' ] );
+		}
+
+		// Get entry
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) || ! $entry ) {
+			wp_send_json_error( [ 'message' => 'Entry not found' ] );
+		}
+
+		// Get form
+		$form = \GFAPI::get_form( $entry['form_id'] );
+		if ( is_wp_error( $form ) || ! $form ) {
+			wp_send_json_error( [ 'message' => 'Form not found' ] );
+		}
+
+		// Check if production scheduling is enabled for this form
+		if ( ! FormSettings::is_enabled( $form ) ) {
+			wp_send_json_success( [ 'has_overbooking' => false ] );
+		}
+
+		// Get the Linear Meter field value
+		$lm_field_id = FormSettings::get_lm_field_id( $form );
+		if ( ! $lm_field_id ) {
+			wp_send_json_error( [ 'message' => 'LM field not configured' ] );
+		}
+
+		$lm_required = isset( $entry[ $lm_field_id ] ) ? floatval( $entry[ $lm_field_id ] ) : 0;
+		if ( $lm_required <= 0 ) {
+			wp_send_json_success( [ 'has_overbooking' => false ] );
+		}
+
+		// Normalize installation date
+		$install_date = $this->normalize_date( $install_date );
+
+		// Calculate schedule for the new installation date
+		$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+		$schedule = $scheduler->calculate_schedule( $install_date, $lm_required );
+
+		if ( ! $schedule || empty( $schedule['allocation'] ) ) {
+			wp_send_json_error( [ 'message' => 'Could not calculate schedule' ] );
+		}
+
+		// Get daily capacity
+		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+
+		// Load existing bookings for the date range (excluding current entry)
+		$prod_start_date = $schedule['production_start'];
+		$prod_end_date = $schedule['production_end'];
+
+		$booking_data = BillingStepPreview::load_existing_bookings( $prod_start_date, $prod_end_date, $entry_id );
+		$existing_bookings = $booking_data['bookings'];
+
+		// Check for overbooking
+		$overbooked_dates = [];
+		foreach ( $schedule['allocation'] as $date => $lm_to_add ) {
+			$existing_lm = isset( $existing_bookings[ $date ] ) ? $existing_bookings[ $date ] : 0;
+			$new_total = $existing_lm + $lm_to_add;
+
+			if ( $new_total > $daily_capacity ) {
+				$overbooked_dates[] = [
+					'date' => $date,
+					'date_formatted' => date( 'F j, Y', strtotime( $date ) ),
+					'existing' => $existing_lm,
+					'new_total' => $new_total,
+					'capacity' => $daily_capacity,
+					'overage' => $new_total - $daily_capacity,
+				];
+			}
+		}
+
+		// Return result
+		if ( ! empty( $overbooked_dates ) ) {
+			wp_send_json_success( [
+				'has_overbooking' => true,
+				'overbooked_dates' => $overbooked_dates,
+			] );
+		} else {
+			wp_send_json_success( [ 'has_overbooking' => false ] );
+		}
 	}
 }

@@ -75,6 +75,10 @@ add_action( 'plugins_loaded', function () {
 	// Initialize AJAX endpoints
 	require_once SFA_PROD_DIR . 'src/API/AjaxEndpoints.php';
 	new SFA\ProductionScheduling\API\AjaxEndpoints();
+
+	// Initialize frontend calendar shortcode
+	require_once SFA_PROD_DIR . 'src/Frontend/FrontendCalendar.php';
+	new SFA\ProductionScheduling\Frontend\FrontendCalendar();
 }, 20 );
 
 /**
@@ -100,6 +104,14 @@ add_action( 'init', function () {
 		true
 	);
 
+	wp_register_script(
+		'sfa-prod-admin-entry-edit',
+		SFA_PROD_URL . 'assets/js/admin-entry-edit.js?v=' . $timestamp,
+		array( 'jquery' ),
+		$version,
+		true
+	);
+
 	wp_register_style(
 		'sfa-prod-styles',
 		SFA_PROD_URL . 'assets/css/production-schedule.css?v=' . $timestamp,
@@ -107,3 +119,29 @@ add_action( 'init', function () {
 		$version
 	);
 }, 5 );
+
+/**
+ * Enqueue admin entry edit script on Gravity Forms entry detail page
+ */
+add_action( 'admin_enqueue_scripts', function() {
+	// Check if we're on a Gravity Forms entry detail page
+	$screen = get_current_screen();
+
+	if ( ! $screen || $screen->id !== 'toplevel_page_gf_entries' ) {
+		return;
+	}
+
+	// Check if we're viewing/editing a specific entry (lid parameter)
+	if ( ! isset( $_GET['lid'] ) || ! isset( $_GET['page'] ) || $_GET['page'] !== 'gf_entries' ) {
+		return;
+	}
+
+	// Enqueue the script
+	wp_enqueue_script( 'sfa-prod-admin-entry-edit' );
+
+	// Localize script with nonce and ajaxurl
+	wp_localize_script( 'sfa-prod-admin-entry-edit', 'sfaProdAdmin', [
+		'nonce' => wp_create_nonce( 'sfa_prod_admin_capacity_check' ),
+		'ajaxurl' => admin_url( 'admin-ajax.php' ),
+	] );
+} );
