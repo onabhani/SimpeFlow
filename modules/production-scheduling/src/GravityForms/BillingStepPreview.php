@@ -168,7 +168,7 @@ class BillingStepPreview {
 
 		try {
 			$schedule = $scheduler->calculate_schedule(
-				$total_slots,
+				(int) $total_slots,
 				$earliest_start,
 				$daily_capacity,
 				$effective_capacity_overrides,
@@ -179,7 +179,8 @@ class BillingStepPreview {
 			);
 
 			return $schedule;
-		} catch ( \Exception $e ) {
+		} catch ( \Throwable $e ) {
+			error_log( sprintf( 'BillingStepPreview::calculate_schedule() error: %s (%s)', $e->getMessage(), get_class( $e ) ) );
 			return new \WP_Error( 'schedule_error', $e->getMessage() );
 		}
 	}
@@ -275,7 +276,7 @@ class BillingStepPreview {
 
 		try {
 			$schedule = $scheduler->calculate_schedule_backward(
-				$total_slots,
+				(int) $total_slots,
 				$install_dt,
 				$earliest_start,
 				$daily_capacity,
@@ -287,7 +288,8 @@ class BillingStepPreview {
 			);
 
 			return $schedule;
-		} catch ( \Exception $e ) {
+		} catch ( \Throwable $e ) {
+			error_log( sprintf( 'BillingStepPreview::calculate_schedule_for_date() error: %s (%s)', $e->getMessage(), get_class( $e ) ) );
 			return new \WP_Error( 'schedule_error', $e->getMessage() );
 		}
 	}

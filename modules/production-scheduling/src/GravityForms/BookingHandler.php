@@ -283,7 +283,13 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
 
 			// Recalculate schedule with live data (multi-field)
-			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
+			error_log( sprintf( 'Production Booking DEBUG: Calling forward schedule for entry %d (multi-field, total_slots=%s)', $entry_id, $total_slots ) );
+			try {
+				$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
+			} catch ( \Throwable $e ) {
+				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine() ) );
+				return;
+			}
 		} else {
 			// Legacy mode (single LM field)
 			$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
@@ -299,7 +305,13 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
 
 			// Recalculate schedule with live data (legacy)
-			$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
+			error_log( sprintf( 'Production Booking DEBUG: Calling forward schedule for entry %d (legacy, lm=%s)', $entry_id, $lm_required ) );
+			try {
+				$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
+			} catch ( \Throwable $e ) {
+				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine() ) );
+				return;
+			}
 		}
 
 		if ( is_wp_error( $schedule ) ) {
