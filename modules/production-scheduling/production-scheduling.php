@@ -75,6 +75,10 @@ add_action( 'plugins_loaded', function () {
 	// Initialize AJAX endpoints
 	require_once SFA_PROD_DIR . 'src/API/AjaxEndpoints.php';
 	new SFA\ProductionScheduling\API\AjaxEndpoints();
+
+	// Initialize frontend calendar shortcode
+	require_once SFA_PROD_DIR . 'src/Frontend/FrontendCalendar.php';
+	new SFA\ProductionScheduling\Frontend\FrontendCalendar();
 }, 20 );
 
 /**

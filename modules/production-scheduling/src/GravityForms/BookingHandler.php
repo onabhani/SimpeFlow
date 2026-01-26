@@ -441,7 +441,15 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_install_date', $installation_date );
 			gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
 			gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
-			gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
+
+			// FIX: Store original entry creator, not current user (who might be editing later)
+			// Only set booked_by if it's not already set (preserve original creator)
+			$existing_booked_by = gform_get_meta( $entry_id, '_prod_booked_by' );
+			if ( ! $existing_booked_by ) {
+				// Use entry creator (original submitter), fallback to current user if not available
+				$entry_creator = isset( $entry['created_by'] ) ? $entry['created_by'] : get_current_user_id();
+				gform_update_meta( $entry_id, '_prod_booked_by', $entry_creator );
+			}
 
 			// Store the daily capacity at time of booking for historical tracking
 			$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
