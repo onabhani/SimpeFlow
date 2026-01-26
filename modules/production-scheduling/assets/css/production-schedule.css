@@ -74,6 +74,11 @@
 	margin: 10px 0;
 }
 
-/* TODO: Add calendar styles */
-/* TODO: Add capacity indicator colors */
-/* TODO: Add responsive grid */
+/* Calendar tooltip entry rows */
+.sfa-tooltip-entry:hover {
+	background: #f0f6fc;
+	color: #005177;
+}
+.sfa-tooltip-entry:last-child {
+	border-bottom: none;
+}
