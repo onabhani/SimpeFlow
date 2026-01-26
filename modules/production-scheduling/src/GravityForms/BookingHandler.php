@@ -355,22 +355,20 @@ class BookingHandler {
 			$date_manually_changed ? 'TRUE' : 'FALSE'
 		) );
 
-		// FIX: Check if existing production dates are consistent with installation date
-		// If not, force recalculation even if date didn't "change"
+		// Check if existing production dates are truly inconsistent (impossible states only)
+		// NOTE: prod_end can legitimately be well before install_date when capacity is high
+		// (e.g. 6 LM at 19/day capacity = 1 production day). Only flag truly broken states.
 		$dates_inconsistent = false;
 		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
-			// Calculate what the production end date SHOULD be (1 day before installation)
-			$expected_prod_end = date( 'Y-m-d', strtotime( $existing_install_date . ' -1 day' ) );
-
-			// If existing prod_end doesn't match expected, dates are stale/inconsistent
-			if ( $existing_prod_end !== $expected_prod_end ) {
+			// Truly inconsistent: production ends AFTER installation, or start > end
+			if ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
 				$dates_inconsistent = true;
 				error_log( sprintf(
-					'Production Booking: INCONSISTENT DATES detected for entry %d - install=%s, existing_prod_end=%s, expected_prod_end=%s. Will recalculate.',
+					'Production Booking: INCONSISTENT DATES detected for entry %d - install=%s, prod_start=%s, prod_end=%s. Will recalculate.',
 					$entry_id,
 					$existing_install_date,
-					$existing_prod_end,
-					$expected_prod_end
+					$existing_prod_start,
+					$existing_prod_end
 				) );
 			}
 		}
