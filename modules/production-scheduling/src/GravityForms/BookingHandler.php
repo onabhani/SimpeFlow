@@ -408,15 +408,25 @@ class BookingHandler {
 
 				// Recalculate schedule with the new installation date
 				$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
-				$schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+				$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
 
-				if ( is_wp_error( $schedule ) ) {
+				if ( is_wp_error( $new_schedule ) ) {
 					error_log( sprintf(
 						'Production Booking ERROR: Failed to recalculate schedule for entry %d: %s',
 						$entry_id,
-						$schedule->get_error_message()
+						$new_schedule->get_error_message()
 					) );
-					// Fall back to original schedule
+					// Keep using the original schedule calculated at the beginning
+					// $schedule is already set from line 278 or 294
+				} else {
+					// Use the newly calculated schedule
+					$schedule = $new_schedule;
+					error_log( sprintf(
+						'Production Booking: Successfully recalculated schedule for entry %d - prod_start=%s, prod_end=%s',
+						$entry_id,
+						$schedule['production_start'],
+						$schedule['production_end']
+					) );
 				}
 			}
 
