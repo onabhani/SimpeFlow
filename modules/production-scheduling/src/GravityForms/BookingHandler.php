@@ -218,6 +218,14 @@ class BookingHandler {
 		$entry_id = (int) $entry['id'];
 		$installation_date = isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '';
 
+		// DEBUG: Log raw installation date before normalization
+		error_log( sprintf(
+			'Production Booking RAW: Entry %d - install_field_id=%s, raw_date="%s"',
+			$entry_id,
+			$install_field_id,
+			$installation_date
+		) );
+
 		// Normalize installation date format (convert DD/MM/YYYY to YYYY-MM-DD if needed)
 		if ( $installation_date ) {
 			$installation_date = $this->normalize_date( $installation_date );
@@ -385,6 +393,30 @@ class BookingHandler {
 					$installation_date = $submitted_installation_date;
 				} else {
 					$installation_date = $schedule['installation_minimum'];
+				}
+			} elseif ( $is_manual_admin_edit && $date_manually_changed ) {
+				// FIX: Manual admin date change without LM change
+				// Use the manually submitted installation date and recalculate schedule
+				$installation_date = $submitted_installation_date;
+
+				error_log( sprintf(
+					'Production Booking: Recalculating schedule for entry %d with new installation date %s (LM=%s)',
+					$entry_id,
+					$installation_date,
+					$lm_required
+				) );
+
+				// Recalculate schedule with the new installation date
+				$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+				$schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
+
+				if ( is_wp_error( $schedule ) ) {
+					error_log( sprintf(
+						'Production Booking ERROR: Failed to recalculate schedule for entry %d: %s',
+						$entry_id,
+						$schedule->get_error_message()
+					) );
+					// Fall back to original schedule
 				}
 			}
 
