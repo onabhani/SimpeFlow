@@ -380,14 +380,30 @@ class BookingHandler {
 			$date_manually_changed ? 'TRUE' : 'FALSE'
 		) );
 
-		// Check if existing production dates are truly inconsistent (impossible states only)
-		// NOTE: prod_end can legitimately be well before install_date when capacity is high
-		// (e.g. 6 LM at 19/day capacity = 1 production day). Only flag truly broken states.
+		// Check if existing production dates need recalculation
+		// Production should be scheduled backward from install_date, so prod_end
+		// should be close to (install_date - buffer). If it's far earlier, dates
+		// are stale (from old forward scheduling) and need recalculation.
 		$dates_inconsistent = false;
 		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
-			// Truly inconsistent: production ends AFTER installation, or start > end
+			// Impossible states: production ends after installation, or start > end
 			if ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
 				$dates_inconsistent = true;
+			} else {
+				// Check if prod_end is too far before install_date (stale forward-scheduled dates)
+				$installation_buffer = (int) get_option( 'sfa_prod_installation_buffer', 0 );
+				$expected_latest = strtotime( $existing_install_date . " -{$installation_buffer} days" );
+				$actual_end = strtotime( $existing_prod_end );
+				$gap_days = ( $expected_latest - $actual_end ) / 86400;
+
+				// More than 2 days gap means dates are stale and need backward recalculation
+				// (2-day margin accounts for weekends/holidays at the boundary)
+				if ( $gap_days > 2 ) {
+					$dates_inconsistent = true;
+				}
+			}
+
+			if ( $dates_inconsistent ) {
 				error_log( sprintf(
 					'Production Booking: INCONSISTENT DATES detected for entry %d - install=%s, prod_start=%s, prod_end=%s. Will recalculate.',
 					$entry_id,
