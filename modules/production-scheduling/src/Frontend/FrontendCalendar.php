@@ -300,16 +300,17 @@ class FrontendCalendar {
 							echo '</span>';
 
 							// Tooltip with entry details
-							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 10px; min-width: 200px; left: 0; top: 20px; border-radius: 3px;">';
-							echo '<div style="font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #eee;">Orders on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
+							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 0; min-width: 220px; left: 0; top: 20px; border-radius: 3px; overflow: hidden;">';
+							echo '<div style="font-weight: bold; padding: 8px 10px; background: #f8f8f8; border-bottom: 1px solid #eee;">Orders on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
 							foreach ( $bookings[ $day_date ]['entries'] as $entry_info ) {
-								echo '<div style="padding: 3px 0; border-bottom: 1px solid #f0f0f0;">';
-								echo '<span style="color: #0073aa; font-weight: 500;">#' . $entry_info['entry_id'] . '</span>';
-								echo ' - <span style="color: #666;">' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' ) . '</span>';
+								$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_info['form_id'] . '&lid=' . $entry_info['entry_id'];
+								echo '<a href="' . esc_url( $workflow_url ) . '" target="_blank" class="sfa-tooltip-entry" style="display: block; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; color: #0073aa; text-decoration: none; cursor: pointer;">';
+								echo '<strong>#' . $entry_info['entry_id'] . '</strong>';
+								echo ' - ' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' );
 								if ( ! empty( $entry_info['form_name'] ) ) {
-									echo ' <span style="font-size: 11px; color: #999;">(' . esc_html( $entry_info['form_name'] ) . ')</span>';
+									echo ' <span style="color: #888;">(' . esc_html( $entry_info['form_name'] ) . ')</span>';
 								}
-								echo '</div>';
+								echo '</a>';
 							}
 							echo '</div>';
 							echo '</div>';
@@ -383,6 +384,7 @@ class FrontendCalendar {
 
 					$entries_list[ $entry_id ] = [
 						'entry_id' => $entry_id,
+						'form_id' => $entry_info['form_id'],
 						'form_name' => $entry_info['form_name'],
 						'install_date' => $install_date,
 						'prod_start' => $prod_start,
@@ -445,7 +447,10 @@ class FrontendCalendar {
 						<?php foreach ( $entries_list as $entry_data ): ?>
 							<tr>
 								<td>
-									<strong>#<?php echo $entry_data['entry_id']; ?></strong>
+									<?php $workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id']; ?>
+									<a href="<?php echo esc_url( $workflow_url ); ?>" target="_blank" style="color: #0073aa;">
+										<strong>#<?php echo $entry_data['entry_id']; ?></strong>
+									</a>
 								</td>
 								<td><?php echo esc_html( $entry_data['form_name'] ); ?></td>
 								<td><?php echo esc_html( $entry_data['lm_required'] ); ?> LM</td>
@@ -499,6 +504,7 @@ class FrontendCalendar {
 		$query = "
 			SELECT
 				em.entry_id,
+				e.form_id,
 				em.meta_value as allocation,
 				cm.meta_value as capacity_at_booking,
 				f.title as form_name
@@ -554,6 +560,7 @@ class FrontendCalendar {
 				$bookings[ $date ]['total_lm'] += $lm;
 				$bookings[ $date ]['entries'][] = [
 					'entry_id' => $row->entry_id,
+					'form_id' => $row->form_id,
 					'lm_on_date' => $lm,
 					'form_name' => $row->form_name,
 				];
