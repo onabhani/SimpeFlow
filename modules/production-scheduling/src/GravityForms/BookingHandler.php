@@ -45,6 +45,9 @@ class BookingHandler {
 		// Hook into admin_init to catch cancel workflow action
 		add_action( 'admin_init', [ $this, 'check_cancel_workflow_request' ] );
 
+		// AJAX hook for capacity check before admin save
+		add_action( 'wp_ajax_sfa_prod_check_capacity_before_save', [ $this, 'ajax_check_capacity_before_save' ] );
+
 		// Debug: Log all gravityflow hooks
 		error_log( 'Production Booking: BookingHandler initialized with hooks' );
 	}
@@ -991,5 +994,108 @@ class BookingHandler {
 
 		// Allow other plugins to hook into audit events
 		do_action( 'sfa_production_booking_audit', $entry_id, $action, $data, $audit_entry );
+	}
+
+	/**
+	 * AJAX handler: Check capacity before admin saves entry
+	 *
+	 * Called by JavaScript before form submission to show confirmation dialog
+	 * if the new installation date would cause overbooking.
+	 */
+	public function ajax_check_capacity_before_save() {
+		// Verify nonce
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'sfa_prod_admin_capacity_check' ) ) {
+			wp_send_json_error( [ 'message' => 'Invalid nonce' ] );
+		}
+
+		// Verify user is admin
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
+		}
+
+		// Get parameters
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : 0;
+		$install_date = isset( $_POST['install_date'] ) ? sanitize_text_field( $_POST['install_date'] ) : '';
+
+		if ( ! $entry_id || ! $install_date ) {
+			wp_send_json_error( [ 'message' => 'Missing entry_id or install_date' ] );
+		}
+
+		// Get entry
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) || ! $entry ) {
+			wp_send_json_error( [ 'message' => 'Entry not found' ] );
+		}
+
+		// Get form
+		$form = \GFAPI::get_form( $entry['form_id'] );
+		if ( is_wp_error( $form ) || ! $form ) {
+			wp_send_json_error( [ 'message' => 'Form not found' ] );
+		}
+
+		// Check if production scheduling is enabled for this form
+		if ( ! FormSettings::is_enabled( $form ) ) {
+			wp_send_json_success( [ 'has_overbooking' => false ] );
+		}
+
+		// Get the Linear Meter field value
+		$lm_field_id = FormSettings::get_lm_field_id( $form );
+		if ( ! $lm_field_id ) {
+			wp_send_json_error( [ 'message' => 'LM field not configured' ] );
+		}
+
+		$lm_required = isset( $entry[ $lm_field_id ] ) ? floatval( $entry[ $lm_field_id ] ) : 0;
+		if ( $lm_required <= 0 ) {
+			wp_send_json_success( [ 'has_overbooking' => false ] );
+		}
+
+		// Normalize installation date
+		$install_date = $this->normalize_date( $install_date );
+
+		// Calculate schedule for the new installation date
+		$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
+		$schedule = $scheduler->calculate_schedule( $install_date, $lm_required );
+
+		if ( ! $schedule || empty( $schedule['allocation'] ) ) {
+			wp_send_json_error( [ 'message' => 'Could not calculate schedule' ] );
+		}
+
+		// Get daily capacity
+		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+
+		// Load existing bookings for the date range (excluding current entry)
+		$prod_start_date = $schedule['production_start'];
+		$prod_end_date = $schedule['production_end'];
+
+		$booking_data = BillingStepPreview::load_existing_bookings( $prod_start_date, $prod_end_date, $entry_id );
+		$existing_bookings = $booking_data['bookings'];
+
+		// Check for overbooking
+		$overbooked_dates = [];
+		foreach ( $schedule['allocation'] as $date => $lm_to_add ) {
+			$existing_lm = isset( $existing_bookings[ $date ] ) ? $existing_bookings[ $date ] : 0;
+			$new_total = $existing_lm + $lm_to_add;
+
+			if ( $new_total > $daily_capacity ) {
+				$overbooked_dates[] = [
+					'date' => $date,
+					'date_formatted' => date( 'F j, Y', strtotime( $date ) ),
+					'existing' => $existing_lm,
+					'new_total' => $new_total,
+					'capacity' => $daily_capacity,
+					'overage' => $new_total - $daily_capacity,
+				];
+			}
+		}
+
+		// Return result
+		if ( ! empty( $overbooked_dates ) ) {
+			wp_send_json_success( [
+				'has_overbooking' => true,
+				'overbooked_dates' => $overbooked_dates,
+			] );
+		} else {
+			wp_send_json_success( [ 'has_overbooking' => false ] );
+		}
 	}
 }
