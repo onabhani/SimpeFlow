@@ -529,7 +529,13 @@ class FrontendCalendar {
 					$prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
 					$lm_required = gform_get_meta( $entry_id, '_prod_lm_required' );
 					$booked_at = gform_get_meta( $entry_id, '_prod_booked_at' );
-					$booked_by = gform_get_meta( $entry_id, '_prod_booked_by' );
+
+					// Read entry creator directly from gf_entry (more reliable than stored meta)
+					global $wpdb;
+					$booked_by = (int) $wpdb->get_var( $wpdb->prepare(
+						"SELECT created_by FROM {$wpdb->prefix}gf_entry WHERE id = %d",
+						$entry_id
+					) );
 
 					$entries_list[ $entry_id ] = [
 						'entry_id' => $entry_id,

@@ -388,11 +388,13 @@ class ScheduleView {
 				continue;
 			}
 
-			// Get form ID for entry
-			$form_id = $wpdb->get_var( $wpdb->prepare(
-				"SELECT form_id FROM {$wpdb->prefix}gf_entry WHERE id = %d",
+			// Get form ID and entry creator for entry
+			$entry_row = $wpdb->get_row( $wpdb->prepare(
+				"SELECT form_id, created_by FROM {$wpdb->prefix}gf_entry WHERE id = %d",
 				$entry_id
-			) );
+			), ARRAY_A );
+			$form_id = $entry_row ? $entry_row['form_id'] : null;
+			$entry_created_by = $entry_row ? (int) $entry_row['created_by'] : 0;
 
 			// Get form title (cached)
 			if ( $form_id && ! isset( $form_title_cache[ $form_id ] ) ) {
@@ -454,7 +456,7 @@ class ScheduleView {
 					'install_date' => isset( $entry_data['install_date'] ) ? $entry_data['install_date'] : '',
 					'status' => isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'unknown',
 					'booked_at' => isset( $entry_data['booked_at'] ) ? $entry_data['booked_at'] : '',
-					'booked_by' => isset( $entry_data['booked_by'] ) ? $entry_data['booked_by'] : 0,
+					'booked_by' => $entry_created_by,
 				];
 			}
 		}

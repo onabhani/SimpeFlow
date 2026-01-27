@@ -529,12 +529,9 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
 			gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
 
-			// Store the entry creator as booked_by (deterministic - never changes)
-			$existing_booked_by = gform_get_meta( $entry_id, '_prod_booked_by' );
-			if ( ! $existing_booked_by ) {
-				$creator_id = isset( $entry['created_by'] ) ? (int) $entry['created_by'] : 0;
-				gform_update_meta( $entry_id, '_prod_booked_by', $creator_id );
-			}
+			// Always store entry creator as booked_by (deterministic - never changes)
+			$creator_id = isset( $entry['created_by'] ) ? (int) $entry['created_by'] : 0;
+			gform_update_meta( $entry_id, '_prod_booked_by', $creator_id );
 
 			// Store the daily capacity at time of booking for historical tracking
 			$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
