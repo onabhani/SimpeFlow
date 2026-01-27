@@ -663,7 +663,7 @@ class FrontendCalendar {
 			INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
 				ON em.entry_id = start_meta.entry_id
 				AND start_meta.meta_key = '_prod_start_date'
-			INNER JOIN {$wpdb->prefix}gf_entry_meta end_meta
+			LEFT JOIN {$wpdb->prefix}gf_entry_meta end_meta
 				ON em.entry_id = end_meta.entry_id
 				AND end_meta.meta_key = '_prod_end_date'
 			INNER JOIN {$wpdb->prefix}gf_entry e
@@ -678,7 +678,7 @@ class FrontendCalendar {
 				AND sm.meta_key = '_prod_booking_status'
 			WHERE em.meta_key = '_prod_slots_allocation'
 			AND start_meta.meta_value <= %s
-			AND end_meta.meta_value >= %s
+			AND (end_meta.meta_value IS NULL OR end_meta.meta_value >= %s)
 			AND (sm.meta_value IS NULL OR sm.meta_value != 'canceled')
 			AND e.status = 'active'
 		";
