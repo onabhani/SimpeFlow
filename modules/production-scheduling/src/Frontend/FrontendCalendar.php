@@ -157,18 +157,165 @@ class FrontendCalendar {
 				.sfa-day-entries:hover .sfa-entries-tooltip {
 					display: block !important;
 				}
+
+				/* Responsive: Tablet */
+				@media (max-width: 768px) {
+					.sfa-prod-schedule-frontend {
+						padding: 10px;
+					}
+					.sfa-prod-nav h2 {
+						font-size: 1.2em;
+					}
+					.sfa-prod-nav a {
+						padding: 6px 10px;
+						font-size: 13px;
+					}
+					.sfa-prod-calendar-wrap {
+						overflow-x: auto;
+						-webkit-overflow-scrolling: touch;
+						margin: 15px 0;
+					}
+					.sfa-prod-calendar {
+						min-width: 560px;
+						margin: 0;
+					}
+					.sfa-prod-calendar thead th {
+						padding: 10px 6px;
+						font-size: 13px;
+					}
+					.sfa-prod-calendar td {
+						padding: 8px 5px;
+						height: 70px;
+						min-height: 70px;
+					}
+					.sfa-prod-day {
+						font-size: 15px;
+						margin-bottom: 4px;
+					}
+					.sfa-prod-capacity {
+						font-size: 12px;
+						padding: 2px 5px;
+					}
+					.sfa-prod-legend-item {
+						display: block;
+						margin-bottom: 8px;
+					}
+					.sfa-bookings-table-wrap {
+						overflow-x: auto;
+						-webkit-overflow-scrolling: touch;
+					}
+					.sfa-bookings-table {
+						min-width: 700px;
+					}
+					.sfa-bookings-table th,
+					.sfa-bookings-table td {
+						padding: 8px;
+						font-size: 13px;
+					}
+				}
+
+				/* Responsive: Mobile */
+				@media (max-width: 480px) {
+					.sfa-prod-schedule-frontend {
+						padding: 5px;
+					}
+					.sfa-prod-nav {
+						gap: 5px;
+					}
+					.sfa-prod-nav h2 {
+						font-size: 1em;
+					}
+					.sfa-prod-nav a {
+						padding: 5px 8px;
+						font-size: 12px;
+					}
+					.sfa-prod-calendar {
+						min-width: 480px;
+					}
+					.sfa-prod-calendar thead th {
+						padding: 8px 4px;
+						font-size: 11px;
+					}
+					.sfa-prod-calendar td {
+						padding: 5px 3px;
+						height: 60px;
+						min-height: 60px;
+					}
+					.sfa-prod-day {
+						font-size: 13px;
+						margin-bottom: 2px;
+					}
+					.sfa-prod-capacity {
+						font-size: 10px;
+						padding: 1px 3px;
+					}
+					.sfa-day-entries {
+						font-size: 10px !important;
+					}
+					.sfa-entries-tooltip {
+						min-width: 180px !important;
+						font-size: 12px;
+					}
+					.sfa-prod-legend {
+						padding: 10px;
+						font-size: 13px;
+					}
+					.sfa-prod-legend-color {
+						width: 16px;
+						height: 16px;
+					}
+					.sfa-bookings-table th,
+					.sfa-bookings-table td {
+						padding: 6px;
+						font-size: 12px;
+						white-space: nowrap;
+					}
+				}
 			</style>
 			<script>
 			jQuery(document).ready(function($) {
-				// Show/hide entry tooltips on hover
+				// Show/hide entry tooltips on hover (desktop)
 				$('.sfa-day-entries').hover(
 					function() {
-						$(this).find('.sfa-entries-tooltip').show();
+						var $tooltip = $(this).find('.sfa-entries-tooltip');
+						$tooltip.show();
+						// Reposition if overflowing right edge
+						var tooltipRight = $tooltip.offset().left + $tooltip.outerWidth();
+						var viewportWidth = $(window).width();
+						if (tooltipRight > viewportWidth - 10) {
+							$tooltip.css({ left: 'auto', right: '0' });
+						}
 					},
 					function() {
 						$(this).find('.sfa-entries-tooltip').hide();
 					}
 				);
+
+				// Touch support for mobile (tap to toggle tooltip)
+				$('.sfa-day-entries').on('click touchstart', function(e) {
+					if (e.type === 'touchstart') {
+						e.preventDefault();
+					}
+					var $tooltip = $(this).find('.sfa-entries-tooltip');
+					// Hide all other tooltips first
+					$('.sfa-entries-tooltip').not($tooltip).hide();
+					$tooltip.toggle();
+					// Reposition if overflowing
+					if ($tooltip.is(':visible')) {
+						var tooltipRight = $tooltip.offset().left + $tooltip.outerWidth();
+						var viewportWidth = $(window).width();
+						if (tooltipRight > viewportWidth - 10) {
+							$tooltip.css({ left: 'auto', right: '0' });
+						}
+					}
+				});
+
+				// Close tooltips when tapping elsewhere
+				$(document).on('click touchstart', function(e) {
+					if (!$(e.target).closest('.sfa-day-entries').length) {
+						$('.sfa-entries-tooltip').hide();
+					}
+				});
 			});
 			</script>
 
@@ -222,6 +369,7 @@ class FrontendCalendar {
 		$first_day_of_week = (int) $date->format( 'w' ); // 0=Sunday
 
 		?>
+		<div class="sfa-prod-calendar-wrap">
 		<table class="sfa-prod-calendar">
 			<thead>
 				<tr>
@@ -326,6 +474,7 @@ class FrontendCalendar {
 				?>
 			</tbody>
 		</table>
+		</div>
 		<?php
 	}
 
@@ -431,6 +580,7 @@ class FrontendCalendar {
 						background: #f9f9f9;
 					}
 				</style>
+				<div class="sfa-bookings-table-wrap">
 				<table class="sfa-bookings-table">
 					<thead>
 						<tr>
@@ -490,6 +640,7 @@ class FrontendCalendar {
 						<?php endforeach; ?>
 					</tbody>
 				</table>
+				</div>
 			<?php endif; ?>
 		</div>
 		<?php
