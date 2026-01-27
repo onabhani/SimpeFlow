@@ -333,8 +333,8 @@ class ScheduleView {
 	private function load_bookings( $start_date, $end_date ) {
 		global $wpdb;
 
-		// Query all entries with production bookings
-		// FIX: Filter out trashed/spam entries like frontend does
+		// Query all entries with production bookings that overlap this month
+		// Uses overlap check: start <= end_of_month AND end >= start_of_month
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT entry_id, meta_key, meta_value
@@ -343,15 +343,21 @@ class ScheduleView {
 				AND entry_id IN (
 					SELECT DISTINCT em.entry_id
 					FROM {$wpdb->prefix}gf_entry_meta em
+					INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
+						ON em.entry_id = start_meta.entry_id
+						AND start_meta.meta_key = '_prod_start_date'
+					LEFT JOIN {$wpdb->prefix}gf_entry_meta end_meta
+						ON em.entry_id = end_meta.entry_id
+						AND end_meta.meta_key = '_prod_end_date'
 					INNER JOIN {$wpdb->prefix}gf_entry e ON em.entry_id = e.id
-					WHERE em.meta_key = '_prod_start_date'
-					AND em.meta_value >= %s
-					AND em.meta_value <= %s
+					WHERE em.meta_key = '_prod_slots_allocation'
+					AND start_meta.meta_value <= %s
+					AND (end_meta.meta_value IS NULL OR end_meta.meta_value >= %s)
 					AND e.status = 'active'
 				)
 				ORDER BY entry_id",
-				$start_date,
-				$end_date
+				$end_date,
+				$start_date
 			),
 			ARRAY_A
 		);
