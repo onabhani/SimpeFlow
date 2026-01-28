@@ -14,6 +14,105 @@ class UpdateRequestModal {
 		// AJAX handlers
 		add_action( 'wp_ajax_sfa_ur_submit_update', [ $this, 'handle_update_request' ] );
 		add_action( 'wp_ajax_sfa_ur_submit_following', [ $this, 'handle_following_invoice' ] );
+
+		// Admin-post handler for manual apply (when automatic apply fails)
+		add_action( 'admin_post_sfa_ur_apply_update', [ $this, 'handle_manual_apply' ] );
+	}
+
+	/**
+	 * Handle manual apply action
+	 *
+	 * URL: /wp-admin/admin-post.php?action=sfa_ur_apply_update&entry_id=123&_wpnonce=...
+	 * Used by admins when automatic application fails
+	 */
+	public function handle_manual_apply() {
+		// Get entry ID
+		$entry_id = isset( $_GET['entry_id'] ) ? absint( $_GET['entry_id'] ) : 0;
+
+		if ( ! $entry_id ) {
+			wp_die( 'Missing entry ID', 'Error', [ 'response' => 400 ] );
+		}
+
+		// Verify nonce
+		if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sfa_ur_apply_' . $entry_id ) ) {
+			wp_die( 'Invalid security token', 'Error', [ 'response' => 403 ] );
+		}
+
+		// Check permissions (admin only)
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( 'Insufficient permissions. Only administrators can manually apply updates.', 'Error', [ 'response' => 403 ] );
+		}
+
+		// Get entry and verify it's an update request
+		$entry = \GFAPI::get_entry( $entry_id );
+
+		if ( is_wp_error( $entry ) ) {
+			wp_die( 'Entry not found', 'Error', [ 'response' => 404 ] );
+		}
+
+		$mode = gform_get_meta( $entry_id, '_ur_mode' );
+		if ( $mode !== 'update_request' ) {
+			wp_die( 'This entry is not an update request', 'Error', [ 'response' => 400 ] );
+		}
+
+		// Check if already applied
+		$applied_at = gform_get_meta( $entry_id, '_ur_applied_at' );
+		if ( $applied_at ) {
+			wp_die(
+				sprintf( 'This update request was already applied on %s', $applied_at ),
+				'Already Applied',
+				[ 'response' => 400 ]
+			);
+		}
+
+		// Get current status
+		$status = gform_get_meta( $entry_id, '_ur_status' );
+
+		// Force approve if still submitted
+		if ( $status === 'submitted' ) {
+			gform_update_meta( $entry_id, '_ur_status', 'approved' );
+			gform_update_meta( $entry_id, '_ur_approved_at', current_time( 'mysql' ) );
+			gform_update_meta( $entry_id, '_ur_approved_by', get_current_user_id() );
+
+			// Add note about manual approval
+			\GFAPI::add_note(
+				$entry_id,
+				get_current_user_id(),
+				wp_get_current_user()->display_name,
+				'<strong>Manual Approval:</strong> Update request was manually approved by admin during manual apply action.'
+			);
+		}
+
+		// Trigger the apply action
+		do_action( 'sfa_update_request_approved', $entry_id, get_current_user_id() );
+
+		// Check if apply was successful
+		$applied_at = gform_get_meta( $entry_id, '_ur_applied_at' );
+
+		if ( $applied_at ) {
+			// Success - redirect back with success message
+			$parent_id = gform_get_meta( $entry_id, '_ur_parent_id' );
+			$redirect_url = add_query_arg(
+				[
+					'page' => 'gf_entries',
+					'view' => 'entry',
+					'id' => $entry['form_id'],
+					'lid' => $parent_id ?: $entry_id,
+					'ur_applied' => '1',
+				],
+				admin_url( 'admin.php' )
+			);
+
+			wp_redirect( $redirect_url );
+			exit;
+		} else {
+			// Failed - show error
+			wp_die(
+				'Failed to apply update request. Check error logs for details.',
+				'Apply Failed',
+				[ 'response' => 500, 'back_link' => true ]
+			);
+		}
 	}
 
 	/**

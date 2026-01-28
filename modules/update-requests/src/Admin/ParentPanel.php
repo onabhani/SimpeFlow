@@ -78,7 +78,13 @@ class ParentPanel {
 							}
 
 							// Format type label
-							$type_label = $request_type === 'entry_updating' ? 'Design Change' : 'Add Invoice Item';
+							// Note: 'entry_updating' from URL-mode, 'drawing_update' from AJAX modal
+							$type_labels = [
+								'entry_updating' => 'Design Change',
+								'drawing_update' => 'Drawing Update',
+								'following_invoice' => 'Following Invoice',
+							];
+							$type_label = isset( $type_labels[ $request_type ] ) ? $type_labels[ $request_type ] : ucfirst( str_replace( '_', ' ', $request_type ) );
 
 							// Format status badge
 							$status_color = $this->get_status_color( $status );

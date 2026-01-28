@@ -1,4 +1,4 @@
-# Update Requests Module v1.0.0
+# Update Requests Module v1.1.0
 
 A comprehensive system for submitting, tracking, and applying update requests to existing job entries in SimpleFlow.
 
@@ -24,8 +24,8 @@ The Update Requests Module enables dual-mode forms that can function both as reg
 
 ### Two Request Types
 
-1. **Entry Updating** - Modify existing entry fields (design changes, corrections)
-2. **Following Invoice** - Add new items to existing invoice (future feature)
+1. **Entry Updating / Drawing Update** - Modify existing entry fields (design changes, corrections)
+2. **Following Invoice** - Add new invoice files to existing job entry
 
 ---
 
@@ -163,17 +163,26 @@ Create a GravityFlow approval step:
 
 ### Manual Apply (Admins Only)
 
-If automatic application fails:
+If automatic application fails, administrators can manually trigger the apply action:
 
+**Option 1: Admin URL**
+```
+/wp-admin/admin-post.php?action=sfa_ur_apply_update&entry_id=123&_wpnonce=...
+```
+
+Generate the nonce with: `wp_create_nonce( 'sfa_ur_apply_' . $entry_id )`
+
+**Option 2: PHP Hook**
 ```php
 // Trigger manual application
 do_action( 'sfa_update_request_approved', $child_entry_id, $user_id );
 ```
 
-Or use admin action (future feature):
-```
-/wp-admin/admin-post.php?action=sfa_ur_apply_update&entry_id=123&_wpnonce=...
-```
+The manual apply action will:
+1. Force-approve the entry if still in "submitted" status
+2. Trigger the `sfa_update_request_approved` action
+3. Apply changes to parent entry
+4. Redirect to parent entry on success
 
 ---
 
@@ -184,16 +193,22 @@ Or use admin action (future feature):
 ```
 modules/update-requests/
 ├── update-requests.php (main loader)
+├── assets/
+│   ├── css/modal.css (modal styles)
+│   └── js/modal.js (modal JavaScript)
 └── src/
     ├── GravityForms/
     │   ├── ModeDetector.php (URL parameter handling)
     │   ├── ChildLinking.php (parent-child linking)
-    │   ├── DrawingPopulation.php (populate checkboxes)
     │   ├── ApprovalGuards.php (workflow enforcement)
     │   ├── FileAttachments.php (conditional file uploads)
-    │   └── EntryUpdating.php (apply changes to parent)
+    │   ├── FileVersionApplier.php (apply changes to parent)
+    │   └── VersionManager.php (file version tracking)
     └── Admin/
-        └── ParentPanel.php (display update requests)
+        ├── FormSettings.php (per-form configuration)
+        ├── ParentPanel.php (display update requests in sidebar)
+        ├── FileVersionWidget.php (file table with update buttons)
+        └── UpdateRequestModal.php (AJAX handlers & manual apply)
 ```
 
 ### Data Flow
@@ -356,6 +371,11 @@ Populates drawing checkboxes from parent entry field 45.
 
 ## Version History
 
+- **v1.1.0** - Bug fixes and manual apply admin action
+  - Fixed type mismatch between URL-mode (`entry_updating`) and modal-mode (`drawing_update`)
+  - Added FileAttachments initialization (was missing from loader)
+  - Implemented manual apply admin-post action for administrators
+  - Updated ParentPanel to display all request type labels correctly
 - **v1.0.0** - Full production release with all features
 - **v0.4.0** - Entry updating logic
 - **v0.3.0** - File attachments after approval
