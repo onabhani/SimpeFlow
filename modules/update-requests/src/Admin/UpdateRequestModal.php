@@ -143,6 +143,17 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Parent entry not found' ] );
 		}
 
+		// Check if current user is the entry creator
+		if ( ! FormSettings::is_entry_creator( $parent_entry ) ) {
+			wp_send_json_error( [ 'message' => 'Only the entry creator can submit update requests' ] );
+		}
+
+		// Check if cutoff step has been passed
+		$form = \GFAPI::get_form( $form_id );
+		if ( ! FormSettings::can_submit_update_request( $form, 0, $parent_entry ) ) {
+			wp_send_json_error( [ 'message' => 'Drawing updates are no longer allowed. The cutoff step has been passed.' ] );
+		}
+
 		// Handle file uploads
 		$drawing_file = null;
 		$invoice_file = null;
@@ -240,6 +251,17 @@ class UpdateRequestModal {
 		$parent_entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $parent_entry ) ) {
 			wp_send_json_error( [ 'message' => 'Parent entry not found' ] );
+		}
+
+		// Check if current user is the entry creator
+		if ( ! FormSettings::is_entry_creator( $parent_entry ) ) {
+			wp_send_json_error( [ 'message' => 'Only the entry creator can submit following invoices' ] );
+		}
+
+		// Check if cutoff step has been passed
+		$form = \GFAPI::get_form( $form_id );
+		if ( ! FormSettings::can_submit_following_invoice( $form, 0, $parent_entry ) ) {
+			wp_send_json_error( [ 'message' => 'Following invoices are no longer allowed. The cutoff step has been passed.' ] );
 		}
 
 		// Handle file upload
