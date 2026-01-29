@@ -106,6 +106,30 @@ class AjaxEndpoints {
 				$mentions_sent = $this->send_mention_notifications( $mentioned_users, $current_user, $content, $entity_type, $entity_id );
 			}
 
+			// In-app notifications via simple-notifications module
+			if ( function_exists( 'simple_notifications_create' ) && ! empty( $mentioned_users ) ) {
+				$entry_url = '';
+				if ( $entity_type === 'gravity_form_entry' || $entity_type === 'workflow_step' ) {
+					$form_id = $this->get_form_id_from_entry( $entity_id );
+					if ( $form_id ) {
+						$entry_url = get_site_url() . '/workflow-inbox/?page=gravityflow-inbox&view=entry&id=' . $form_id . '&lid=' . $entity_id;
+					}
+				}
+
+				foreach ( $mentioned_users as $user ) {
+					if ( $user['id'] == $current_user->ID ) {
+						continue;
+					}
+					simple_notifications_create(
+						$user['id'],
+						'mention',
+						$entity_id,
+						sprintf( '%s mentioned you in a note', $current_user->display_name ),
+						$entry_url
+					);
+				}
+			}
+
 			wp_send_json_success( array(
 				'message'       => 'Note added',
 				'mentions_sent' => $mentions_sent,

@@ -60,8 +60,15 @@ class FormSettings {
 		$enabled = (bool) rgar( $form, 'sfa_ur_enabled' );
 		$drawing_field_id = (int) rgar( $form, 'sfa_ur_drawing_field' );
 		$invoice_field_id = (int) rgar( $form, 'sfa_ur_invoice_field' );
-		$update_request_step = (int) rgar( $form, 'sfa_ur_update_step' );
-		$following_invoice_step = (int) rgar( $form, 'sfa_ur_following_step' );
+		$update_cutoff_step = (int) rgar( $form, 'sfa_ur_update_cutoff_step' );
+		$following_cutoff_step = (int) rgar( $form, 'sfa_ur_following_cutoff_step' );
+		$approver_id = (int) rgar( $form, 'sfa_ur_approver' );
+
+		// Get users for approver dropdown
+		$users = get_users( [
+			'role__in' => [ 'administrator', 'editor', 'gravityflow_user_update_requests' ],
+			'orderby'  => 'display_name',
+		] );
 
 		// Get GravityFlow steps if available
 		$workflow_steps = [];
@@ -176,49 +183,65 @@ class FormSettings {
 					</p>
 				</div>
 
-				<!-- Update Request Step Guard -->
+				<!-- Approver -->
 				<div class="sfa-ur-field-row">
-					<label for="sfa_ur_update_step">Update Request Step</label>
-					<?php if ( empty( $workflow_steps ) ): ?>
-						<p class="description" style="color: #dc3545;">
-							No GravityFlow steps found. Please configure workflow steps first.
-						</p>
-					<?php else: ?>
-						<select name="sfa_ur_update_step" id="sfa_ur_update_step">
-							<option value="0">-- Disabled (Update requests not allowed) --</option>
-							<?php foreach ( $workflow_steps as $step ): ?>
-								<option value="<?php echo $step['id']; ?>" <?php selected( $update_request_step, $step['id'] ); ?>>
-									<?php echo esc_html( $step['name'] ); ?> (Step #<?php echo $step['id']; ?> - <?php echo ucfirst( $step['type'] ); ?>)
-								</option>
-							<?php endforeach; ?>
-						</select>
-					<?php endif; ?>
+					<label for="sfa_ur_approver">Update Request Approver</label>
+					<select name="sfa_ur_approver" id="sfa_ur_approver">
+						<option value="0">-- Select Approver --</option>
+						<?php foreach ( $users as $user ): ?>
+							<option value="<?php echo $user->ID; ?>" <?php selected( $approver_id, $user->ID ); ?>>
+								<?php echo esc_html( $user->display_name ); ?> (<?php echo esc_html( $user->user_email ); ?>)
+							</option>
+						<?php endforeach; ?>
+					</select>
 					<p class="description">
-						Select which workflow step allows employees to submit drawing update requests.
-						Updates can only be submitted when entry reaches this step.
+						Select the user who will approve/reject update requests and following invoices.
 					</p>
 				</div>
 
-				<!-- Following Invoice Step Guard -->
+				<!-- Update Request Cutoff Step -->
 				<div class="sfa-ur-field-row">
-					<label for="sfa_ur_following_step">Following Invoice Step</label>
+					<label for="sfa_ur_update_cutoff_step">Drawing Update Cutoff Step</label>
 					<?php if ( empty( $workflow_steps ) ): ?>
 						<p class="description" style="color: #dc3545;">
 							No GravityFlow steps found. Please configure workflow steps first.
 						</p>
 					<?php else: ?>
-						<select name="sfa_ur_following_step" id="sfa_ur_following_step">
-							<option value="0">-- Disabled (Following invoices not allowed) --</option>
+						<select name="sfa_ur_update_cutoff_step" id="sfa_ur_update_cutoff_step">
+							<option value="0">-- Always Allowed --</option>
 							<?php foreach ( $workflow_steps as $step ): ?>
-								<option value="<?php echo $step['id']; ?>" <?php selected( $following_invoice_step, $step['id'] ); ?>>
+								<option value="<?php echo $step['id']; ?>" <?php selected( $update_cutoff_step, $step['id'] ); ?>>
 									<?php echo esc_html( $step['name'] ); ?> (Step #<?php echo $step['id']; ?> - <?php echo ucfirst( $step['type'] ); ?>)
 								</option>
 							<?php endforeach; ?>
 						</select>
 					<?php endif; ?>
 					<p class="description">
-						Select which workflow step allows employees to submit following invoices.
-						Following invoices can only be submitted when entry reaches this step.
+						Drawing updates can be submitted <strong>until</strong> this step is completed.
+						Once the entry passes this step, drawing updates are no longer allowed.
+					</p>
+				</div>
+
+				<!-- Following Invoice Cutoff Step -->
+				<div class="sfa-ur-field-row">
+					<label for="sfa_ur_following_cutoff_step">Following Invoice Cutoff Step</label>
+					<?php if ( empty( $workflow_steps ) ): ?>
+						<p class="description" style="color: #dc3545;">
+							No GravityFlow steps found. Please configure workflow steps first.
+						</p>
+					<?php else: ?>
+						<select name="sfa_ur_following_cutoff_step" id="sfa_ur_following_cutoff_step">
+							<option value="0">-- Always Allowed --</option>
+							<?php foreach ( $workflow_steps as $step ): ?>
+								<option value="<?php echo $step['id']; ?>" <?php selected( $following_cutoff_step, $step['id'] ); ?>>
+									<?php echo esc_html( $step['name'] ); ?> (Step #<?php echo $step['id']; ?> - <?php echo ucfirst( $step['type'] ); ?>)
+								</option>
+							<?php endforeach; ?>
+						</select>
+					<?php endif; ?>
+					<p class="description">
+						Following invoices can be submitted <strong>until</strong> this step is completed.
+						Once the entry passes this step, following invoices are no longer allowed.
 					</p>
 				</div>
 
@@ -262,9 +285,12 @@ class FormSettings {
 		$form['sfa_ur_drawing_field'] = isset( $_POST['sfa_ur_drawing_field'] ) ? absint( $_POST['sfa_ur_drawing_field'] ) : 0;
 		$form['sfa_ur_invoice_field'] = isset( $_POST['sfa_ur_invoice_field'] ) ? absint( $_POST['sfa_ur_invoice_field'] ) : 0;
 
-		// Save step guards
-		$form['sfa_ur_update_step'] = isset( $_POST['sfa_ur_update_step'] ) ? absint( $_POST['sfa_ur_update_step'] ) : 0;
-		$form['sfa_ur_following_step'] = isset( $_POST['sfa_ur_following_step'] ) ? absint( $_POST['sfa_ur_following_step'] ) : 0;
+		// Save approver
+		$form['sfa_ur_approver'] = isset( $_POST['sfa_ur_approver'] ) ? absint( $_POST['sfa_ur_approver'] ) : 0;
+
+		// Save cutoff steps (requests allowed UNTIL these steps are passed)
+		$form['sfa_ur_update_cutoff_step'] = isset( $_POST['sfa_ur_update_cutoff_step'] ) ? absint( $_POST['sfa_ur_update_cutoff_step'] ) : 0;
+		$form['sfa_ur_following_cutoff_step'] = isset( $_POST['sfa_ur_following_cutoff_step'] ) ? absint( $_POST['sfa_ur_following_cutoff_step'] ) : 0;
 
 		// Update form
 		\GFAPI::update_form( $form );
@@ -328,54 +354,156 @@ class FormSettings {
 	}
 
 	/**
-	 * Get update request step ID for form
+	 * Get approver user ID for form
 	 *
 	 * @param array|int $form Form array or form ID
 	 * @return int
 	 */
-	public static function get_update_request_step( $form ) {
+	public static function get_approver( $form ) {
 		if ( is_numeric( $form ) ) {
 			$form = \GFAPI::get_form( $form );
 		}
 
-		return (int) rgar( $form, 'sfa_ur_update_step' );
+		return (int) rgar( $form, 'sfa_ur_approver' );
 	}
 
 	/**
-	 * Get following invoice step ID for form
+	 * Get update request cutoff step ID for form
 	 *
 	 * @param array|int $form Form array or form ID
 	 * @return int
 	 */
-	public static function get_following_invoice_step( $form ) {
+	public static function get_update_cutoff_step( $form ) {
 		if ( is_numeric( $form ) ) {
 			$form = \GFAPI::get_form( $form );
 		}
 
-		return (int) rgar( $form, 'sfa_ur_following_step' );
+		return (int) rgar( $form, 'sfa_ur_update_cutoff_step' );
+	}
+
+	/**
+	 * Get following invoice cutoff step ID for form
+	 *
+	 * @param array|int $form Form array or form ID
+	 * @return int
+	 */
+	public static function get_following_cutoff_step( $form ) {
+		if ( is_numeric( $form ) ) {
+			$form = \GFAPI::get_form( $form );
+		}
+
+		return (int) rgar( $form, 'sfa_ur_following_cutoff_step' );
 	}
 
 	/**
 	 * Check if update requests are allowed at current step
 	 *
+	 * Logic: Allowed UNTIL the cutoff step is passed
+	 * - If cutoff = 0, always allowed
+	 * - If current step < cutoff step, allowed
+	 * - If current step >= cutoff step, NOT allowed (step has been reached/passed)
+	 *
 	 * @param array|int $form Form array or form ID
 	 * @param int       $current_step_id Current workflow step ID
+	 * @param array     $entry Entry array (to check completed steps)
 	 * @return bool
 	 */
-	public static function can_submit_update_request( $form, $current_step_id ) {
-		$allowed_step = self::get_update_request_step( $form );
-		return $allowed_step > 0 && $allowed_step == $current_step_id;
+	public static function can_submit_update_request( $form, $current_step_id, $entry = null ) {
+		$cutoff_step = self::get_update_cutoff_step( $form );
+
+		// If no cutoff step configured, always allowed
+		if ( $cutoff_step === 0 ) {
+			return true;
+		}
+
+		// Check if cutoff step has been completed
+		if ( $entry ) {
+			$completed_steps = self::get_completed_step_ids( $entry );
+			if ( in_array( $cutoff_step, $completed_steps, true ) ) {
+				return false; // Cutoff step already passed
+			}
+		}
+
+		// If current step is at or past cutoff, not allowed
+		// Note: Step IDs are not always sequential, so we check if cutoff is in completed list
+		return true;
 	}
 
 	/**
 	 * Check if following invoices are allowed at current step
 	 *
+	 * Logic: Allowed UNTIL the cutoff step is passed
+	 *
 	 * @param array|int $form Form array or form ID
 	 * @param int       $current_step_id Current workflow step ID
+	 * @param array     $entry Entry array (to check completed steps)
 	 * @return bool
 	 */
-	public static function can_submit_following_invoice( $form, $current_step_id ) {
-		$allowed_step = self::get_following_invoice_step( $form );
-		return $allowed_step > 0 && $allowed_step == $current_step_id;
+	public static function can_submit_following_invoice( $form, $current_step_id, $entry = null ) {
+		$cutoff_step = self::get_following_cutoff_step( $form );
+
+		// If no cutoff step configured, always allowed
+		if ( $cutoff_step === 0 ) {
+			return true;
+		}
+
+		// Check if cutoff step has been completed
+		if ( $entry ) {
+			$completed_steps = self::get_completed_step_ids( $entry );
+			if ( in_array( $cutoff_step, $completed_steps, true ) ) {
+				return false; // Cutoff step already passed
+			}
+		}
+
+		return true;
+	}
+
+	/**
+	 * Get list of completed step IDs for an entry
+	 *
+	 * @param array $entry Entry array
+	 * @return array Array of completed step IDs
+	 */
+	public static function get_completed_step_ids( $entry ) {
+		$completed_steps = [];
+
+		if ( ! class_exists( 'Gravity_Flow_API' ) ) {
+			return $completed_steps;
+		}
+
+		$entry_id = $entry['id'];
+		$form_id = $entry['form_id'];
+
+		$api = new \Gravity_Flow_API( $form_id );
+		$steps = $api->get_steps();
+
+		foreach ( $steps as $step ) {
+			$step_id = $step->get_id();
+			$step_status = $step->get_status_key_for_entry( $entry_id );
+
+			// Step is complete if status is 'complete' or any terminal status
+			if ( in_array( $step_status, [ 'complete', 'approved', 'rejected' ], true ) ) {
+				$completed_steps[] = $step_id;
+			}
+		}
+
+		return $completed_steps;
+	}
+
+	/**
+	 * Check if user is the entry creator
+	 *
+	 * @param array $entry Entry array
+	 * @param int   $user_id User ID to check (defaults to current user)
+	 * @return bool
+	 */
+	public static function is_entry_creator( $entry, $user_id = null ) {
+		if ( $user_id === null ) {
+			$user_id = get_current_user_id();
+		}
+
+		$creator_id = (int) rgar( $entry, 'created_by' );
+
+		return $creator_id === $user_id;
 	}
 }

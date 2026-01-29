@@ -24,7 +24,7 @@ class FileVersionWidget {
 	 */
 	public function enqueue_assets( $hook ) {
 		// Only load on GravityFlow pages
-		if ( strpos( $hook, 'gravityflow' ) === false && strpos( $_SERVER['REQUEST_URI'], 'workflow-inbox' ) === false ) {
+		if ( strpos( (string) $hook, 'gravityflow' ) === false && strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) === false ) {
 			return;
 		}
 
@@ -68,17 +68,22 @@ class FileVersionWidget {
 		$entry_id = $entry['id'];
 		$form_id = $form['id'];
 
+		// Check if current user is the entry creator (only creators can submit update requests)
+		if ( ! FormSettings::is_entry_creator( $entry ) ) {
+			return;
+		}
+
 		// Get current step ID
 		$current_step_id = is_object( $current_step ) && method_exists( $current_step, 'get_id' )
 			? $current_step->get_id()
 			: 0;
 
-		// Check permissions
-		$can_update = FormSettings::can_submit_update_request( $form, $current_step_id );
-		$can_follow = FormSettings::can_submit_following_invoice( $form, $current_step_id );
+		// Check permissions (pass entry for cutoff step checking)
+		$can_update = FormSettings::can_submit_update_request( $form, $current_step_id, $entry );
+		$can_follow = FormSettings::can_submit_following_invoice( $form, $current_step_id, $entry );
 
 		if ( ! $can_update && ! $can_follow ) {
-			// Not at the right step yet
+			// Cutoff step has been passed, no longer allowed
 			return;
 		}
 

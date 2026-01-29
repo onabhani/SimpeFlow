@@ -60,7 +60,8 @@ class FileVersionApplier {
 		$request_type = gform_get_meta( $child_entry_id, '_ur_type' );
 
 		// Apply based on type
-		if ( $request_type === 'drawing_update' ) {
+		// Note: 'entry_updating' comes from URL-mode forms, 'drawing_update' comes from AJAX modal
+		if ( $request_type === 'drawing_update' || $request_type === 'entry_updating' ) {
 			$this->apply_drawing_update( $parent_entry, $child_entry, $user_id );
 		} elseif ( $request_type === 'following_invoice' ) {
 			$this->apply_following_invoice( $parent_entry, $child_entry, $user_id );

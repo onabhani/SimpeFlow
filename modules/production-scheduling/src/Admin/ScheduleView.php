@@ -214,22 +214,24 @@ class ScheduleView {
 
 						if ( isset( $bookings[ $day_date ] ) && ! empty( $bookings[ $day_date ]['entries'] ) ) {
 							$entry_count = count( $bookings[ $day_date ]['entries'] );
-							echo '<div class="sfa-day-entries" style="font-size: 11px; color: #0073aa; margin-top: 3px; cursor: help; position: relative;">';
+							echo '<div class="sfa-day-entries" style="font-size: 11px; color: #0073aa; margin-top: 3px; cursor: pointer; position: relative;">';
 							echo '<span style="text-decoration: underline dotted;">';
 							echo $entry_count . ' order' . ( $entry_count > 1 ? 's' : '' );
 							echo '</span>';
 
 							// Tooltip with entry details
-							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 10px; min-width: 200px; left: 0; top: 20px; border-radius: 3px;">';
-							echo '<div style="font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #eee;">Entries on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
+							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 0; min-width: 220px; left: 0; top: 20px; border-radius: 3px; overflow: hidden;">';
+							echo '<div style="font-weight: bold; padding: 8px 10px; background: #f8f8f8; border-bottom: 1px solid #eee;">Orders on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
 							foreach ( $bookings[ $day_date ]['entries'] as $entry_info ) {
 								$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_info['form_id'] . '&lid=' . $entry_info['entry_id'];
-								echo '<div style="padding: 3px 0; border-bottom: 1px solid #f0f0f0;">';
-								echo '<a href="' . esc_url( $workflow_url ) . '" target="_blank" style="color: #0073aa; text-decoration: none; font-weight: 500;">';
-								echo '#' . $entry_info['entry_id'];
+								$form_title = isset( $entry_info['form_title'] ) ? $entry_info['form_title'] : '';
+								echo '<a href="' . esc_url( $workflow_url ) . '" target="_blank" class="sfa-tooltip-entry" style="display: block; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; color: #0073aa; text-decoration: none; cursor: pointer;">';
+								echo '<strong>#' . $entry_info['entry_id'] . '</strong>';
+								echo ' - ' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' );
+								if ( $form_title ) {
+									echo ' <span style="color: #888;">(' . esc_html( $form_title ) . ')</span>';
+								}
 								echo '</a>';
-								echo ' - <span style="color: #666;">' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' ) . '</span>';
-								echo '</div>';
 							}
 							echo '</div>';
 							echo '</div>';
@@ -331,8 +333,8 @@ class ScheduleView {
 	private function load_bookings( $start_date, $end_date ) {
 		global $wpdb;
 
-		// Query all entries with production bookings
-		// FIX: Filter out trashed/spam entries like frontend does
+		// Query all entries with production bookings that overlap this month
+		// Uses overlap check: start <= end_of_month AND end >= start_of_month
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
 				"SELECT entry_id, meta_key, meta_value
@@ -341,15 +343,21 @@ class ScheduleView {
 				AND entry_id IN (
 					SELECT DISTINCT em.entry_id
 					FROM {$wpdb->prefix}gf_entry_meta em
+					INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
+						ON em.entry_id = start_meta.entry_id
+						AND start_meta.meta_key = '_prod_start_date'
+					LEFT JOIN {$wpdb->prefix}gf_entry_meta end_meta
+						ON em.entry_id = end_meta.entry_id
+						AND end_meta.meta_key = '_prod_end_date'
 					INNER JOIN {$wpdb->prefix}gf_entry e ON em.entry_id = e.id
-					WHERE em.meta_key = '_prod_start_date'
-					AND em.meta_value >= %s
-					AND em.meta_value <= %s
+					WHERE em.meta_key = '_prod_slots_allocation'
+					AND start_meta.meta_value <= %s
+					AND (end_meta.meta_value IS NULL OR end_meta.meta_value >= %s)
 					AND e.status = 'active'
 				)
 				ORDER BY entry_id",
-				$start_date,
-				$end_date
+				$end_date,
+				$start_date
 			),
 			ARRAY_A
 		);
@@ -367,6 +375,7 @@ class ScheduleView {
 
 		// Organize by date
 		$bookings = [];
+		$form_title_cache = [];
 
 		foreach ( $entries as $entry_id => $entry_data ) {
 			if ( empty( $entry_data['slots_allocation'] ) ) {
@@ -379,11 +388,20 @@ class ScheduleView {
 				continue;
 			}
 
-			// Get form ID for entry
-			$form_id = $wpdb->get_var( $wpdb->prepare(
-				"SELECT form_id FROM {$wpdb->prefix}gf_entry WHERE id = %d",
+			// Get form ID and entry creator for entry
+			$entry_row = $wpdb->get_row( $wpdb->prepare(
+				"SELECT form_id, created_by FROM {$wpdb->prefix}gf_entry WHERE id = %d",
 				$entry_id
-			) );
+			), ARRAY_A );
+			$form_id = $entry_row ? $entry_row['form_id'] : null;
+			$entry_created_by = $entry_row ? (int) $entry_row['created_by'] : 0;
+
+			// Get form title (cached)
+			if ( $form_id && ! isset( $form_title_cache[ $form_id ] ) ) {
+				$form_obj = \GFAPI::get_form( $form_id );
+				$form_title_cache[ $form_id ] = is_array( $form_obj ) ? rgar( $form_obj, 'title' ) : '';
+			}
+			$form_title = $form_id ? ( $form_title_cache[ $form_id ] ?? '' ) : '';
 
 			// Get booking status (default to confirmed for backwards compatibility)
 			$booking_status = isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'confirmed';
@@ -430,6 +448,7 @@ class ScheduleView {
 				$bookings[ $date ]['entries'][] = [
 					'entry_id' => $entry_id,
 					'form_id' => $form_id,
+					'form_title' => $form_title,
 					'lm_on_date' => $lm,
 					'lm_required' => isset( $entry_data['lm_required'] ) ? $entry_data['lm_required'] : 0,
 					'prod_start' => isset( $entry_data['start_date'] ) ? $entry_data['start_date'] : '',
@@ -437,7 +456,7 @@ class ScheduleView {
 					'install_date' => isset( $entry_data['install_date'] ) ? $entry_data['install_date'] : '',
 					'status' => isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'unknown',
 					'booked_at' => isset( $entry_data['booked_at'] ) ? $entry_data['booked_at'] : '',
-					'booked_by' => isset( $entry_data['booked_by'] ) ? $entry_data['booked_by'] : 0,
+					'booked_by' => $entry_created_by,
 				];
 			}
 		}

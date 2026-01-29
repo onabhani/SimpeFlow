@@ -2,7 +2,7 @@
 /**
  * Update Requests Module for SimpleFlow
  * Allows submitting update requests for existing job entries
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Module constants
 if ( ! defined( 'SFA_UR_VER' ) ) {
-	define( 'SFA_UR_VER', '1.0.0' );
+	define( 'SFA_UR_VER', '1.1.0' );
 }
 if ( ! defined( 'SFA_UR_DIR' ) ) {
 	define( 'SFA_UR_DIR', plugin_dir_path( __FILE__ ) );
@@ -64,8 +64,12 @@ add_action( 'plugins_loaded', function () {
 	require_once SFA_UR_DIR . 'src/GravityForms/FileVersionApplier.php';
 	new SFA\UpdateRequests\GravityForms\FileVersionApplier();
 
+	// Initialize file attachments (controls file upload visibility based on approval status)
+	require_once SFA_UR_DIR . 'src/GravityForms/FileAttachments.php';
+	new SFA\UpdateRequests\GravityForms\FileAttachments();
+
 	// Initialize admin components
-	if ( is_admin() || strpos( $_SERVER['REQUEST_URI'], 'workflow-inbox' ) !== false ) {
+	if ( is_admin() || strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) !== false ) {
 		// Parent panel (shows all update requests in sidebar)
 		require_once SFA_UR_DIR . 'src/Admin/ParentPanel.php';
 		new SFA\UpdateRequests\Admin\ParentPanel();

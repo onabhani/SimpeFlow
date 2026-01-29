@@ -157,18 +157,165 @@ class FrontendCalendar {
 				.sfa-day-entries:hover .sfa-entries-tooltip {
 					display: block !important;
 				}
+
+				/* Responsive: Tablet */
+				@media (max-width: 768px) {
+					.sfa-prod-schedule-frontend {
+						padding: 10px;
+					}
+					.sfa-prod-nav h2 {
+						font-size: 1.2em;
+					}
+					.sfa-prod-nav a {
+						padding: 6px 10px;
+						font-size: 13px;
+					}
+					.sfa-prod-calendar-wrap {
+						overflow-x: auto;
+						-webkit-overflow-scrolling: touch;
+						margin: 15px 0;
+					}
+					.sfa-prod-calendar {
+						min-width: 560px;
+						margin: 0;
+					}
+					.sfa-prod-calendar thead th {
+						padding: 10px 6px;
+						font-size: 13px;
+					}
+					.sfa-prod-calendar td {
+						padding: 8px 5px;
+						height: 70px;
+						min-height: 70px;
+					}
+					.sfa-prod-day {
+						font-size: 15px;
+						margin-bottom: 4px;
+					}
+					.sfa-prod-capacity {
+						font-size: 12px;
+						padding: 2px 5px;
+					}
+					.sfa-prod-legend-item {
+						display: block;
+						margin-bottom: 8px;
+					}
+					.sfa-bookings-table-wrap {
+						overflow-x: auto;
+						-webkit-overflow-scrolling: touch;
+					}
+					.sfa-bookings-table {
+						min-width: 700px;
+					}
+					.sfa-bookings-table th,
+					.sfa-bookings-table td {
+						padding: 8px;
+						font-size: 13px;
+					}
+				}
+
+				/* Responsive: Mobile */
+				@media (max-width: 480px) {
+					.sfa-prod-schedule-frontend {
+						padding: 5px;
+					}
+					.sfa-prod-nav {
+						gap: 5px;
+					}
+					.sfa-prod-nav h2 {
+						font-size: 1em;
+					}
+					.sfa-prod-nav a {
+						padding: 5px 8px;
+						font-size: 12px;
+					}
+					.sfa-prod-calendar {
+						min-width: 480px;
+					}
+					.sfa-prod-calendar thead th {
+						padding: 8px 4px;
+						font-size: 11px;
+					}
+					.sfa-prod-calendar td {
+						padding: 5px 3px;
+						height: 60px;
+						min-height: 60px;
+					}
+					.sfa-prod-day {
+						font-size: 13px;
+						margin-bottom: 2px;
+					}
+					.sfa-prod-capacity {
+						font-size: 10px;
+						padding: 1px 3px;
+					}
+					.sfa-day-entries {
+						font-size: 10px !important;
+					}
+					.sfa-entries-tooltip {
+						min-width: 180px !important;
+						font-size: 12px;
+					}
+					.sfa-prod-legend {
+						padding: 10px;
+						font-size: 13px;
+					}
+					.sfa-prod-legend-color {
+						width: 16px;
+						height: 16px;
+					}
+					.sfa-bookings-table th,
+					.sfa-bookings-table td {
+						padding: 6px;
+						font-size: 12px;
+						white-space: nowrap;
+					}
+				}
 			</style>
 			<script>
 			jQuery(document).ready(function($) {
-				// Show/hide entry tooltips on hover
+				// Show/hide entry tooltips on hover (desktop)
 				$('.sfa-day-entries').hover(
 					function() {
-						$(this).find('.sfa-entries-tooltip').show();
+						var $tooltip = $(this).find('.sfa-entries-tooltip');
+						$tooltip.show();
+						// Reposition if overflowing right edge
+						var tooltipRight = $tooltip.offset().left + $tooltip.outerWidth();
+						var viewportWidth = $(window).width();
+						if (tooltipRight > viewportWidth - 10) {
+							$tooltip.css({ left: 'auto', right: '0' });
+						}
 					},
 					function() {
 						$(this).find('.sfa-entries-tooltip').hide();
 					}
 				);
+
+				// Touch support for mobile (tap to toggle tooltip)
+				$('.sfa-day-entries').on('click touchstart', function(e) {
+					if (e.type === 'touchstart') {
+						e.preventDefault();
+					}
+					var $tooltip = $(this).find('.sfa-entries-tooltip');
+					// Hide all other tooltips first
+					$('.sfa-entries-tooltip').not($tooltip).hide();
+					$tooltip.toggle();
+					// Reposition if overflowing
+					if ($tooltip.is(':visible')) {
+						var tooltipRight = $tooltip.offset().left + $tooltip.outerWidth();
+						var viewportWidth = $(window).width();
+						if (tooltipRight > viewportWidth - 10) {
+							$tooltip.css({ left: 'auto', right: '0' });
+						}
+					}
+				});
+
+				// Close tooltips when tapping elsewhere
+				$(document).on('click touchstart', function(e) {
+					if (!$(e.target).closest('.sfa-day-entries').length) {
+						$('.sfa-entries-tooltip').hide();
+					}
+				});
 			});
 			</script>
 
@@ -222,6 +369,7 @@ class FrontendCalendar {
 		$first_day_of_week = (int) $date->format( 'w' ); // 0=Sunday
 
 		?>
+		<div class="sfa-prod-calendar-wrap">
 		<table class="sfa-prod-calendar">
 			<thead>
 				<tr>
@@ -300,16 +448,17 @@ class FrontendCalendar {
 							echo '</span>';
 
 							// Tooltip with entry details
-							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 10px; min-width: 200px; left: 0; top: 20px; border-radius: 3px;">';
-							echo '<div style="font-weight: bold; margin-bottom: 5px; padding-bottom: 5px; border-bottom: 1px solid #eee;">Orders on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
+							echo '<div class="sfa-entries-tooltip" style="display: none; position: absolute; z-index: 1000; background: white; border: 1px solid #ccc; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 0; min-width: 220px; left: 0; top: 20px; border-radius: 3px; overflow: hidden;">';
+							echo '<div style="font-weight: bold; padding: 8px 10px; background: #f8f8f8; border-bottom: 1px solid #eee;">Orders on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
 							foreach ( $bookings[ $day_date ]['entries'] as $entry_info ) {
-								echo '<div style="padding: 3px 0; border-bottom: 1px solid #f0f0f0;">';
-								echo '<span style="color: #0073aa; font-weight: 500;">#' . $entry_info['entry_id'] . '</span>';
-								echo ' - <span style="color: #666;">' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' ) . '</span>';
+								$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_info['form_id'] . '&lid=' . $entry_info['entry_id'];
+								echo '<a href="' . esc_url( $workflow_url ) . '" target="_blank" class="sfa-tooltip-entry" style="display: block; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; color: #0073aa; text-decoration: none; cursor: pointer;">';
+								echo '<strong>#' . $entry_info['entry_id'] . '</strong>';
+								echo ' - ' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' );
 								if ( ! empty( $entry_info['form_name'] ) ) {
-									echo ' <span style="font-size: 11px; color: #999;">(' . esc_html( $entry_info['form_name'] ) . ')</span>';
+									echo ' <span style="color: #888;">(' . esc_html( $entry_info['form_name'] ) . ')</span>';
 								}
-								echo '</div>';
+								echo '</a>';
 							}
 							echo '</div>';
 							echo '</div>';
@@ -325,6 +474,7 @@ class FrontendCalendar {
 				?>
 			</tbody>
 		</table>
+		</div>
 		<?php
 	}
 
@@ -379,10 +529,17 @@ class FrontendCalendar {
 					$prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
 					$lm_required = gform_get_meta( $entry_id, '_prod_lm_required' );
 					$booked_at = gform_get_meta( $entry_id, '_prod_booked_at' );
-					$booked_by = gform_get_meta( $entry_id, '_prod_booked_by' );
+
+					// Read entry creator directly from gf_entry (more reliable than stored meta)
+					global $wpdb;
+					$booked_by = (int) $wpdb->get_var( $wpdb->prepare(
+						"SELECT created_by FROM {$wpdb->prefix}gf_entry WHERE id = %d",
+						$entry_id
+					) );
 
 					$entries_list[ $entry_id ] = [
 						'entry_id' => $entry_id,
+						'form_id' => $entry_info['form_id'],
 						'form_name' => $entry_info['form_name'],
 						'install_date' => $install_date,
 						'prod_start' => $prod_start,
@@ -429,6 +586,7 @@ class FrontendCalendar {
 						background: #f9f9f9;
 					}
 				</style>
+				<div class="sfa-bookings-table-wrap">
 				<table class="sfa-bookings-table">
 					<thead>
 						<tr>
@@ -445,7 +603,10 @@ class FrontendCalendar {
 						<?php foreach ( $entries_list as $entry_data ): ?>
 							<tr>
 								<td>
-									<strong>#<?php echo $entry_data['entry_id']; ?></strong>
+									<?php $workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id']; ?>
+									<a href="<?php echo esc_url( $workflow_url ); ?>" target="_blank" style="color: #0073aa;">
+										<strong>#<?php echo $entry_data['entry_id']; ?></strong>
+									</a>
 								</td>
 								<td><?php echo esc_html( $entry_data['form_name'] ); ?></td>
 								<td><?php echo esc_html( $entry_data['lm_required'] ); ?> LM</td>
@@ -485,6 +646,7 @@ class FrontendCalendar {
 						<?php endforeach; ?>
 					</tbody>
 				</table>
+				</div>
 			<?php endif; ?>
 		</div>
 		<?php
@@ -499,6 +661,7 @@ class FrontendCalendar {
 		$query = "
 			SELECT
 				em.entry_id,
+				e.form_id,
 				em.meta_value as allocation,
 				cm.meta_value as capacity_at_booking,
 				f.title as form_name
@@ -506,7 +669,7 @@ class FrontendCalendar {
 			INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
 				ON em.entry_id = start_meta.entry_id
 				AND start_meta.meta_key = '_prod_start_date'
-			INNER JOIN {$wpdb->prefix}gf_entry_meta end_meta
+			LEFT JOIN {$wpdb->prefix}gf_entry_meta end_meta
 				ON em.entry_id = end_meta.entry_id
 				AND end_meta.meta_key = '_prod_end_date'
 			INNER JOIN {$wpdb->prefix}gf_entry e
@@ -521,7 +684,7 @@ class FrontendCalendar {
 				AND sm.meta_key = '_prod_booking_status'
 			WHERE em.meta_key = '_prod_slots_allocation'
 			AND start_meta.meta_value <= %s
-			AND end_meta.meta_value >= %s
+			AND (end_meta.meta_value IS NULL OR end_meta.meta_value >= %s)
 			AND (sm.meta_value IS NULL OR sm.meta_value != 'canceled')
 			AND e.status = 'active'
 		";
@@ -554,6 +717,7 @@ class FrontendCalendar {
 				$bookings[ $date ]['total_lm'] += $lm;
 				$bookings[ $date ]['entries'][] = [
 					'entry_id' => $row->entry_id,
+					'form_id' => $row->form_id,
 					'lm_on_date' => $lm,
 					'form_name' => $row->form_name,
 				];

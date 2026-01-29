@@ -451,7 +451,7 @@ add_filter( 'gform_validation', function( $validation_result ) {
 	}
 
 	// Bypass if this is a workflow inbox update (admin changing steps manually)
-	if ( isset( $_POST['action'] ) && strpos( $_POST['action'], 'gravityflow' ) !== false ) {
+	if ( isset( $_POST['action'] ) && strpos( (string) $_POST['action'], 'gravityflow' ) !== false ) {
 		$should_bypass = true;
 	}
 
@@ -512,6 +512,72 @@ add_filter( 'gravityflow_validation_step_approval', function( $is_valid, $form, 
 
 	return $is_valid;
 }, 5, 3 );
+
+/**
+ * Frontend Entry Link — show a "View on Frontend" link in the GF entry detail sidebar.
+ *
+ * Allows admins to quickly open the same entry in the workflow-inbox (frontend)
+ * view, matching the experience available from the dashboard.
+ */
+add_action( 'gform_entry_detail_sidebar_middle', 'simpleflow_frontend_entry_link', 5, 2 );
+
+function simpleflow_frontend_entry_link( $form, $entry ) {
+	if ( empty( $entry['id'] ) || empty( $form['id'] ) ) {
+		return;
+	}
+
+	$entry_id = (int) $entry['id'];
+	$form_id  = (int) $form['id'];
+
+	$frontend_url = home_url( '/workflow-inbox/' )
+		. '?page=gravityflow-inbox&view=entry&id=' . $form_id
+		. '&lid=' . $entry_id;
+
+	?>
+	<div class="postbox" style="margin-top: 10px;">
+		<h3 class="hndle" style="padding: 10px; cursor: default;">
+			<span><?php esc_html_e( 'Frontend Link', 'simpleflow' ); ?></span>
+		</h3>
+		<div class="inside" style="padding: 10px;">
+			<p style="margin: 0 0 8px; color: #666; font-size: 13px;">
+				<?php esc_html_e( 'Open this entry in the workflow inbox (frontend view).', 'simpleflow' ); ?>
+			</p>
+			<a href="<?php echo esc_url( $frontend_url ); ?>" target="_blank" class="button button-primary" style="width: 100%; text-align: center; box-sizing: border-box;">
+				<?php esc_html_e( 'View on Frontend', 'simpleflow' ); ?>
+			</a>
+			<p style="margin: 8px 0 0; font-size: 11px; color: #999;">
+				<?php echo esc_html( $frontend_url ); ?>
+			</p>
+		</div>
+	</div>
+	<?php
+}
+
+/**
+ * Frontend Entry Link — entries list table.
+ *
+ * Adds a "Frontend" hover action link to every entry row in the GF entries
+ * list, matching the clickable entry links in the production calendar.
+ */
+add_filter( 'gform_entries_action_links', 'simpleflow_entries_action_frontend_link', 10, 4 );
+
+function simpleflow_entries_action_frontend_link( $actions, $filter, $entry, $form_id ) {
+	if ( empty( $entry['id'] ) || empty( $form_id ) ) {
+		return $actions;
+	}
+
+	$frontend_url = home_url( '/workflow-inbox/' )
+		. '?page=gravityflow-inbox&view=entry&id=' . (int) $form_id
+		. '&lid=' . (int) $entry['id'];
+
+	$actions['frontend'] = array(
+		'class' => 'frontend',
+		'link'  => '<a href="' . esc_url( $frontend_url ) . '" target="_blank">'
+			. esc_html__( 'Frontend', 'simpleflow' ) . '</a>',
+	);
+
+	return $actions;
+}
 
 /**
  * BOOT: Load modules immediately

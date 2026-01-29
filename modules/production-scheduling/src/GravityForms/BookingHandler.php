@@ -48,8 +48,6 @@ class BookingHandler {
 		// AJAX hook for capacity check before admin save
 		add_action( 'wp_ajax_sfa_prod_check_capacity_before_save', [ $this, 'ajax_check_capacity_before_save' ] );
 
-		// Debug: Log all gravityflow hooks
-		error_log( 'Production Booking: BookingHandler initialized with hooks' );
 	}
 
 	/**
@@ -166,36 +164,32 @@ class BookingHandler {
 	 */
 	private function process_production_booking( $entry, $form ) {
 
-		// CRITICAL: Acquire distributed lock to prevent race conditions
-		// Multiple concurrent bookings can cause overbooking without this lock
-		$lock_acquired = false;
-		$lock_key = null;
-		$max_lock_attempts = 10;
-		$lock_wait_ms = 100;
+		$entry_id = isset( $entry['id'] ) ? (int) $entry['id'] : 0;
 
-		// Try to acquire lock with retry logic
-		for ( $attempt = 0; $attempt < $max_lock_attempts; $attempt++ ) {
-			// Create a lock key for this booking operation
-			// Using current timestamp in key ensures different operations get different locks
-			// P3 FIX: Use WordPress timezone function
-			$lock_key = 'sfa_prod_booking_lock_' . current_time( 'Y-m-d-H' );
-
-			// Try to acquire lock (30 second expiration for safety)
-			if ( false === get_transient( $lock_key ) ) {
-				set_transient( $lock_key, time(), 30 );
-				$lock_acquired = true;
-				error_log( sprintf( 'Production Booking: Lock acquired for entry %d (attempt %d)', $entry['id'], $attempt + 1 ) );
-				break;
+		// Register shutdown handler to capture ANY fatal error (TypeError, class not found, etc.)
+		register_shutdown_function( function () use ( $entry_id ) {
+			$error = error_get_last();
+			if ( $error && ( $error['type'] & ( E_ERROR | E_PARSE | E_CORE_ERROR | E_COMPILE_ERROR ) ) ) {
+				error_log( sprintf(
+					'Production Booking SHUTDOWN FATAL for entry %d: [%s] %s in %s on line %d',
+					$entry_id, $error['type'], $error['message'], $error['file'], $error['line']
+				) );
 			}
+		} );
 
-			// Lock is held by another process, wait and retry
-			usleep( $lock_wait_ms * 1000 );
-			$lock_wait_ms *= 2; // Exponential backoff
-		}
+		// CRITICAL: Acquire MySQL named lock to prevent race conditions
+		// GET_LOCK is atomic and blocks concurrent bookings until released
+		global $wpdb;
+		$lock_name = 'sfa_prod_booking';
+		$lock_timeout = 15; // seconds to wait for lock
+		$lock_acquired = (bool) $wpdb->get_var( $wpdb->prepare(
+			"SELECT GET_LOCK(%s, %d)",
+			$lock_name, $lock_timeout
+		) );
 
 		if ( ! $lock_acquired ) {
-			error_log( sprintf( 'Production Booking: FAILED to acquire lock for entry %d after %d attempts', $entry['id'], $max_lock_attempts ) );
-			return; // Abort booking to prevent race condition
+			error_log( sprintf( 'Production Booking: FAILED to acquire lock for entry %d after %ds', $entry['id'], $lock_timeout ) );
+			return;
 		}
 
 		try {
@@ -217,14 +211,6 @@ class BookingHandler {
 
 		$entry_id = (int) $entry['id'];
 		$installation_date = isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '';
-
-		// DEBUG: Log raw installation date before normalization
-		error_log( sprintf(
-			'Production Booking RAW: Entry %d - install_field_id=%s, raw_date="%s"',
-			$entry_id,
-			$install_field_id,
-			$installation_date
-		) );
 
 		// Normalize installation date format (convert DD/MM/YYYY to YYYY-MM-DD if needed)
 		if ( $installation_date ) {
@@ -283,7 +269,12 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
 
 			// Recalculate schedule with live data (multi-field)
-			$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
+			try {
+				$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
+			} catch ( \Throwable $e ) {
+				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine() ) );
+				return;
+			}
 		} else {
 			// Legacy mode (single LM field)
 			$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
@@ -299,7 +290,12 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
 
 			// Recalculate schedule with live data (legacy)
-			$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
+			try {
+				$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
+			} catch ( \Throwable $e ) {
+				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine() ) );
+				return;
+			}
 		}
 
 		if ( is_wp_error( $schedule ) ) {
@@ -343,40 +339,32 @@ class BookingHandler {
 		$is_manual_admin_edit = is_admin() && ! wp_doing_ajax() && ! defined( 'DOING_CRON' );
 		$date_manually_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
 
-		error_log( sprintf(
-			'Production Booking DEBUG for entry %d: existing_lm=%s, new_lm=%s, lm_changed=%s, existing_install=%s, submitted_install=%s, is_manual_admin_edit=%s, date_manually_changed=%s',
-			$entry_id,
-			$existing_lm ? $existing_lm : 'NULL',
-			$lm_required,
-			$lm_changed ? 'TRUE' : 'FALSE',
-			$existing_install_date ? $existing_install_date : 'NULL',
-			$installation_date,
-			$is_manual_admin_edit ? 'TRUE' : 'FALSE',
-			$date_manually_changed ? 'TRUE' : 'FALSE'
-		) );
-
-		// FIX: Check if existing production dates are consistent with installation date
-		// If not, force recalculation even if date didn't "change"
+		// Check if existing production dates need recalculation
+		// Production should be scheduled backward from install_date, so prod_end
+		// should be close to (install_date - buffer). If it's far earlier, dates
+		// are stale (from old forward scheduling) and need recalculation.
 		$dates_inconsistent = false;
 		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
-			// Calculate what the production end date SHOULD be (1 day before installation)
-			$expected_prod_end = date( 'Y-m-d', strtotime( $existing_install_date . ' -1 day' ) );
-
-			// If existing prod_end doesn't match expected, dates are stale/inconsistent
-			if ( $existing_prod_end !== $expected_prod_end ) {
+			// Impossible states: production ends after installation, or start > end
+			if ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
 				$dates_inconsistent = true;
-				error_log( sprintf(
-					'Production Booking: INCONSISTENT DATES detected for entry %d - install=%s, existing_prod_end=%s, expected_prod_end=%s. Will recalculate.',
-					$entry_id,
-					$existing_install_date,
-					$existing_prod_end,
-					$expected_prod_end
-				) );
+			} else {
+				// Check if prod_end is too far before install_date (stale forward-scheduled dates)
+				$installation_buffer = (int) get_option( 'sfa_prod_installation_buffer', 0 );
+				$expected_latest = strtotime( $existing_install_date . " -{$installation_buffer} days" );
+				$actual_end = strtotime( $existing_prod_end );
+				$gap_days = ( $expected_latest - $actual_end ) / 86400;
+
+				// More than 2 days gap means dates are stale and need backward recalculation
+				// (2-day margin accounts for weekends/holidays at the boundary)
+				if ( $gap_days > 2 ) {
+					$dates_inconsistent = true;
+				}
 			}
+
 		}
 
 		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! ( $is_manual_admin_edit && $date_manually_changed ) && ! $dates_inconsistent ) {
-			error_log( sprintf( 'Production Booking: PRESERVING existing dates for entry %d (workflow update, not manual edit)', $entry_id ) );
 			// Re-booking with unchanged LM: Keep ALL existing booking data
 			// IGNORE the submitted installation_date entirely - JavaScript may have changed it
 			// EXCEPTION: Allow date changes when manually editing in admin
@@ -393,13 +381,7 @@ class BookingHandler {
 		} else {
 			$use_existing_allocation = false;
 
-			if ( $is_manual_admin_edit && $date_manually_changed ) {
-				error_log( sprintf( 'Production Booking: MANUAL ADMIN EDIT detected for entry %d - allowing date change from %s to %s', $entry_id, $existing_install_date, $submitted_installation_date ) );
-			}
-
-			// New booking OR LM changed OR manual date change in admin: Calculate new schedule
-			$date_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
-
+			// Determine final installation date based on the scenario
 			if ( $existing_install_date && $lm_changed ) {
 				// LM changed: Use submitted date if valid, otherwise use calculated minimum
 				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
@@ -415,110 +397,38 @@ class BookingHandler {
 					$installation_date = $schedule['installation_minimum'];
 				}
 			} elseif ( $is_manual_admin_edit && $date_manually_changed ) {
-				// FIX: Manual admin date change without LM change
-				// Use the manually submitted installation date and recalculate schedule
+				// Manual admin date change: use the submitted date
 				$installation_date = $submitted_installation_date;
-
-				error_log( sprintf(
-					'Production Booking: Recalculating schedule for entry %d with new installation date %s (LM=%s)',
-					$entry_id,
-					$installation_date,
-					$lm_required
-				) );
-
-				// Recalculate schedule with comprehensive error handling
-				// NOTE: Using Throwable to catch both Exception and Error (PHP 7+ fatal errors)
-				try {
-					error_log( sprintf( 'Production Booking DEBUG: About to create Scheduler for entry %d', $entry_id ) );
-					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
-
-					error_log( sprintf( 'Production Booking DEBUG: Calling calculate_schedule for entry %d', $entry_id ) );
-					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
-
-					error_log( sprintf( 'Production Booking DEBUG: calculate_schedule returned for entry %d', $entry_id ) );
-
-					if ( is_wp_error( $new_schedule ) ) {
-						error_log( sprintf(
-							'Production Booking ERROR: Failed to recalculate schedule for entry %d: %s',
-							$entry_id,
-							$new_schedule->get_error_message()
-						) );
-						// Keep using the original schedule calculated at the beginning
-						// $schedule is already set from line 286 or 302
-					} else {
-						// Use the newly calculated schedule
-						$schedule = $new_schedule;
-						error_log( sprintf(
-							'Production Booking: Successfully recalculated schedule for entry %d - prod_start=%s, prod_end=%s',
-							$entry_id,
-							$schedule['production_start'],
-							$schedule['production_end']
-						) );
-					}
-				} catch ( Throwable $e ) {
-					// Catch both Exception and Error (PHP 7+ fatal errors)
-					error_log( sprintf(
-						'Production Booking THROWABLE: Failed to recalculate schedule for entry %d: %s (Type: %s, File: %s, Line: %d)',
-						$entry_id,
-						$e->getMessage(),
-						get_class( $e ),
-						$e->getFile(),
-						$e->getLine()
-					) );
-					// Keep using the original schedule
-				}
 			} elseif ( $dates_inconsistent ) {
-				// FIX: Stale/inconsistent production dates detected
-				// Recalculate schedule to fix inconsistency
-				$installation_date = $existing_install_date; // Keep same install date
+				// Inconsistent dates: keep existing install date
+				$installation_date = $existing_install_date;
+			}
 
-				error_log( sprintf(
-					'Production Booking: Fixing inconsistent dates for entry %d - recalculating with install_date=%s (LM=%s)',
-					$entry_id,
-					$installation_date,
-					$lm_required
-				) );
-
-				// Recalculate schedule with comprehensive error handling
-				// NOTE: Using Throwable to catch both Exception and Error (PHP 7+ fatal errors)
-				try {
-					error_log( sprintf( 'Production Booking DEBUG: About to create Scheduler for inconsistent fix on entry %d', $entry_id ) );
-					$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
-
-					error_log( sprintf( 'Production Booking DEBUG: Calling calculate_schedule for inconsistent fix on entry %d', $entry_id ) );
-					$new_schedule = $scheduler->calculate_schedule( $installation_date, $lm_required );
-
-					error_log( sprintf( 'Production Booking DEBUG: calculate_schedule returned for inconsistent fix on entry %d', $entry_id ) );
-
-					if ( is_wp_error( $new_schedule ) ) {
-						error_log( sprintf(
-							'Production Booking ERROR: Failed to fix inconsistent dates for entry %d: %s',
-							$entry_id,
-							$new_schedule->get_error_message()
-						) );
-						// Keep using the original schedule
-					} else {
-						// Use the newly calculated schedule
-						$schedule = $new_schedule;
-						error_log( sprintf(
-							'Production Booking: Successfully fixed inconsistent dates for entry %d - prod_start=%s, prod_end=%s',
-							$entry_id,
-							$schedule['production_start'],
-							$schedule['production_end']
-						) );
-					}
-				} catch ( Throwable $e ) {
-					// Catch both Exception and Error (PHP 7+ fatal errors)
-					error_log( sprintf(
-						'Production Booking THROWABLE: Failed to fix inconsistent dates for entry %d: %s (Type: %s, File: %s, Line: %d)',
-						$entry_id,
-						$e->getMessage(),
-						get_class( $e ),
-						$e->getFile(),
-						$e->getLine()
-					) );
-					// Keep using the original schedule
+			// Schedule BACKWARD from installation date so production aligns with it.
+			// The installation date is the anchor; production dates are derived from it,
+			// respecting the installation buffer setting (0 = same day allowed).
+			try {
+				if ( ! empty( $production_fields ) ) {
+					$new_schedule = BillingStepPreview::calculate_schedule_for_date( $installation_date, $field_values, $production_fields, $entry_id );
+				} else {
+					$new_schedule = BillingStepPreview::calculate_schedule_for_date( $installation_date, $lm_required, null, $entry_id );
 				}
+
+				if ( is_wp_error( $new_schedule ) ) {
+					error_log( sprintf(
+						'Production Booking ERROR: Backward scheduling failed for entry %d: %s. Using forward-scheduled fallback.',
+						$entry_id, $new_schedule->get_error_message()
+					) );
+					// Keep using the forward-scheduled $schedule as fallback
+				} else {
+					$schedule = $new_schedule;
+				}
+			} catch ( \Throwable $e ) {
+				error_log( sprintf(
+					'Production Booking THROWABLE: Backward scheduling failed for entry %d: %s (Type: %s, File: %s, Line: %d)',
+					$entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine()
+				) );
+				// Keep using the forward-scheduled $schedule as fallback
 			}
 
 			// SAFETY CHECK: Verify schedule is valid array before accessing keys
@@ -544,17 +454,26 @@ class BookingHandler {
 				return;
 			}
 
-			// Get production dates from calculated schedule
+			// Get production dates from the freshly calculated schedule.
+			// IMPORTANT: Do NOT read dates back from the entry's form
+			// fields here — they still contain the OLD values when only
+			// the installation date was changed.  Instead, write the
+			// recalculated dates INTO those fields so the entry stays
+			// in sync with the new allocation.
 			$prod_start_date = $schedule['production_start'];
 			$prod_end_date = $schedule['production_end'];
 
-			if ( $prod_start_field_id && isset( $entry[ $prod_start_field_id ] ) && $entry[ $prod_start_field_id ] ) {
-				// Convert DD/MM/YYYY to YYYY-MM-DD if needed
-				$prod_start_date = $this->normalize_date( $entry[ $prod_start_field_id ] );
+			if ( $prod_start_field_id ) {
+				\GFAPI::update_entry_field( $entry_id, $prod_start_field_id, $prod_start_date );
 			}
-			if ( $prod_end_field_id && isset( $entry[ $prod_end_field_id ] ) && $entry[ $prod_end_field_id ] ) {
-				// Convert DD/MM/YYYY to YYYY-MM-DD if needed
-				$prod_end_date = $this->normalize_date( $entry[ $prod_end_field_id ] );
+			if ( $prod_end_field_id ) {
+				\GFAPI::update_entry_field( $entry_id, $prod_end_field_id, $prod_end_date );
+			}
+			// Also sync the installation date field if it was adjusted
+			// (e.g. LM changed and the new minimum is later than the
+			// submitted date).
+			if ( $install_field_id && $installation_date !== $submitted_installation_date ) {
+				\GFAPI::update_entry_field( $entry_id, $install_field_id, $installation_date );
 			}
 		}
 
@@ -610,14 +529,9 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
 			gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
 
-			// FIX: Store who submitted the billing step (current user when booking is first created)
-			// Only set booked_by if it's not already set (preserve original billing submitter)
-			$existing_booked_by = gform_get_meta( $entry_id, '_prod_booked_by' );
-			if ( ! $existing_booked_by ) {
-				// Use current user = person who submitted the billing step
-				// (NOT entry creator, as creator is who submitted the invoice)
-				gform_update_meta( $entry_id, '_prod_booked_by', get_current_user_id() );
-			}
+			// Always store entry creator as booked_by (deterministic - never changes)
+			$creator_id = isset( $entry['created_by'] ) ? (int) $entry['created_by'] : 0;
+			gform_update_meta( $entry_id, '_prod_booked_by', $creator_id );
 
 			// Store the daily capacity at time of booking for historical tracking
 			$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
@@ -625,15 +539,6 @@ class BookingHandler {
 
 			// All updates successful - commit transaction
 			$wpdb->query( 'COMMIT' );
-
-			error_log( sprintf(
-				'Production Booking SAVED for entry %d: install_date=%s, prod_start=%s, prod_end=%s, lm=%s',
-				$entry_id,
-				$installation_date,
-				$prod_start_date,
-				$prod_end_date,
-				$lm_required
-			) );
 
 			// P2 FIX: Audit log for booking creation
 			$this->log_booking_audit( $entry_id, 'booking_created', [
@@ -670,10 +575,9 @@ class BookingHandler {
 		do_action( 'sfa_production_booking_saved', $entry_id, $schedule, $installation_date );
 
 		} finally {
-			// CRITICAL: Always release lock, even if error occurs
-			if ( $lock_acquired && $lock_key ) {
-				delete_transient( $lock_key );
-				error_log( sprintf( 'Production Booking: Lock released for entry %d', $entry['id'] ) );
+			// CRITICAL: Always release MySQL lock, even if error occurs
+			if ( $lock_acquired ) {
+				$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
 			}
 		}
 	}
@@ -690,29 +594,23 @@ class BookingHandler {
 	 * @param int    $step_id   The step ID (NOT status!)
 	 */
 	public function handle_workflow_processing( $form, $entry_id, $step, $step_id ) {
-		error_log( sprintf( 'Production Booking: Workflow processing - Entry %d, Step ID: %d', $entry_id, $step_id ) );
-
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
-			error_log( 'Production Booking: Production scheduling not enabled' );
 			return;
 		}
 
 		// Check if entry has an existing booking
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 		if ( ! $existing_booking ) {
-			error_log( 'Production Booking: No existing booking found, skipping update' );
 			return; // No existing booking to update
 		}
 
 		// Get updated entry
 		$entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $entry ) || ! $entry ) {
-			error_log( 'Production Booking: Failed to load entry' );
 			return;
 		}
 
-		error_log( sprintf( 'Production Booking: Updating booking for entry %d via workflow processing', $entry_id ) );
 		// Update the booking with new values
 		$this->process_production_booking( $entry, $form );
 	}
@@ -725,8 +623,6 @@ class BookingHandler {
 	 * @param string $old_status The old status
 	 */
 	public function handle_entry_status_change( $entry_id, $status, $old_status ) {
-		error_log( sprintf( 'Production Booking: Entry %d status changed from %s to %s', $entry_id, $old_status, $status ) );
-
 		// P2 AUDIT: Log status change
 		$this->log_booking_audit( $entry_id, 'status_changed', [
 			'old_status' => $old_status,
@@ -736,7 +632,6 @@ class BookingHandler {
 		// P2 FIX: If entry is being trashed or marked as spam, remove the booking
 		// This handles both individual and BULK trash/spam operations
 		if ( in_array( $status, [ 'trash', 'spam' ], true ) ) {
-			error_log( sprintf( 'Production Booking: Removing booking for trashed/spam entry %d', $entry_id ) );
 			$this->handle_entry_deletion( $entry_id );
 		}
 
@@ -755,15 +650,11 @@ class BookingHandler {
 	 * @param object $step The current step
 	 */
 	public function handle_workflow_status_change( $entry_id, $new_status, $old_status, $step ) {
-		error_log( sprintf( 'Production Booking: Entry %d workflow status changed from %s to %s', $entry_id, $old_status, $new_status ) );
-
 		// If workflow is cancelled, mark booking as canceled
 		if ( 'cancelled' === $new_status || 'canceled' === $new_status ) {
-			error_log( sprintf( 'Production Booking: Marking booking as canceled for entry %d', $entry_id ) );
 			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 			if ( $existing_booking ) {
 				gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
-				error_log( sprintf( 'Production Booking: Booking marked as canceled for entry %d', $entry_id ) );
 			}
 		}
 	}
@@ -783,17 +674,13 @@ class BookingHandler {
 		$entry_id = isset( $_GET['lid'] ) ? absint( $_GET['lid'] ) : ( isset( $_POST['lid'] ) ? absint( $_POST['lid'] ) : 0 );
 
 		if ( ! $entry_id ) {
-			error_log( 'Production Booking: Cancel workflow request but no entry ID found' );
 			return;
 		}
-
-		error_log( sprintf( 'Production Booking: Cancel workflow REQUEST detected for entry %d', $entry_id ) );
 
 		// Mark booking as canceled
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 		if ( $existing_booking ) {
 			gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
-			error_log( sprintf( 'Production Booking: Booking marked as canceled via admin_init for entry %d', $entry_id ) );
 		}
 	}
 
@@ -811,17 +698,13 @@ class BookingHandler {
 		);
 
 		if ( ! $entry_id ) {
-			error_log( 'Production Booking: Cancel workflow AJAX but no entry ID in request' );
 			return;
 		}
-
-		error_log( sprintf( 'Production Booking: Cancel workflow AJAX triggered for entry %d', $entry_id ) );
 
 		// Mark booking as canceled immediately
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 		if ( $existing_booking ) {
 			gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
-			error_log( sprintf( 'Production Booking: Booking marked as canceled via AJAX for entry %d', $entry_id ) );
 		}
 	}
 
@@ -848,15 +731,12 @@ class BookingHandler {
 		}
 
 		$entry_id = $object_id;
-		error_log( sprintf( 'Production Booking: Meta update - Entry %d, Key: %s, Value: %s', $entry_id, $meta_key, $meta_value ) );
 
 		// If workflow is cancelled, mark booking as canceled
 		if ( 'cancelled' === $meta_value || 'canceled' === $meta_value ) {
-			error_log( sprintf( 'Production Booking: Workflow cancelled via meta - Entry %d', $entry_id ) );
 			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 			if ( $existing_booking ) {
 				gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
-				error_log( sprintf( 'Production Booking: Booking marked as canceled for entry %d', $entry_id ) );
 			}
 		}
 	}
@@ -882,12 +762,6 @@ class BookingHandler {
 		// Don't free capacity if workflow is still active (not complete/canceled)
 		// Active statuses: pending, processing, approved, etc.
 		if ( $workflow_status && ! in_array( $workflow_status, [ 'complete', 'cancelled', 'canceled' ], true ) ) {
-			error_log( sprintf(
-				'Production Booking: Cannot delete booking for entry %d - workflow still active: %s',
-				$entry_id,
-				$workflow_status
-			) );
-
 			// P2 AUDIT: Log blocked deletion attempt
 			$this->log_booking_audit( $entry_id, 'deletion_blocked', [
 				'workflow_status' => $workflow_status,
@@ -956,11 +830,6 @@ class BookingHandler {
 			// If booking was marked as trashed/deleted, restore it to confirmed
 			if ( in_array( $booking_status, [ 'trashed', 'deleted', 'canceled' ], true ) ) {
 				gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
-				error_log( sprintf(
-					'Production Booking: Restored booking for entry %d (status was: %s)',
-					$entry_id,
-					$booking_status
-				) );
 
 				// P2 AUDIT: Log booking restore
 				$this->log_booking_audit( $entry_id, 'booking_restored', [
@@ -979,13 +848,7 @@ class BookingHandler {
 				}
 			}
 		} else {
-			// Booking was deleted - don't recreate it
-			// User must go through the workflow again to create a new booking
-			error_log( sprintf(
-				'Production Booking: Entry %d restored but booking was deleted - user must resubmit',
-				$entry_id
-			) );
-
+			// Booking was deleted - user must go through the workflow again
 			// P2 AUDIT: Log that booking was not restored
 			$this->log_booking_audit( $entry_id, 'restore_no_booking', [
 				'reason' => 'Booking was deleted during trash',
@@ -1033,12 +896,8 @@ class BookingHandler {
 	private function normalize_date( $date_str ) {
 		$date_str = trim( $date_str );
 
-		// Log original input for debugging
-		error_log( sprintf( 'normalize_date INPUT: "%s"', $date_str ) );
-
 		// Check if already in YYYY-MM-DD format
 		if ( preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date_str ) ) {
-			error_log( sprintf( 'normalize_date OUTPUT (already normalized): "%s"', $date_str ) );
 			return $date_str;
 		}
 
@@ -1049,26 +908,18 @@ class BookingHandler {
 			$year = $matches[3];
 
 			// Determine if MM/DD/YYYY or DD/MM/YYYY based on values
-			// If part1 > 12, it must be day (DD/MM/YYYY format)
-			// If part2 > 12, it must be day (MM/DD/YYYY format)
-			// Otherwise, assume MM/DD/YYYY (US format - Gravity Forms default)
-
 			if ( $part1 > 12 ) {
 				// Must be DD/MM/YYYY (day is > 12)
 				$month = str_pad( $part2, 2, '0', STR_PAD_LEFT );
 				$day = str_pad( $part1, 2, '0', STR_PAD_LEFT );
-				error_log( sprintf( 'normalize_date: Detected DD/MM/YYYY format (%d/%d/%s)', $part1, $part2, $year ) );
 			} elseif ( $part2 > 12 ) {
 				// Must be MM/DD/YYYY (day is > 12)
 				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
 				$day = str_pad( $part2, 2, '0', STR_PAD_LEFT );
-				error_log( sprintf( 'normalize_date: Detected MM/DD/YYYY format (%d/%d/%s)', $part1, $part2, $year ) );
 			} else {
-				// Ambiguous - could be either format
-				// Default to MM/DD/YYYY (US format - Gravity Forms default)
+				// Ambiguous - default to MM/DD/YYYY (US format - Gravity Forms default)
 				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
 				$day = str_pad( $part2, 2, '0', STR_PAD_LEFT );
-				error_log( sprintf( 'normalize_date: Ambiguous date, assuming MM/DD/YYYY (%d/%d/%s)', $part1, $part2, $year ) );
 			}
 
 			$normalized = $year . '-' . $month . '-' . $day;
@@ -1076,15 +927,11 @@ class BookingHandler {
 			// Validate the resulting date
 			$timestamp = strtotime( $normalized );
 			if ( $timestamp === false ) {
-				error_log( sprintf( 'normalize_date ERROR: Invalid date after normalization: "%s"', $normalized ) );
 				// Try strtotime as fallback
 				$timestamp = strtotime( $date_str );
 				if ( $timestamp !== false ) {
 					$normalized = date( 'Y-m-d', $timestamp );
-					error_log( sprintf( 'normalize_date: Fallback strtotime worked: "%s"', $normalized ) );
 				}
-			} else {
-				error_log( sprintf( 'normalize_date OUTPUT: "%s" (validated)', $normalized ) );
 			}
 
 			return $normalized;
@@ -1093,13 +940,10 @@ class BookingHandler {
 		// Try to parse with strtotime as fallback
 		$timestamp = strtotime( $date_str );
 		if ( $timestamp !== false ) {
-			$normalized = date( 'Y-m-d', $timestamp );
-			error_log( sprintf( 'normalize_date OUTPUT (strtotime fallback): "%s"', $normalized ) );
-			return $normalized;
+			return date( 'Y-m-d', $timestamp );
 		}
 
 		// Return as-is if we can't parse it
-		error_log( sprintf( 'normalize_date ERROR: Could not parse date, returning as-is: "%s"', $date_str ) );
 		return $date_str;
 	}
 
@@ -1167,12 +1011,6 @@ class BookingHandler {
 				echo 'Regular users would be blocked from making this booking.</em></p>';
 				echo '</div>';
 			} );
-
-			error_log( sprintf(
-				'Production Booking: ADMIN OVERBOOKING WARNING for entry %d on %d dates',
-				$entry_id,
-				count( $overbooked_dates )
-			) );
 		}
 	}
 
@@ -1283,11 +1121,20 @@ class BookingHandler {
 		// Normalize installation date
 		$install_date = $this->normalize_date( $install_date );
 
-		// Calculate schedule for the new installation date
-		$scheduler = new \SFA\ProductionScheduling\Engine\Scheduler();
-		$schedule = $scheduler->calculate_schedule( $install_date, $lm_required );
+		// Calculate schedule backward from the target installation date
+		$production_fields = FormSettings::get_production_fields( $form );
+		if ( ! empty( $production_fields ) ) {
+			$field_values = [];
+			foreach ( $production_fields as $pf ) {
+				$fid = $pf['field_id'];
+				$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
+			}
+			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $field_values, $production_fields, $entry_id );
+		} else {
+			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $lm_required, null, $entry_id );
+		}
 
-		if ( ! $schedule || empty( $schedule['allocation'] ) ) {
+		if ( is_wp_error( $schedule ) || ! $schedule || empty( $schedule['allocation'] ) ) {
 			wp_send_json_error( [ 'message' => 'Could not calculate schedule' ] );
 		}
 
