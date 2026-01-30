@@ -15,16 +15,43 @@ class FileVersionWidget {
 		// Add widget below entry details in GravityFlow inbox
 		add_action( 'gravityflow_entry_detail_content_below', [ $this, 'render_widget' ], 10, 3 );
 
-		// Enqueue assets for modal
+		// Enqueue assets for modal (admin)
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
+
+		// Enqueue assets for modal (frontend workflow-inbox)
+		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_frontend_assets' ] );
 	}
 
 	/**
-	 * Enqueue JavaScript and CSS for modals
+	 * Enqueue JavaScript and CSS for modals (admin pages)
 	 */
 	public function enqueue_assets( $hook ) {
-		// Only load on GravityFlow pages
-		if ( strpos( (string) $hook, 'gravityflow' ) === false && strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) === false ) {
+		// Only load on GravityFlow admin pages
+		if ( strpos( (string) $hook, 'gravityflow' ) === false ) {
+			return;
+		}
+
+		$this->do_enqueue_assets();
+	}
+
+	/**
+	 * Enqueue JavaScript and CSS for modals (frontend workflow-inbox)
+	 */
+	public function enqueue_frontend_assets() {
+		// Only load on workflow-inbox pages
+		if ( strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) === false ) {
+			return;
+		}
+
+		$this->do_enqueue_assets();
+	}
+
+	/**
+	 * Shared asset enqueue logic
+	 */
+	private function do_enqueue_assets() {
+		// Prevent double enqueue
+		if ( wp_style_is( 'sfa-ur-modal', 'enqueued' ) ) {
 			return;
 		}
 
