@@ -15,16 +15,43 @@ class FileVersionWidget {
 		// Add widget below entry details in GravityFlow inbox
 		add_action( 'gravityflow_entry_detail_content_below', [ $this, 'render_widget' ], 10, 3 );
 
-		// Enqueue assets for modal
+		// Enqueue assets for modal (admin)
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
+
+		// Enqueue assets for modal (frontend workflow-inbox)
+		add_action( 'wp_enqueue_scripts', [ $this, 'enqueue_frontend_assets' ] );
 	}
 
 	/**
-	 * Enqueue JavaScript and CSS for modals
+	 * Enqueue JavaScript and CSS for modals (admin pages)
 	 */
 	public function enqueue_assets( $hook ) {
-		// Only load on GravityFlow pages
-		if ( strpos( (string) $hook, 'gravityflow' ) === false && strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) === false ) {
+		// Only load on GravityFlow admin pages
+		if ( strpos( (string) $hook, 'gravityflow' ) === false ) {
+			return;
+		}
+
+		$this->do_enqueue_assets();
+	}
+
+	/**
+	 * Enqueue JavaScript and CSS for modals (frontend workflow-inbox)
+	 */
+	public function enqueue_frontend_assets() {
+		// Only load on workflow-inbox pages
+		if ( strpos( (string) ( $_SERVER['REQUEST_URI'] ?? '' ), 'workflow-inbox' ) === false ) {
+			return;
+		}
+
+		$this->do_enqueue_assets();
+	}
+
+	/**
+	 * Shared asset enqueue logic
+	 */
+	private function do_enqueue_assets() {
+		// Prevent double enqueue
+		if ( wp_style_is( 'sfa-ur-modal', 'enqueued' ) ) {
 			return;
 		}
 
@@ -68,24 +95,17 @@ class FileVersionWidget {
 		$entry_id = $entry['id'];
 		$form_id = $form['id'];
 
-		// Check if current user is the entry creator (only creators can submit update requests)
-		if ( ! FormSettings::is_entry_creator( $entry ) ) {
-			return;
-		}
+		// Check if current user is the entry creator (only creators can submit)
+		$is_creator = FormSettings::is_entry_creator( $entry );
 
 		// Get current step ID
 		$current_step_id = is_object( $current_step ) && method_exists( $current_step, 'get_id' )
 			? $current_step->get_id()
 			: 0;
 
-		// Check permissions (pass entry for cutoff step checking)
-		$can_update = FormSettings::can_submit_update_request( $form, $current_step_id, $entry );
-		$can_follow = FormSettings::can_submit_following_invoice( $form, $current_step_id, $entry );
-
-		if ( ! $can_update && ! $can_follow ) {
-			// Cutoff step has been passed, no longer allowed
-			return;
-		}
+		// Check submission permissions (only relevant for entry creator)
+		$can_update = $is_creator && FormSettings::can_submit_update_request( $form, $current_step_id, $entry );
+		$can_follow = $is_creator && FormSettings::can_submit_following_invoice( $form, $current_step_id, $entry );
 
 		// Get drawing field ID
 		$drawing_field_id = FormSettings::get_drawing_field_id( $form );
@@ -114,7 +134,9 @@ class FileVersionWidget {
 							<th>Drawing Name</th>
 							<th>Current Version</th>
 							<th>Uploaded</th>
-							<th>Actions</th>
+							<?php if ( $is_creator ): ?>
+								<th>Actions</th>
+							<?php endif; ?>
 						</tr>
 					</thead>
 					<tbody>
@@ -133,22 +155,24 @@ class FileVersionWidget {
 								</td>
 								<td>v<?php echo $version_number; ?></td>
 								<td><?php echo $upload_date ? date( 'M j, Y', strtotime( $upload_date ) ) : '-'; ?></td>
-								<td>
-									<?php if ( $can_update ): ?>
-										<button
-											type="button"
-											class="button button-small sfa-ur-update-btn"
-											data-entry-id="<?php echo $entry_id; ?>"
-											data-form-id="<?php echo $form_id; ?>"
-											data-filename="<?php echo esc_attr( $filename ); ?>"
-											data-current-version="<?php echo $version_number; ?>"
-										>
-											Update
-										</button>
-									<?php else: ?>
-										<span style="color: #999;">-</span>
-									<?php endif; ?>
-								</td>
+								<?php if ( $is_creator ): ?>
+									<td>
+										<?php if ( $can_update ): ?>
+											<button
+												type="button"
+												class="button button-small sfa-ur-update-btn"
+												data-entry-id="<?php echo $entry_id; ?>"
+												data-form-id="<?php echo $form_id; ?>"
+												data-filename="<?php echo esc_attr( $filename ); ?>"
+												data-current-version="<?php echo $version_number; ?>"
+											>
+												Update
+											</button>
+										<?php else: ?>
+											<span style="color: #999;">-</span>
+										<?php endif; ?>
+									</td>
+								<?php endif; ?>
 							</tr>
 						<?php endforeach; ?>
 					</tbody>
