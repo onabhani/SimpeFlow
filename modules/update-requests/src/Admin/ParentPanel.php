@@ -9,12 +9,17 @@ namespace SFA\UpdateRequests\Admin;
  */
 class ParentPanel {
 
+	/**
+	 * Track if panel has already been rendered to prevent duplicates
+	 */
+	private $rendered = false;
+
 	public function __construct() {
-		// Add panel to entry detail page (admin)
+		// Add panel to entry detail page (admin sidebar)
 		add_action( 'gform_entry_detail_sidebar_middle', [ $this, 'render_panel' ], 10, 2 );
 
-		// Add panel to workflow-inbox frontend
-		add_action( 'gravityflow_entry_detail_sidebar_middle', [ $this, 'render_panel' ], 10, 2 );
+		// Add panel to workflow-inbox frontend (main content area)
+		add_action( 'gravityflow_entry_detail', [ $this, 'render_panel' ], 25, 2 );
 	}
 
 	/**
@@ -24,6 +29,11 @@ class ParentPanel {
 	 * @param array $entry
 	 */
 	public function render_panel( $form, $entry ) {
+		// Prevent duplicate rendering (admin sidebar + frontend content)
+		if ( $this->rendered ) {
+			return;
+		}
+
 		$entry_id = (int) $entry['id'];
 
 		// Get children from parent meta
@@ -132,6 +142,8 @@ class ParentPanel {
 			</div>
 		</div>
 		<?php
+
+		$this->rendered = true;
 	}
 
 	/**
