@@ -11,6 +11,11 @@ use SFA\UpdateRequests\GravityForms\VersionManager;
  */
 class FileVersionWidget {
 
+	/**
+	 * Store modal HTML to render in footer (avoids nested forms)
+	 */
+	private $modal_html = '';
+
 	public function __construct() {
 		// Add widget to entry detail (frontend workflow-inbox + admin)
 		add_action( 'gravityflow_entry_detail', [ $this, 'render_widget' ], 20, 3 );
@@ -191,84 +196,114 @@ class FileVersionWidget {
 					</button>
 				</p>
 			<?php endif; ?>
-
-			<?php if ( ! $can_update && ! $can_follow ): ?>
-				<p style="color: #999; font-style: italic;">
-					Update requests and following invoices are not available at this workflow step.
-				</p>
-			<?php endif; ?>
-		</div>
-
-		<!-- Update Request Modal (will be shown via JavaScript) -->
-		<div id="sfa-ur-update-modal" class="sfa-ur-modal" style="display: none;">
-			<div class="sfa-ur-modal-content">
-				<span class="sfa-ur-modal-close">&times;</span>
-				<h2>Update Drawing</h2>
-				<form id="sfa-ur-update-form" enctype="multipart/form-data">
-					<input type="hidden" name="action" value="sfa_ur_submit_update">
-					<input type="hidden" name="entry_id" id="sfa-ur-entry-id">
-					<input type="hidden" name="form_id" id="sfa-ur-form-id">
-					<input type="hidden" name="filename" id="sfa-ur-filename">
-					<input type="hidden" name="nonce" value="<?php echo wp_create_nonce( 'sfa_ur_submit' ); ?>">
-
-					<p><strong>Current Drawing:</strong> <span id="sfa-ur-current-name"></span> (v<span id="sfa-ur-current-version"></span>)</p>
-
-					<div class="sfa-ur-form-field">
-						<label>New Drawing Version:</label>
-						<input type="file" name="drawing_file" accept=".pdf,.dwg,.dxf,.jpg,.jpeg,.png" required>
-					</div>
-
-					<div class="sfa-ur-form-field">
-						<label>Related Invoice (Optional):</label>
-						<input type="file" name="invoice_file" accept=".pdf">
-					</div>
-
-					<div class="sfa-ur-form-field">
-						<label>Reason for Update:</label>
-						<textarea name="reason" rows="4" style="width: 100%;" required></textarea>
-					</div>
-
-					<div class="sfa-ur-form-actions">
-						<button type="button" class="button sfa-ur-modal-cancel">Cancel</button>
-						<button type="submit" class="button button-primary">Submit for Approval</button>
-					</div>
-
-					<div class="sfa-ur-form-message" style="display: none;"></div>
-				</form>
-			</div>
-		</div>
-
-		<!-- Following Invoice Modal -->
-		<div id="sfa-ur-following-modal" class="sfa-ur-modal" style="display: none;">
-			<div class="sfa-ur-modal-content">
-				<span class="sfa-ur-modal-close">&times;</span>
-				<h2>Add Following Invoice</h2>
-				<form id="sfa-ur-following-form" enctype="multipart/form-data">
-					<input type="hidden" name="action" value="sfa_ur_submit_following">
-					<input type="hidden" name="entry_id" id="sfa-ur-following-entry-id">
-					<input type="hidden" name="form_id" id="sfa-ur-following-form-id">
-					<input type="hidden" name="nonce" value="<?php echo wp_create_nonce( 'sfa_ur_submit' ); ?>">
-
-					<div class="sfa-ur-form-field">
-						<label>Invoice File:</label>
-						<input type="file" name="invoice_file" accept=".pdf" required>
-					</div>
-
-					<div class="sfa-ur-form-field">
-						<label>Reason/Description:</label>
-						<textarea name="reason" rows="4" style="width: 100%;" required></textarea>
-					</div>
-
-					<div class="sfa-ur-form-actions">
-						<button type="button" class="button sfa-ur-modal-cancel">Cancel</button>
-						<button type="submit" class="button button-primary">Submit for Approval</button>
-					</div>
-
-					<div class="sfa-ur-form-message" style="display: none;"></div>
-				</form>
-			</div>
 		</div>
 		<?php
+
+		// Only render modals if user is the creator and has permissions
+		if ( $can_update || $can_follow ) {
+			// Capture modal HTML and render it in the footer to avoid nested <form> issues
+			ob_start();
+			$this->render_modals( $entry_id, $form_id, $can_update, $can_follow );
+			$this->modal_html = ob_get_clean();
+
+			// Hook into footer to output modals outside of GravityFlow's form
+			add_action( 'wp_footer', [ $this, 'output_modals' ], 99 );
+			add_action( 'admin_footer', [ $this, 'output_modals' ], 99 );
+		}
+	}
+
+	/**
+	 * Output modal HTML in footer (outside any parent forms)
+	 */
+	public function output_modals() {
+		if ( ! empty( $this->modal_html ) ) {
+			echo $this->modal_html;
+			$this->modal_html = ''; // Prevent duplicate output
+		}
+	}
+
+	/**
+	 * Render modal HTML
+	 *
+	 * @param int  $entry_id Entry ID
+	 * @param int  $form_id Form ID
+	 * @param bool $can_update Whether update requests are allowed
+	 * @param bool $can_follow Whether following invoices are allowed
+	 */
+	private function render_modals( $entry_id, $form_id, $can_update, $can_follow ) {
+		if ( $can_update ): ?>
+			<!-- Update Request Modal -->
+			<div id="sfa-ur-update-modal" class="sfa-ur-modal" style="display: none;">
+				<div class="sfa-ur-modal-content">
+					<span class="sfa-ur-modal-close">&times;</span>
+					<h2>Update Drawing</h2>
+					<form id="sfa-ur-update-form" enctype="multipart/form-data">
+						<input type="hidden" name="action" value="sfa_ur_submit_update">
+						<input type="hidden" name="entry_id" id="sfa-ur-entry-id" value="<?php echo $entry_id; ?>">
+						<input type="hidden" name="form_id" id="sfa-ur-form-id" value="<?php echo $form_id; ?>">
+						<input type="hidden" name="filename" id="sfa-ur-filename">
+						<input type="hidden" name="nonce" value="<?php echo wp_create_nonce( 'sfa_ur_submit' ); ?>">
+
+						<p><strong>Current Drawing:</strong> <span id="sfa-ur-current-name"></span> (v<span id="sfa-ur-current-version"></span>)</p>
+
+						<div class="sfa-ur-form-field">
+							<label>New Drawing Version:</label>
+							<input type="file" name="drawing_file" accept=".pdf,.dwg,.dxf,.jpg,.jpeg,.png" required>
+						</div>
+
+						<div class="sfa-ur-form-field">
+							<label>Related Invoice (Optional):</label>
+							<input type="file" name="invoice_file" accept=".pdf">
+						</div>
+
+						<div class="sfa-ur-form-field">
+							<label>Reason for Update:</label>
+							<textarea name="reason" rows="4" style="width: 100%;" required></textarea>
+						</div>
+
+						<div class="sfa-ur-form-actions">
+							<button type="button" class="button sfa-ur-modal-cancel">Cancel</button>
+							<button type="submit" class="button button-primary">Submit for Approval</button>
+						</div>
+
+						<div class="sfa-ur-form-message" style="display: none;"></div>
+					</form>
+				</div>
+			</div>
+		<?php endif;
+
+		if ( $can_follow ): ?>
+			<!-- Following Invoice Modal -->
+			<div id="sfa-ur-following-modal" class="sfa-ur-modal" style="display: none;">
+				<div class="sfa-ur-modal-content">
+					<span class="sfa-ur-modal-close">&times;</span>
+					<h2>Add Following Invoice</h2>
+					<form id="sfa-ur-following-form" enctype="multipart/form-data">
+						<input type="hidden" name="action" value="sfa_ur_submit_following">
+						<input type="hidden" name="entry_id" id="sfa-ur-following-entry-id" value="<?php echo $entry_id; ?>">
+						<input type="hidden" name="form_id" id="sfa-ur-following-form-id" value="<?php echo $form_id; ?>">
+						<input type="hidden" name="nonce" value="<?php echo wp_create_nonce( 'sfa_ur_submit' ); ?>">
+
+						<div class="sfa-ur-form-field">
+							<label>Invoice File:</label>
+							<input type="file" name="invoice_file" accept=".pdf" required>
+						</div>
+
+						<div class="sfa-ur-form-field">
+							<label>Reason/Description:</label>
+							<textarea name="reason" rows="4" style="width: 100%;" required></textarea>
+						</div>
+
+						<div class="sfa-ur-form-actions">
+							<button type="button" class="button sfa-ur-modal-cancel">Cancel</button>
+							<button type="submit" class="button button-primary">Submit for Approval</button>
+						</div>
+
+						<div class="sfa-ur-form-message" style="display: none;"></div>
+					</form>
+				</div>
+			</div>
+		<?php endif;
 	}
 
 	/**
