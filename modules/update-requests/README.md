@@ -1,4 +1,4 @@
-# Update Requests Module v1.1.0
+# Update Requests Module v1.2.0
 
 A comprehensive system for submitting, tracking, and applying update requests to existing job entries in SimpleFlow.
 
@@ -20,7 +20,7 @@ A comprehensive system for submitting, tracking, and applying update requests to
 
 ## Overview
 
-The Update Requests Module enables dual-mode forms that can function both as regular job submissions and as update request submissions for existing jobs. When in update request mode, entries are linked to their parent jobs, require approval before application, and support controlled file uploads.
+The Update Requests Module enables employees to submit drawing update requests and following invoices for existing job entries. Child entries are created on separate dedicated forms with their own GravityFlow approval workflows, while the employee interacts entirely from the parent entry page via modal dialogs. After approval, changes are automatically applied back to the parent entry.
 
 ### Two Request Types
 
@@ -90,7 +90,22 @@ Your form needs these hidden fields (use **Admin Labels**):
 | `_ur_files` | File Upload | Attachments after approval (optional) |
 | `_ur_file_notice` | HTML | Status notice for file uploads (optional) |
 
-### 2. URL Parameters
+### 2. Form Settings (Parent Form)
+
+Go to Form → Settings → Update Requests and configure:
+
+| Setting | Description |
+|---------|-------------|
+| Enable Update Requests | Toggle on for this form |
+| Drawing Field | File upload field containing drawings |
+| Invoice Field | File upload field for invoices (optional) |
+| Drawing Update Form | Separate form for drawing update child entries |
+| Following Invoice Form | Separate form for following invoice child entries |
+| Approver | User who approves/rejects requests |
+| Drawing Update Cutoff Step | Updates blocked after this step completes |
+| Following Invoice Cutoff Step | Invoices blocked after this step completes |
+
+### 3. URL Parameters
 
 To open form in update request mode:
 
@@ -103,14 +118,14 @@ To open form in update request mode:
 - `parent_id=123` - Parent job entry ID
 - `request_type=entry_updating` - Type of request
 
-### 3. Workflow Setup
+### 4. Workflow Setup (Child Forms)
 
-Create a GravityFlow approval step:
+Each child form needs its own GravityFlow approval workflow:
 
-1. Go to Form → Settings → Workflow
-2. Add **Approval Step**
-3. Configure assignees (who can approve/reject)
-4. Save workflow
+1. Go to the **Drawing Update Form** → Settings → Workflow
+2. Add an **Approval Step** and configure assignees
+3. Repeat for the **Following Invoice Form**
+4. Save workflows
 
 ---
 
@@ -211,28 +226,45 @@ modules/update-requests/
         └── UpdateRequestModal.php (AJAX handlers & manual apply)
 ```
 
-### Data Flow
+### Data Flow (Modal Mode - Primary)
 
 ```
-1. User opens form with URL params
+1. Employee opens parent entry on workflow-inbox
+   ↓
+2. FileVersionWidget shows file table with Update/Following Invoice buttons
+   ↓
+3. Employee clicks button → modal opens
+   ↓
+4. Employee fills form and submits via AJAX
+   ↓
+5. UpdateRequestModal creates child entry on SEPARATE form
+   (drawing_update → sfa_ur_update_form_id)
+   (following_invoice → sfa_ur_following_form_id)
+   ↓
+6. Child entry linked to parent via _ur_children meta
+   ↓
+7. GravityFlow workflow starts on child form
+   ↓
+8. Approver reviews child entry (accessible via ParentPanel links)
+   ↓
+9. ApprovalGuards tracks approval/rejection
+   ↓
+10. FileVersionApplier applies changes back to parent entry
+   ↓
+11. ParentPanel shows updated status on parent entry
+```
+
+### Data Flow (URL Mode - Alternative)
+
+```
+1. User opens child form with URL params
+   (?update_request=1&parent_id=123&request_type=entry_updating)
    ↓
 2. ModeDetector populates hidden fields
    ↓
-3. User submits form
+3. User submits form → ChildLinking links to parent
    ↓
-4. ChildLinking creates entry and links to parent
-   ↓
-5. Entry status = 'submitted'
-   ↓
-6. Approver reviews and approves
-   ↓
-7. ApprovalGuards tracks approval
-   ↓
-8. EntryUpdating applies changes to parent
-   ↓
-9. Entry status = 'approved'
-   ↓
-10. FileAttachments allows file uploads
+4. Same workflow as steps 7-11 above
 ```
 
 ---
@@ -266,6 +298,7 @@ modules/update-requests/
 |----------|------|-------------|
 | `_ur_mode` | String | "update_request" or empty |
 | `_ur_parent_id` | Integer | Parent entry ID |
+| `_ur_parent_form_id` | Integer | Parent entry's form ID (for cross-form lookups) |
 | `_ur_type` | String | "entry_updating" or "following_invoice" |
 | `_ur_status` | String | "submitted", "approved", "rejected" |
 | `_ur_submitted_at` | DateTime | When submitted |
@@ -371,6 +404,13 @@ Populates drawing checkboxes from parent entry field 45.
 
 ## Version History
 
+- **v1.2.0** - Separate forms architecture
+  - Added `sfa_ur_update_form_id` setting for drawing update child form
+  - Added `sfa_ur_following_form_id` setting for following invoice child form
+  - Child entries now created on separate forms with their own GravityFlow workflows
+  - Added `_ur_parent_form_id` meta to track parent form for cross-form lookups
+  - Updated manual apply to redirect to parent entry on parent form
+  - Employee submits from parent entry, approver processes on child entry
 - **v1.1.0** - Bug fixes and manual apply admin action
   - Fixed type mismatch between URL-mode (`entry_updating`) and modal-mode (`drawing_update`)
   - Added FileAttachments initialization (was missing from loader)

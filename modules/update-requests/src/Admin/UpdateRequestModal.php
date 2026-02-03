@@ -90,13 +90,21 @@ class UpdateRequestModal {
 		$applied_at = gform_get_meta( $entry_id, '_ur_applied_at' );
 
 		if ( $applied_at ) {
-			// Success - redirect back with success message
+			// Success - redirect back to parent entry
 			$parent_id = gform_get_meta( $entry_id, '_ur_parent_id' );
+			$parent_form_id = gform_get_meta( $entry_id, '_ur_parent_form_id' );
+
+			// Fall back to child entry's form if parent form ID not stored
+			if ( ! $parent_form_id && $parent_id ) {
+				$parent_entry_data = \GFAPI::get_entry( $parent_id );
+				$parent_form_id = ! is_wp_error( $parent_entry_data ) ? $parent_entry_data['form_id'] : $entry['form_id'];
+			}
+
 			$redirect_url = add_query_arg(
 				[
 					'page' => 'gf_entries',
 					'view' => 'entry',
-					'id' => $entry['form_id'],
+					'id' => $parent_form_id ?: $entry['form_id'],
 					'lid' => $parent_id ?: $entry_id,
 					'ur_applied' => '1',
 				],
@@ -148,10 +156,24 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Only the entry creator can submit update requests' ] );
 		}
 
-		// Check if cutoff step has been passed
+		// Get parent form settings
 		$form = \GFAPI::get_form( $form_id );
+
+		// Check if cutoff step has been passed
 		if ( ! FormSettings::can_submit_update_request( $form, 0, $parent_entry ) ) {
 			wp_send_json_error( [ 'message' => 'Drawing updates are no longer allowed. The cutoff step has been passed.' ] );
+		}
+
+		// Get the child form ID for drawing updates
+		$child_form_id = FormSettings::get_update_form_id( $form );
+		if ( ! $child_form_id ) {
+			wp_send_json_error( [ 'message' => 'Drawing update form not configured. Please contact administrator.' ] );
+		}
+
+		// Verify child form exists
+		$child_form = \GFAPI::get_form( $child_form_id );
+		if ( ! $child_form ) {
+			wp_send_json_error( [ 'message' => 'Drawing update form not found. Please contact administrator.' ] );
 		}
 
 		// Handle file uploads
@@ -174,9 +196,9 @@ class UpdateRequestModal {
 			}
 		}
 
-		// Create child entry for update request
+		// Create child entry on the separate drawing update form
 		$child_entry_data = [
-			'form_id' => $form_id,
+			'form_id'    => $child_form_id,
 			'created_by' => get_current_user_id(),
 		];
 
@@ -189,6 +211,7 @@ class UpdateRequestModal {
 		// Save update request metadata
 		gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
 		gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
+		gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
 		gform_update_meta( $child_entry_id, '_ur_type', 'drawing_update' );
 		gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
 		gform_update_meta( $child_entry_id, '_ur_original_filename', $filename );
@@ -208,15 +231,17 @@ class UpdateRequestModal {
 			get_current_user_id(),
 			wp_get_current_user()->display_name,
 			sprintf(
-				'Update request submitted for drawing: %s<br>Reason: %s',
+				'Update request submitted for drawing: %s<br>Reason: %s<br>Parent entry: #%d (Form %d)',
 				$filename,
-				$reason
+				$reason,
+				$entry_id,
+				$form_id
 			)
 		);
 
-		// Trigger workflow (if GravityFlow is active)
+		// Trigger workflow on the child form (if GravityFlow is active)
 		if ( class_exists( 'Gravity_Flow_API' ) ) {
-			$api = new \Gravity_Flow_API( $form_id );
+			$api = new \Gravity_Flow_API( $child_form_id );
 			$api->process_workflow( $child_entry_id );
 		}
 
@@ -258,10 +283,24 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Only the entry creator can submit following invoices' ] );
 		}
 
-		// Check if cutoff step has been passed
+		// Get parent form settings
 		$form = \GFAPI::get_form( $form_id );
+
+		// Check if cutoff step has been passed
 		if ( ! FormSettings::can_submit_following_invoice( $form, 0, $parent_entry ) ) {
 			wp_send_json_error( [ 'message' => 'Following invoices are no longer allowed. The cutoff step has been passed.' ] );
+		}
+
+		// Get the child form ID for following invoices
+		$child_form_id = FormSettings::get_following_form_id( $form );
+		if ( ! $child_form_id ) {
+			wp_send_json_error( [ 'message' => 'Following invoice form not configured. Please contact administrator.' ] );
+		}
+
+		// Verify child form exists
+		$child_form = \GFAPI::get_form( $child_form_id );
+		if ( ! $child_form ) {
+			wp_send_json_error( [ 'message' => 'Following invoice form not found. Please contact administrator.' ] );
 		}
 
 		// Handle file upload
@@ -276,9 +315,9 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Invoice file is required' ] );
 		}
 
-		// Create child entry for following invoice
+		// Create child entry on the separate following invoice form
 		$child_entry_data = [
-			'form_id' => $form_id,
+			'form_id'    => $child_form_id,
 			'created_by' => get_current_user_id(),
 		];
 
@@ -291,6 +330,7 @@ class UpdateRequestModal {
 		// Save following invoice metadata
 		gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
 		gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
+		gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
 		gform_update_meta( $child_entry_id, '_ur_type', 'following_invoice' );
 		gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
 		gform_update_meta( $child_entry_id, '_ur_reason', $reason );
@@ -305,14 +345,16 @@ class UpdateRequestModal {
 			get_current_user_id(),
 			wp_get_current_user()->display_name,
 			sprintf(
-				'Following invoice submitted<br>Description: %s',
-				$reason
+				'Following invoice submitted<br>Description: %s<br>Parent entry: #%d (Form %d)',
+				$reason,
+				$entry_id,
+				$form_id
 			)
 		);
 
-		// Trigger workflow (if GravityFlow is active)
+		// Trigger workflow on the child form (if GravityFlow is active)
 		if ( class_exists( 'Gravity_Flow_API' ) ) {
-			$api = new \Gravity_Flow_API( $form_id );
+			$api = new \Gravity_Flow_API( $child_form_id );
 			$api->process_workflow( $child_entry_id );
 		}
 

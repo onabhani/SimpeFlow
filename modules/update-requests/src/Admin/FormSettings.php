@@ -60,6 +60,8 @@ class FormSettings {
 		$enabled = (bool) rgar( $form, 'sfa_ur_enabled' );
 		$drawing_field_id = (int) rgar( $form, 'sfa_ur_drawing_field' );
 		$invoice_field_id = (int) rgar( $form, 'sfa_ur_invoice_field' );
+		$update_form_id = (int) rgar( $form, 'sfa_ur_update_form_id' );
+		$following_form_id = (int) rgar( $form, 'sfa_ur_following_form_id' );
 		$update_cutoff_step = (int) rgar( $form, 'sfa_ur_update_cutoff_step' );
 		$following_cutoff_step = (int) rgar( $form, 'sfa_ur_following_cutoff_step' );
 		$approver_id = (int) rgar( $form, 'sfa_ur_approver' );
@@ -69,6 +71,9 @@ class FormSettings {
 			'role__in' => [ 'administrator', 'editor', 'gravityflow_user_update_requests' ],
 			'orderby'  => 'display_name',
 		] );
+
+		// Get all forms for child form dropdowns
+		$all_forms = \GFAPI::get_forms();
 
 		// Get GravityFlow steps if available
 		$workflow_steps = [];
@@ -183,6 +188,44 @@ class FormSettings {
 					</p>
 				</div>
 
+				<!-- Drawing Update Form -->
+				<div class="sfa-ur-field-row">
+					<label for="sfa_ur_update_form_id">Drawing Update Form</label>
+					<select name="sfa_ur_update_form_id" id="sfa_ur_update_form_id">
+						<option value="0">-- Select Form --</option>
+						<?php foreach ( $all_forms as $f ): ?>
+							<?php if ( (int) $f['id'] !== $form_id ): ?>
+								<option value="<?php echo $f['id']; ?>" <?php selected( $update_form_id, (int) $f['id'] ); ?>>
+									<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo $f['id']; ?>)
+								</option>
+							<?php endif; ?>
+						<?php endforeach; ?>
+					</select>
+					<p class="description">
+						Select the separate form where drawing update request entries will be created.
+						This form should have its own GravityFlow approval workflow configured.
+					</p>
+				</div>
+
+				<!-- Following Invoice Form -->
+				<div class="sfa-ur-field-row">
+					<label for="sfa_ur_following_form_id">Following Invoice Form</label>
+					<select name="sfa_ur_following_form_id" id="sfa_ur_following_form_id">
+						<option value="0">-- Select Form --</option>
+						<?php foreach ( $all_forms as $f ): ?>
+							<?php if ( (int) $f['id'] !== $form_id ): ?>
+								<option value="<?php echo $f['id']; ?>" <?php selected( $following_form_id, (int) $f['id'] ); ?>>
+									<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo $f['id']; ?>)
+								</option>
+							<?php endif; ?>
+						<?php endforeach; ?>
+					</select>
+					<p class="description">
+						Select the separate form where following invoice entries will be created.
+						This form should have its own GravityFlow approval workflow configured.
+					</p>
+				</div>
+
 				<!-- Approver -->
 				<div class="sfa-ur-field-row">
 					<label for="sfa_ur_approver">Update Request Approver</label>
@@ -285,6 +328,10 @@ class FormSettings {
 		$form['sfa_ur_drawing_field'] = isset( $_POST['sfa_ur_drawing_field'] ) ? absint( $_POST['sfa_ur_drawing_field'] ) : 0;
 		$form['sfa_ur_invoice_field'] = isset( $_POST['sfa_ur_invoice_field'] ) ? absint( $_POST['sfa_ur_invoice_field'] ) : 0;
 
+		// Save child form IDs
+		$form['sfa_ur_update_form_id'] = isset( $_POST['sfa_ur_update_form_id'] ) ? absint( $_POST['sfa_ur_update_form_id'] ) : 0;
+		$form['sfa_ur_following_form_id'] = isset( $_POST['sfa_ur_following_form_id'] ) ? absint( $_POST['sfa_ur_following_form_id'] ) : 0;
+
 		// Save approver
 		$form['sfa_ur_approver'] = isset( $_POST['sfa_ur_approver'] ) ? absint( $_POST['sfa_ur_approver'] ) : 0;
 
@@ -351,6 +398,34 @@ class FormSettings {
 		}
 
 		return (int) rgar( $form, 'sfa_ur_invoice_field' );
+	}
+
+	/**
+	 * Get drawing update form ID
+	 *
+	 * @param array|int $form Parent form array or form ID
+	 * @return int Child form ID for drawing updates
+	 */
+	public static function get_update_form_id( $form ) {
+		if ( is_numeric( $form ) ) {
+			$form = \GFAPI::get_form( $form );
+		}
+
+		return (int) rgar( $form, 'sfa_ur_update_form_id' );
+	}
+
+	/**
+	 * Get following invoice form ID
+	 *
+	 * @param array|int $form Parent form array or form ID
+	 * @return int Child form ID for following invoices
+	 */
+	public static function get_following_form_id( $form ) {
+		if ( is_numeric( $form ) ) {
+			$form = \GFAPI::get_form( $form );
+		}
+
+		return (int) rgar( $form, 'sfa_ur_following_form_id' );
 	}
 
 	/**
