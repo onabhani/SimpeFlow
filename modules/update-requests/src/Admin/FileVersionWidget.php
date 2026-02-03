@@ -12,8 +12,8 @@ use SFA\UpdateRequests\GravityForms\VersionManager;
 class FileVersionWidget {
 
 	public function __construct() {
-		// Add widget below entry details in GravityFlow inbox
-		add_action( 'gravityflow_entry_detail_content_below', [ $this, 'render_widget' ], 10, 3 );
+		// Add widget to entry detail (frontend workflow-inbox + admin)
+		add_action( 'gravityflow_entry_detail', [ $this, 'render_widget' ], 20, 3 );
 
 		// Enqueue assets for modal (admin)
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
