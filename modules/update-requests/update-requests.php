@@ -82,6 +82,4 @@ add_action( 'plugins_loaded', function () {
 		require_once SFA_UR_DIR . 'src/Admin/UpdateRequestModal.php';
 		new SFA\UpdateRequests\Admin\UpdateRequestModal();
 	}
-
-	error_log( 'Update Requests Module v' . SFA_UR_VER . ': Initialized successfully' );
 }, 20 );

@@ -65,8 +65,6 @@ add_action( 'plugins_loaded', function () {
 	// Initialize auto-positioning
 	require_once SFA_NOTES_DIR . 'src/Frontend/AutoPositioning.php';
 	new SFA\SimpleNotes\Frontend\AutoPositioning();
-
-	error_log( 'Simple Notes Module: Initialized successfully' );
 }, 20 );
 
 /**
