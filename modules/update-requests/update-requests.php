@@ -2,7 +2,7 @@
 /**
  * Update Requests Module for SimpleFlow
  * Allows submitting update requests for existing job entries
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Module constants
 if ( ! defined( 'SFA_UR_VER' ) ) {
-	define( 'SFA_UR_VER', '1.1.0' );
+	define( 'SFA_UR_VER', '1.2.0' );
 }
 if ( ! defined( 'SFA_UR_DIR' ) ) {
 	define( 'SFA_UR_DIR', plugin_dir_path( __FILE__ ) );
@@ -82,6 +82,4 @@ add_action( 'plugins_loaded', function () {
 		require_once SFA_UR_DIR . 'src/Admin/UpdateRequestModal.php';
 		new SFA\UpdateRequests\Admin\UpdateRequestModal();
 	}
-
-	error_log( 'Update Requests Module v' . SFA_UR_VER . ': Initialized successfully' );
 }, 20 );
