@@ -10,7 +10,7 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 
 		// --- Read canonical params used by renderer/collector
 		$range    = isset( $_GET['range'] ) ? sanitize_text_field( wp_unslash( $_GET['range'] ) ) : 'month';
-		$range    = in_array( $range, array( 'today','month','year','month_custom','year_custom' ), true ) ? $range : 'month';
+		$range    = in_array( $range, array( 'today','month','year','last_year','month_custom','year_custom' ), true ) ? $range : 'month';
 		$form_id  = isset( $_GET['form_id'] ) ? absint( $_GET['form_id'] ) : 0;
 		$ym       = isset( $_GET['ym'] )  ? preg_replace( '/[^0-9\-]/', '', (string) $_GET['ym'] )  : '';
 		$ym2      = isset( $_GET['ym2'] ) ? preg_replace( '/[^0-9\-]/', '', (string) $_GET['ym2'] ) : '';
@@ -31,6 +31,7 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 			if ( $range === 'today' )            { $mode = 'today'; }
 			elseif ( $range === 'month' )        { $mode = 'month'; }
 			elseif ( $range === 'year' )         { $mode = 'year'; }
+			elseif ( $range === 'last_year' )    { $mode = 'last_year'; }
 			elseif ( $range === 'month_custom' ) { $mode = 'month_custom'; }
 			elseif ( $range === 'year_custom' )  { $mode = 'compare'; $ctype='yy'; }
 			else                                 { $mode = 'month'; }
@@ -67,6 +68,7 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 					<label><input type="radio" name="mode" value="today"        <?php checked( $mode, 'today' ); ?>><span><?php esc_html_e('Today','sfa-quality-gate'); ?></span></label>
 					<label><input type="radio" name="mode" value="month"        <?php checked( $mode, 'month' ); ?>><span><?php esc_html_e('This month','sfa-quality-gate'); ?></span></label>
 					<label><input type="radio" name="mode" value="year"         <?php checked( $mode, 'year' ); ?>><span><?php esc_html_e('This year','sfa-quality-gate'); ?></span></label>
+					<label><input type="radio" name="mode" value="last_year"    <?php checked( $mode, 'last_year' ); ?>><span><?php esc_html_e('Last year','sfa-quality-gate'); ?></span></label>
 					<label><input type="radio" name="mode" value="month_custom" <?php checked( $mode, 'month_custom' ); ?>><span><?php esc_html_e('Specific month','sfa-quality-gate'); ?></span></label>
 					<label><input type="radio" name="mode" value="compare"      <?php checked( $mode, 'compare' ); ?>><span><?php esc_html_e('Compare','sfa-quality-gate'); ?></span></label>
 				</div>
@@ -149,7 +151,7 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 				form.addEventListener('change', function(e){
 					if (e.target && e.target.name === 'mode') {
 						var v = e.target.value;
-						if (v === 'today' || v === 'month' || v === 'year') {
+						if (v === 'today' || v === 'month' || v === 'year' || v === 'last_year') {
 							doSubmit();
 						}
 					}
@@ -159,7 +161,7 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 				form.addEventListener('change', function(e){
 					if (e.target && e.target.id === 'qg-form') {
 						var v = (form.querySelector('input[name="mode"]:checked')||{}).value || '';
-						if (v==='today' || v==='month' || v==='year') doSubmit();
+						if (v==='today' || v==='month' || v==='year' || v==='last_year') doSubmit();
 					}
 				});
 
@@ -209,6 +211,7 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 					if (mode==='today')             range='today';
 					else if (mode==='month')        range='month';
 					else if (mode==='year')         range='year';
+					else if (mode==='last_year')    range='last_year';
 					else if (mode==='month_custom') range='month_custom';
 					else if (mode==='compare')      range = (ctype==='yy') ? 'year_custom' : 'month_custom';
 

@@ -12,6 +12,12 @@ if ( ! function_exists( 'sfa_qg_report_range_bounds' ) ) {
                 $end   = date_i18n( 'Y-12-31 23:59:59', $now );
                 break;
 
+            case 'last_year':
+                $last_year = (int) date_i18n( 'Y', $now ) - 1;
+                $start = $last_year . '-01-01 00:00:00';
+                $end   = $last_year . '-12-31 23:59:59';
+                break;
+
             case 'month':
                 $start = date_i18n( 'Y-m-01 00:00:00', $now );
                 $end   = date_i18n( 'Y-m-t 23:59:59', $now );
