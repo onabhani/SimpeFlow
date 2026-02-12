@@ -15,7 +15,10 @@ $hist = function_exists( 'sfa_qg_report_collect_history' )
 if ( ! empty( $hist['_has_history'] ) ) {
     $data['failed_entries'] = $hist['failed_entries'];
     $data['latest_failed']  = $hist['latest_failed'];
-    // DO NOT set $data['top_failed_metrics'] here.
+    // Use historical top_failed_metrics if available (shows what failed during the period, not current state)
+    if ( ! empty( $hist['top_failed_metrics'] ) ) {
+        $data['top_failed_metrics'] = $hist['top_failed_metrics'];
+    }
 }
 
 
