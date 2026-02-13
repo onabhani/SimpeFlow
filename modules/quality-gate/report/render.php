@@ -15,7 +15,10 @@ $hist = function_exists( 'sfa_qg_report_collect_history' )
 if ( ! empty( $hist['_has_history'] ) ) {
     $data['failed_entries'] = $hist['failed_entries'];
     $data['latest_failed']  = $hist['latest_failed'];
-    // DO NOT set $data['top_failed_metrics'] here.
+    // Use historical top_failed_metrics if available (shows what failed during the period, not current state)
+    if ( ! empty( $hist['top_failed_metrics'] ) ) {
+        $data['top_failed_metrics'] = $hist['top_failed_metrics'];
+    }
 }
 
 
@@ -64,14 +67,31 @@ if ( ! empty( $hist['_has_history'] ) ) {
             }
         }
 
-        // ===== KPI “vs previous month” deltas (always shown in cards) =====
-        $refYM = ( $range === 'month' )
-            ? date_i18n( 'Y-m', current_time( 'timestamp' ) )
-            : ( ( $range === 'month_custom' && preg_match( '/^\d{4}\-\d{2}$/', (string) $ym ) ) ? $ym : date_i18n( 'Y-m', current_time( 'timestamp' ) ) );
-        $prevYM   = gmdate( 'Y-m', strtotime( $refYM . '-01 -1 month' ) );
-        $prevData = sfa_qg_report_collect( 'month_custom', $form_id, $prevYM );
+        // ===== KPI "vs previous period" deltas (always shown in cards) =====
+        // For yearly ranges, compare year vs previous year; for monthly, compare month vs previous month
+        $is_yearly_range = in_array( $range, array( 'year', 'last_year', 'year_custom' ), true );
 
-        $qg_delta = function( $now, $old, $polarity = 'neutral', $is_percent = false ) use ( $prevYM ) {
+        if ( $is_yearly_range ) {
+            // Yearly comparison
+            if ( $range === 'last_year' ) {
+                $refYear = (int) date_i18n( 'Y', current_time( 'timestamp' ) ) - 1;
+            } elseif ( $range === 'year_custom' && preg_match( '/^\d{4}$/', (string) $ym ) ) {
+                $refYear = (int) $ym;
+            } else {
+                $refYear = (int) date_i18n( 'Y', current_time( 'timestamp' ) );
+            }
+            $prevPeriod = (string) ( $refYear - 1 );
+            $prevData   = sfa_qg_report_collect( 'year_custom', $form_id, $prevPeriod );
+        } else {
+            // Monthly comparison
+            $refYM = ( $range === 'month' )
+                ? date_i18n( 'Y-m', current_time( 'timestamp' ) )
+                : ( ( $range === 'month_custom' && preg_match( '/^\d{4}\-\d{2}$/', (string) $ym ) ) ? $ym : date_i18n( 'Y-m', current_time( 'timestamp' ) ) );
+            $prevPeriod = gmdate( 'Y-m', strtotime( $refYM . '-01 -1 month' ) );
+            $prevData   = sfa_qg_report_collect( 'month_custom', $form_id, $prevPeriod );
+        }
+
+        $qg_delta = function( $now, $old, $polarity = 'neutral', $is_percent = false ) use ( $prevPeriod ) {
             $now  = (float) $now; $old  = (float) $old;
             $diff = $now - $old;
             $sign = $diff > 0 ? '+' : ( $diff < 0 ? '−' : '±' );
@@ -83,7 +103,7 @@ if ( ! empty( $hist['_has_history'] ) ) {
             }
             $val = $is_percent ? sprintf( '%.1fpp', abs( $diff ) ) : (int) abs( $diff );
             $pct = ( ! $is_percent && $old > 0 ) ? ' <small>(' . round( 100 * abs( $diff ) / $old, 1 ) . '%)</small>' : '';
-            return '<div class="' . esc_attr( $cls ) . '">' . esc_html__( 'vs', 'sfa-quality-gate' ) . ' ' . esc_html( $prevYM ) . ' ' . esc_html( $sign . $val ) . $pct . '</div>';
+            return '<div class="' . esc_attr( $cls ) . '">' . esc_html__( 'vs', 'sfa-quality-gate' ) . ' ' . esc_html( $prevPeriod ) . ' ' . esc_html( $sign . $val ) . $pct . '</div>';
         };
 
         ob_start(); ?>
@@ -142,7 +162,18 @@ if ( ! empty( $hist['_has_history'] ) ) {
 .qg-section.qg-hit{box-shadow:0 0 0 3px #c7d2fe inset; transition: box-shadow .3s;}
 </style>
 
-            <h2><?php echo esc_html( sprintf( __( 'Quality Gate Report — %s', 'sfa-quality-gate' ), ucfirst( $data['range'] ) ) ); ?></h2>
+            <?php
+            $range_labels = array(
+                'today'        => __( 'Today', 'sfa-quality-gate' ),
+                'month'        => __( 'This Month', 'sfa-quality-gate' ),
+                'year'         => __( 'This Year', 'sfa-quality-gate' ),
+                'last_year'    => __( 'Last Year', 'sfa-quality-gate' ),
+                'month_custom' => __( 'Month', 'sfa-quality-gate' ),
+                'year_custom'  => __( 'Year', 'sfa-quality-gate' ),
+            );
+            $range_label = isset( $range_labels[ $data['range'] ] ) ? $range_labels[ $data['range'] ] : ucfirst( $data['range'] );
+            ?>
+            <h2><?php echo esc_html( sprintf( __( 'Quality Gate Report — %s', 'sfa-quality-gate' ), $range_label ) ); ?></h2>
             <p><small><?php echo esc_html( $data['start'] ); ?> → <?php echo esc_html( $data['end'] ); ?></small></p>
 
 <!-- Sticky subnav (single instance) -->
@@ -433,8 +464,10 @@ $items = array_values( array_filter( array_map( static function( $x ) {
 
     // One row per failed item.
     foreach ( $items as $item ) :
-        $metrics = isset( $map[ $item ] ) && is_array( $map[ $item ] )
-            ? array_values( array_unique( array_filter( array_map( 'strval', $map[ $item ] ) ) ) )
+        // $map[$item] = ['labels' => [...], 'photos' => [...]] — extract labels
+        $item_data = isset( $map[ $item ] ) ? $map[ $item ] : array();
+        $metrics = isset( $item_data['labels'] ) && is_array( $item_data['labels'] )
+            ? array_values( array_unique( array_filter( array_map( 'strval', $item_data['labels'] ) ) ) )
             : array();
 
         if ( empty( $metrics ) && $entry_level_labels ) {

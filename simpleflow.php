@@ -2,13 +2,16 @@
 /**
  * Plugin Name:       SimpleFlow
  * Description:       Core loader for SimpleFlow modules (Simple Flow Attachment, etc.).
- * Version:           0.1.3
+ * Version:           0.2.0
  * Author:            Omar Alnabhani
  * Author URI:        https://hdqah.com
  * Requires at least: 6.0
  * Requires PHP:      7.4
  * License:           GPLv2 or later
  * Text Domain:       simpleflow
+ *
+ * GitHub Plugin URI: onabhani/SimpeFlow
+ * Primary Branch:    main
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -18,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Basic plugin constants
  */
-define( 'SIMPLEFLOW_VER',  '0.1.3' );
+define( 'SIMPLEFLOW_VER',  '0.2.0' );
 define( 'SIMPLEFLOW_FILE', __FILE__ );
 define( 'SIMPLEFLOW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SIMPLEFLOW_URL',  plugin_dir_url( __FILE__ ) );

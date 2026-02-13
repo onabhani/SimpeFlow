@@ -420,6 +420,11 @@ if ( ! function_exists( 'sfa_qg_report_collect_history' ) ) {
 				$start = gmdate( 'Y-01-01 00:00:00', $now );
 				$end   = gmdate( 'Y-12-31 23:59:59', $now );
 				break;
+			case 'last_year':
+				$last_year = (int) gmdate( 'Y', $now ) - 1;
+				$start = $last_year . '-01-01 00:00:00';
+				$end   = $last_year . '-12-31 23:59:59';
+				break;
 			case 'month_custom':
 				// $ym = YYYY-MM
 				if ( preg_match( '/^\d{4}\-\d{2}$/', (string) $ym ) ) {
