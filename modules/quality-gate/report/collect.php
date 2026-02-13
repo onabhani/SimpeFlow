@@ -360,7 +360,9 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
         foreach ( (array) $rows as $r ) {
             // Skip entries from forms without quality_checklist field
             $fid = (int) $r['form_id'];
-            if ( isset( $qc_forms_cache[ $fid ] ) && ! $qc_forms_cache[ $fid ] ) {
+            // If form is in cache and has no QC field, skip it
+            // If form is NOT in cache (GFAPI not available), also skip as a safety measure
+            if ( ! isset( $qc_forms_cache[ $fid ] ) || ! $qc_forms_cache[ $fid ] ) {
                 continue;
             }
             $log = json_decode( (string) $r['meta_value'], true );
