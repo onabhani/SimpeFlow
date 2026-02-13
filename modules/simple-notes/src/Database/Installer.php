@@ -42,6 +42,5 @@ class Installer {
 			update_option( 'simple_notes_email_from_email', get_option( 'admin_email' ) );
 		}
 
-		error_log( 'Simple Notes Module: Database installed successfully' );
 	}
 }
