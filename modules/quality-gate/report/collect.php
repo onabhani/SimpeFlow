@@ -455,21 +455,23 @@ if ( ! function_exists( 'sfa_qg_report_collect_history' ) ) {
 			$where .= $wpdb->prepare( " AND form_id = %d", $form_id );
 		}
 
-		// 1) Failed entries (group entry_id within the window)
+		// 1) Failed entries (group entry_id within the window) - include both item AND metric failures
 $sql = "SELECT entry_id, form_id, MAX(event_utc) AS last_ts,
-        GROUP_CONCAT(DISTINCT item_label ORDER BY event_utc SEPARATOR '||') AS items
+        GROUP_CONCAT(DISTINCT item_label ORDER BY event_utc SEPARATOR '||') AS items,
+        COUNT(DISTINCT CASE WHEN metric_key LIKE 'metric:%' THEN metric_key END) AS metrics_failed
         FROM $tbl
-        WHERE $where AND (metric_key = '' OR metric_key LIKE 'item:%')
+        WHERE $where AND (metric_key = '' OR metric_key LIKE 'item:%' OR metric_key LIKE 'metric:%')
         GROUP BY form_id, entry_id
         ORDER BY last_ts DESC";
 		$rows = $wpdb->get_results( $sql, ARRAY_A );
 
 		foreach ( (array) $rows as $r ) {
 			$out['failed_entries'][] = array(
-				'entry_id'     => (int) $r['entry_id'],
-				'form_id'      => (int) $r['form_id'],
-				'date_created' => gmdate( 'Y-m-d H:i', strtotime( $r['last_ts'] ) ),
-				'items'        => array_filter( array_map( 'trim', explode( '||', (string) $r['items'] ) ) ),
+				'entry_id'       => (int) $r['entry_id'],
+				'form_id'        => (int) $r['form_id'],
+				'date_created'   => gmdate( 'Y-m-d H:i', strtotime( $r['last_ts'] ) ),
+				'items'          => array_filter( array_map( 'trim', explode( '||', (string) $r['items'] ) ) ),
+				'metrics_failed' => (int) ( $r['metrics_failed'] ?? 0 ),
 			);
 		}
 		
@@ -497,8 +499,10 @@ foreach ( $out['failed_entries'] as &$fe ) {
 unset( $fe );
 
 
-		// 2) Top failing metrics (count occurrences in window)
-$sql2 = "SELECT COALESCE(NULLIF(item_label,''), SUBSTRING(metric_key, 8)) AS label, COUNT(*) AS c
+		// 2) Top failing metrics (count occurrences in window, with entry IDs)
+$sql2 = "SELECT COALESCE(NULLIF(item_label,''), SUBSTRING(metric_key, 8)) AS label,
+         COUNT(*) AS c,
+         GROUP_CONCAT(DISTINCT entry_id ORDER BY entry_id SEPARATOR ',') AS entry_ids
          FROM $tbl
          WHERE $where AND metric_key LIKE 'metric:%'
          GROUP BY label
@@ -506,8 +510,11 @@ $sql2 = "SELECT COALESCE(NULLIF(item_label,''), SUBSTRING(metric_key, 8)) AS lab
 
 		$rows2 = $wpdb->get_results( $sql2, ARRAY_A );
 		$out['top_failed_metrics'] = array();
+		$out['top_failed_metrics_entries'] = array(); // Map of metric label => array of entry IDs
 		foreach ( (array) $rows2 as $r ) {
-			$out['top_failed_metrics'][ (string) $r['label'] ] = (int) $r['c'];
+			$label = (string) $r['label'];
+			$out['top_failed_metrics'][ $label ] = (int) $r['c'];
+			$out['top_failed_metrics_entries'][ $label ] = array_filter( array_map( 'intval', explode( ',', (string) $r['entry_ids'] ) ) );
 		}
 
 		// 3) Latest failed entries (with a count of metrics_failed per entry in window)
@@ -529,6 +536,10 @@ $sql3 = "SELECT form_id, entry_id, MAX(event_utc) AS last_ts,
 		}
 
 		$out['_has_history'] = ( ! empty( $rows ) || ! empty( $rows2 ) || ! empty( $rows3 ) );
+
+		// Calculate total metrics failed from the audit data
+		$out['totals_metrics_failed'] = array_sum( array_map( 'intval', array_values( $out['top_failed_metrics'] ) ) );
+
 		return $out;
 	}
 }
