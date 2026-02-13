@@ -18,6 +18,14 @@ if ( ! empty( $hist['_has_history'] ) ) {
     // Use historical top_failed_metrics if available (shows what failed during the period, not current state)
     if ( ! empty( $hist['top_failed_metrics'] ) ) {
         $data['top_failed_metrics'] = $hist['top_failed_metrics'];
+        // Also sync the KPI total with historical data
+        if ( isset( $hist['totals_metrics_failed'] ) ) {
+            $data['totals']['metrics_failed'] = (int) $hist['totals_metrics_failed'];
+        }
+    }
+    // Include entry IDs for top_failed_metrics if available
+    if ( ! empty( $hist['top_failed_metrics_entries'] ) ) {
+        $data['top_failed_metrics_entries'] = $hist['top_failed_metrics_entries'];
     }
 }
 
@@ -333,7 +341,13 @@ if ( function_exists( 'sfa_qg_report_collect_history' ) ) {
     if ( ! empty( $hist_tables['_has_history'] ) ) {
         $data['failed_entries'] = $hist_tables['failed_entries'];
         $data['latest_failed']  = $hist_tables['latest_failed'];
-        // Do NOT override $data['top_failed_metrics'] here either.
+        // Use historical metrics data for tables
+        if ( ! empty( $hist_tables['top_failed_metrics'] ) ) {
+            $data['top_failed_metrics'] = $hist_tables['top_failed_metrics'];
+        }
+        if ( ! empty( $hist_tables['top_failed_metrics_entries'] ) ) {
+            $data['top_failed_metrics_entries'] = $hist_tables['top_failed_metrics_entries'];
+        }
     }
 }
 
@@ -448,14 +462,17 @@ $items = array_values( array_filter( array_map( static function( $x ) {
 
     $link = admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $fid . '&lid=' . $eid );
 
-    // If there are truly no items, show one minimal row so the entry is visible.
-    if ( empty( $items ) ) : ?>
+    // If there are no items but there are metric failures, show those
+    if ( empty( $items ) ) :
+        $metrics_count = isset( $row['metrics_failed'] ) ? (int) $row['metrics_failed'] : 0;
+        $metrics_display = $entry_level_labels ? esc_html( implode( ', ', $entry_level_labels ) ) : '—';
+        ?>
         <tr>
             <td class="sfa-qg-mono"><?php echo $eid; ?></td>
             <td class="sfa-qg-mono"><?php echo $fid; ?></td>
             <td><?php echo esc_html( (string) ( $row['date_created'] ?? '' ) ); ?></td>
-            <td>&ndash;</td>
-            <td>&ndash;</td>
+            <td><em><?php echo $metrics_count > 0 ? esc_html__( '(metric-level)', 'sfa-quality-gate' ) : '—'; ?></em></td>
+            <td><?php echo $metrics_display; ?><?php if ( $metrics_count > 0 && empty( $entry_level_labels ) ) : ?> <small>(<?php echo $metrics_count; ?>)</small><?php endif; ?></td>
             <td><a href="<?php echo esc_url( $link ); ?>"><?php esc_html_e( 'Open', 'sfa-quality-gate' ); ?></a></td>
         </tr>
     <?php
@@ -539,19 +556,46 @@ endforeach; ?>
     <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-fm"></div>
     <div class="qg-count" data-count-for="#tbl-fm"></div>
   </div>
-  <table id="tbl-fm" class="qg-table two-col" aria-label="<?php esc_attr_e('Top failing metrics','sfa-quality-gate'); ?>">
-    <colgroup><col/><col style="width:140px"/></colgroup>
+  <?php $metric_entries_map = isset( $data['top_failed_metrics_entries'] ) ? $data['top_failed_metrics_entries'] : array(); ?>
+  <table id="tbl-fm" class="qg-table" aria-label="<?php esc_attr_e('Top failing metrics','sfa-quality-gate'); ?>">
+    <colgroup><col/><col style="width:100px"/><col style="width:200px"/></colgroup>
     <thead>
       <tr>
         <th class="qg-sort" data-sort="text"><?php esc_html_e('Metric label','sfa-quality-gate'); ?></th>
         <th class="qg-sort" data-sort="num"><?php esc_html_e('Failures','sfa-quality-gate'); ?></th>
+        <th><?php esc_html_e('Entries','sfa-quality-gate'); ?></th>
       </tr>
     </thead>
     <tbody>
-      <?php foreach ( $fm_page as $label => $count ) : ?>
+      <?php foreach ( $fm_page as $label => $count ) :
+        $entry_ids = isset( $metric_entries_map[ $label ] ) ? $metric_entries_map[ $label ] : array();
+      ?>
         <tr>
           <td><?php echo esc_html($label); ?></td>
           <td class="sfa-qg-mono" style="text-align:right"><?php echo (int)$count; ?></td>
+          <td class="sfa-qg-mono" style="font-size:12px">
+            <?php if ( ! empty( $entry_ids ) ) :
+              $shown = array_slice( $entry_ids, 0, 5 );
+              foreach ( $shown as $i => $eid ) :
+                // Try to get form_id for the entry link (default to form_id=1 if unknown)
+                $fid = 1;
+                foreach ( $data['failed_entries'] as $fe ) {
+                  if ( (int) $fe['entry_id'] === (int) $eid ) {
+                    $fid = (int) $fe['form_id'];
+                    break;
+                  }
+                }
+                $link = admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $fid . '&lid=' . $eid );
+                if ( $i > 0 ) echo ', ';
+                ?><a href="<?php echo esc_url( $link ); ?>"><?php echo (int) $eid; ?></a><?php
+              endforeach;
+              if ( count( $entry_ids ) > 5 ) :
+                ?> <small>(+<?php echo count( $entry_ids ) - 5; ?> more)</small><?php
+              endif;
+            else : ?>
+              —
+            <?php endif; ?>
+          </td>
         </tr>
       <?php endforeach; ?>
     </tbody>
