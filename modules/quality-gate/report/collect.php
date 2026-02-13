@@ -332,11 +332,37 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
 
         $rows = $wpdb->get_results( $wpdb->prepare( $sql, $args ), ARRAY_A );
 
+        // Build cache of form IDs that have quality_checklist fields
+        $qc_forms_cache = array();
+        if ( class_exists( 'GFAPI' ) ) {
+            $form_ids_in_results = array_unique( array_column( (array) $rows, 'form_id' ) );
+            foreach ( $form_ids_in_results as $fid ) {
+                $fid = (int) $fid;
+                if ( isset( $qc_forms_cache[ $fid ] ) ) continue;
+                $f = \GFAPI::get_form( $fid );
+                $has_qc = false;
+                if ( is_array( $f ) && ! empty( $f['fields'] ) ) {
+                    foreach ( (array) $f['fields'] as $field ) {
+                        if ( rgar( (array) $field, 'type' ) === 'quality_checklist' ) {
+                            $has_qc = true;
+                            break;
+                        }
+                    }
+                }
+                $qc_forms_cache[ $fid ] = $has_qc;
+            }
+        }
+
         $monthly  = array();
         $avg_map  = array();
         $details  = array();
 
         foreach ( (array) $rows as $r ) {
+            // Skip entries from forms without quality_checklist field
+            $fid = (int) $r['form_id'];
+            if ( isset( $qc_forms_cache[ $fid ] ) && ! $qc_forms_cache[ $fid ] ) {
+                continue;
+            }
             $log = json_decode( (string) $r['meta_value'], true );
             if ( ! is_array( $log ) ) continue;
 

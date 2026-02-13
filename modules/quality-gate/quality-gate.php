@@ -1125,6 +1125,24 @@ function sfa_qg_find_quality_gate_step_id( $form ) {
 	return (int) apply_filters( 'sfa_qg/quality_gate_step_id', $step_id, $form );
 }
 
+/**
+ * Check if a form has a quality_checklist field.
+ * This is the core validation to prevent QG features from running on non-QG forms.
+ */
+if ( ! function_exists( 'sfa_qg_form_has_quality_checklist' ) ) {
+	function sfa_qg_form_has_quality_checklist( $form ) {
+		if ( empty( $form ) || ! is_array( $form ) ) {
+			return false;
+		}
+		foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
+			if ( rgar( (array) $f, 'type' ) === 'quality_checklist' ) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
 // Locate the "Fixed items" checkbox/radio reliably (no hard-coded IDs).
 if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
 	function sfa_qg_find_fixed_checkbox_field_id( $form ) {
@@ -1473,6 +1491,11 @@ $out .= '<tr><td>' . $chk . esc_html( $name ) . $badge . '</td><td>' . ( $labels
  */
 // Run in front-end, during validation, and in admin entry screens.
 function sfa_qg_populate_rework_choices( $form ) {
+	// CRITICAL: Only run on forms that have a quality_checklist field
+	if ( ! sfa_qg_form_has_quality_checklist( $form ) ) {
+		return $form;
+	}
+
 	$entry_id = sfa_qg_current_entry_id();
 	if ( ! $entry_id ) { return $form; }
 $entry = null;
@@ -2056,6 +2079,20 @@ function sfa_qg_entry_qc_summary_box( $form, $entry ) {
 }
 
 function sfa_qg_save_recheck_items_from_post( $form, $entry_id ) {
+	// CRITICAL: Only run on forms that have a quality_checklist field
+	if ( ! sfa_qg_form_has_quality_checklist( $form ) ) {
+		// Also check the full form in case a trimmed array was passed
+		if ( class_exists( '\GFAPI' ) && ! empty( $form['id'] ) ) {
+			$full = \GFAPI::get_form( (int) $form['id'] );
+			if ( ! is_array( $full ) || ! sfa_qg_form_has_quality_checklist( $full ) ) {
+				return;
+			}
+			$form = $full; // Use full form for subsequent processing
+		} else {
+			return;
+		}
+	}
+
 	$field_id = sfa_qg_find_fixed_checkbox_field_id( $form );
 if ( ! $field_id && class_exists('\GFAPI') && ! empty($form['id']) ) {
     // Fallback: load the full form (some hooks pass a trimmed form array)
@@ -2140,6 +2177,11 @@ try {
 
 // Fires when a Gravity Flow User Input step is saved (rework screen)
 add_action('gravityflow_post_update_user_input', function( $step, $entry_id, $form ) {
+	// CRITICAL: Only run on forms that have a quality_checklist field
+	if ( ! sfa_qg_form_has_quality_checklist( $form ) ) {
+		return;
+	}
+
 	// persist ticks
 	if ( function_exists('sfa_qg_collect_rework_values_from_post') ) {
 		$field_id = sfa_qg_find_fixed_checkbox_field_id($form);
@@ -2355,6 +2397,70 @@ add_action( 'admin_init', function () {
 }, 99 );
 
 
+
+// === Cleanup: remove QG meta from non-QG forms (admin only) ===
+// Usage: /wp-admin/?sfa_qg_cleanup=1 (add &confirm=1 to actually delete)
+add_action( 'admin_init', function () {
+	if ( empty( $_GET['sfa_qg_cleanup'] ) ) return;
+	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
+
+	global $wpdb;
+	$em = $wpdb->prefix . 'gf_entry_meta';
+	$e  = $wpdb->prefix . 'gf_entry';
+	$confirm = ! empty( $_GET['confirm'] );
+
+	// Get all form IDs that have _qc_fixed_log or _qc_recheck_items meta
+	$meta_keys = array( '_qc_fixed_log', '_qc_recheck_items' );
+	$in_keys = "'" . implode( "','", $meta_keys ) . "'";
+	$forms_with_meta = $wpdb->get_col( "SELECT DISTINCT e.form_id FROM $e e INNER JOIN $em m ON m.entry_id = e.id WHERE m.meta_key IN ($in_keys)" );
+
+	// Check which forms have quality_checklist fields
+	$non_qc_forms = array();
+	if ( class_exists( 'GFAPI' ) ) {
+		foreach ( (array) $forms_with_meta as $fid ) {
+			$fid = (int) $fid;
+			$form = \GFAPI::get_form( $fid );
+			$has_qc = false;
+			if ( is_array( $form ) && ! empty( $form['fields'] ) ) {
+				foreach ( (array) $form['fields'] as $field ) {
+					if ( rgar( (array) $field, 'type' ) === 'quality_checklist' ) {
+						$has_qc = true;
+						break;
+					}
+				}
+			}
+			if ( ! $has_qc ) {
+				$non_qc_forms[] = $fid;
+			}
+		}
+	}
+
+	echo '<div class="wrap"><h1>QG Cleanup: Non-QC Form Meta</h1>';
+
+	if ( empty( $non_qc_forms ) ) {
+		echo '<p>No polluted data found. All forms with QG meta have quality_checklist fields.</p></div>';
+		exit;
+	}
+
+	// Count entries with polluted data
+	$in_forms = implode( ',', array_map( 'intval', $non_qc_forms ) );
+	$count = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT e.id) FROM $e e INNER JOIN $em m ON m.entry_id = e.id WHERE e.form_id IN ($in_forms) AND m.meta_key IN ($in_keys)" );
+
+	echo '<p>Found <strong>' . esc_html( $count ) . '</strong> entries in forms without quality_checklist fields that have QG meta data.</p>';
+	echo '<p>Non-QC Form IDs: <code>' . esc_html( implode( ', ', $non_qc_forms ) ) . '</code></p>';
+
+	if ( $confirm ) {
+		// Delete the polluted meta
+		$deleted = $wpdb->query( "DELETE m FROM $em m INNER JOIN $e e ON m.entry_id = e.id WHERE e.form_id IN ($in_forms) AND m.meta_key IN ($in_keys)" );
+		echo '<p style="color:green;"><strong>Cleaned up ' . esc_html( $deleted ) . ' meta rows.</strong></p>';
+	} else {
+		echo '<p><a class="button button-primary" href="' . esc_url( add_query_arg( 'confirm', '1' ) ) . '">Delete polluted meta</a></p>';
+		echo '<p><em>Add &amp;confirm=1 to the URL to actually delete the data.</em></p>';
+	}
+
+	echo '</div>';
+	exit;
+}, 99 );
 
 // === TEMP: Peek at last 20 audit rows (admin only) ===
 add_action( 'admin_init', function () {
