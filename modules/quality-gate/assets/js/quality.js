@@ -581,7 +581,8 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
     $wrap.find('.sfa-qg-placeholder').remove();
 
     // LocalStorage backup helpers
-    var backupKey = 'qg_backup_' + formId + '_' + fieldId;
+    var currentEntryId = getParam('lid') || getParam('entry_id') || 0;
+    var backupKey = 'qg_backup_' + formId + '_' + fieldId + '_' + currentEntryId;
     var backupTimer;
 
     function saveToLocalStorage() {
@@ -591,7 +592,7 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
           items: items,
           formId: formId,
           fieldId: fieldId,
-          entryId: getParam('lid') || getParam('entry_id') || 0
+          entryId: currentEntryId
         };
         localStorage.setItem(backupKey, JSON.stringify(backup));
         qgDebug('[QG] Auto-saved to localStorage', backupKey);
@@ -698,7 +699,8 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
     }
 
     // Try to restore from localStorage backup if no existing data
-    if (!existing || !existing.items) {
+    // Only offer restore on existing entries, never on new entry creation
+    if (currentEntryId && (!existing || !existing.items)) {
       try {
         var backupData = localStorage.getItem(backupKey);
         if (backupData) {
@@ -712,7 +714,6 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
 
             if (confirm(restoreMsg)) {
               existing = { items: backup.items };
-              qgDebug('[QG] Restored from localStorage backup', backup);
             } else {
               clearLocalStorageBackup();
             }
@@ -721,10 +722,14 @@ qgDebug('[QG] fixed lookup used', fixedLookup);
             clearLocalStorageBackup();
           }
         }
-      } catch(e) {
-        qgDebug('[QG] Failed to restore from localStorage', e);
-      }
+      } catch(e) {}
     }
+
+    // Clean up old-format backup keys (without entryId suffix)
+    try {
+      var oldKey = 'qg_backup_' + formId + '_' + fieldId;
+      if (localStorage.getItem(oldKey)) { localStorage.removeItem(oldKey); }
+    } catch(e) {}
 
     // Restore previous selections (pill highlight + QG-017 visual hint)
     if (existing && existing.items){

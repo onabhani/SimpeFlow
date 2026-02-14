@@ -56,8 +56,6 @@
             return;
         }
 
-        console.log('SFA Production: Form re-rendered, re-initializing (form_id:', form_id, ')');
-
         // Clear existing state
         $productionFields = [];
         clearTimeout(previewTimeout);
@@ -119,7 +117,6 @@
         if (initialInstallDate && initialInstallDate.trim() !== '') {
             isEditMode = true;
             preservedInstallDate = initialInstallDate;
-            console.log('SFA Production: Edit mode detected, preserving install date:', preservedInstallDate);
         } else {
             isEditMode = false;
             preservedInstallDate = null;
@@ -131,14 +128,12 @@
                 var initialProdStart = $prodStartField.val();
                 if (initialProdStart && initialProdStart.trim() !== '') {
                     preservedProdStartDate = initialProdStart;
-                    console.log('SFA Production: Preserving prod start date:', preservedProdStartDate);
                 }
             }
             if ($prodEndField && $prodEndField.length) {
                 var initialProdEnd = $prodEndField.val();
                 if (initialProdEnd && initialProdEnd.trim() !== '') {
                     preservedProdEndDate = initialProdEnd;
-                    console.log('SFA Production: Preserving prod end date:', preservedProdEndDate);
                 }
             }
         }
@@ -151,7 +146,6 @@
             var currentValue = $(this).val();
             if (currentValue && currentValue !== preservedInstallDate) {
                 hasUserChangedDate = true;
-                console.log('SFA Production: User manually changed date to:', currentValue);
             }
         });
 
@@ -163,7 +157,6 @@
         // Check if preview container already exists
         var $existingPreview = $('#sfa-prod-preview-' + config.formId);
         if ($existingPreview.length > 0) {
-            console.log('SFA Production: Preview container already exists, skipping creation');
             return;
         }
 
@@ -353,17 +346,14 @@
         // Handle date field population based on mode
         if (isEditMode && preservedInstallDate && !hasUserChangedDate) {
             // EDIT MODE: Restore the preserved date (ignore AJAX-calculated date)
-            console.log('SFA Production: Edit mode - restoring preserved date:', preservedInstallDate);
             $installField.val(preservedInstallDate);
         } else if (hasUserChangedDate) {
             // User manually changed the date - respect their choice
-            console.log('SFA Production: User changed date - preserving user choice:', currentInstallDateBeforeAjax);
             $installField.val(currentInstallDateBeforeAjax);
         } else {
             // NEW ENTRY MODE: Set to calculated minimum
             var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
             $installField.val(installDateFormatted);
-            console.log('SFA Production: New entry - setting date to calculated minimum:', installDateFormatted);
         }
 
         // Handle production date fields
@@ -371,7 +361,6 @@
             if (isEditMode && preservedProdStartDate) {
                 // Edit mode: preserve original date
                 $prodStartField.val(preservedProdStartDate);
-                console.log('SFA Production: Preserving prod start date:', preservedProdStartDate);
             } else if (!isEditMode || !$prodStartField.val()) {
                 // New entry or empty: set to calculated date
                 $prodStartField.val(formatDateDisplay(schedule.production_start));
@@ -381,7 +370,6 @@
             if (isEditMode && preservedProdEndDate) {
                 // Edit mode: preserve original date
                 $prodEndField.val(preservedProdEndDate);
-                console.log('SFA Production: Preserving prod end date:', preservedProdEndDate);
             } else if (!isEditMode || !$prodEndField.val()) {
                 // New entry or empty: set to calculated date
                 $prodEndField.val(formatDateDisplay(schedule.production_end));
