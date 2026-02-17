@@ -129,11 +129,15 @@ class Scheduler {
 	}
 
 	/**
-	 * Calculate production schedule constrained by an installation date
+	 * Calculate production schedule BACKWARD from installation date
 	 *
-	 * Production is allocated forward from earliest_start up to
-	 * (install_date - buffer), filling partially-used days first so that
-	 * capacity is utilized efficiently before opening new days.
+	 * Production is allocated backward from (install_date - buffer), filling
+	 * available slots working backward in time. This ensures production ends
+	 * as close to the installation date as possible.
+	 *
+	 * Example: 20 LM with install date 20 March, capacity 19/day:
+	 * - 20 March: 1 LM (last day, partial)
+	 * - 19 March: 19 LM (fills capacity)
 	 *
 	 * @param int      $lm_required        Linear meters needed
 	 * @param DateTime $installation_date  Target installation date
@@ -187,24 +191,24 @@ class Scheduler {
 
 		$allocation = [];
 		$lm_remaining = $lm_required;
-		$current_date = clone $earliest_start;
+		$current_date = clone $latest_prod_date;
 		$max_iterations = 365;
 		$iterations = 0;
 
-		// Allocate forward from earliest start, bounded by latest production date
-		// This fills partially-used days first before opening new days
+		// Allocate BACKWARD from latest production date toward earliest start
+		// This ensures production ends as close to installation date as possible
 		while ( $lm_remaining > 0 && $iterations < $max_iterations ) {
 			$iterations++;
 			$date_str = $current_date->format( 'Y-m-d' );
 
-			// Cannot go past latest production date
-			if ( $current_date > $latest_prod_date ) {
+			// Cannot go before earliest start date
+			if ( $current_date < $earliest_start ) {
 				break;
 			}
 
 			// Skip if off day or holiday
 			if ( $this->is_off_day( $current_date, $off_days, $holidays ) ) {
-				$current_date->modify( '+1 day' );
+				$current_date->modify( '-1 day' );
 				continue;
 			}
 
@@ -214,7 +218,7 @@ class Scheduler {
 				: $daily_capacity;
 
 			if ( $capacity <= 0 ) {
-				$current_date->modify( '+1 day' );
+				$current_date->modify( '-1 day' );
 				continue;
 			}
 
@@ -231,7 +235,7 @@ class Scheduler {
 				$lm_remaining -= $to_allocate;
 			}
 
-			$current_date->modify( '+1 day' );
+			$current_date->modify( '-1 day' );
 		}
 
 		if ( $lm_remaining > 0 ) {
@@ -244,6 +248,9 @@ class Scheduler {
 				)
 			);
 		}
+
+		// Sort allocation by date (chronological order)
+		ksort( $allocation );
 
 		$dates = array_keys( $allocation );
 		$production_start = reset( $dates );
