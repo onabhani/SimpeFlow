@@ -333,9 +333,8 @@ class BookingHandler {
 		// Determine if LM changed
 		$lm_changed = $existing_lm && ( (float) $existing_lm !== (float) $lm_required );
 
-		// Check if this is a manual admin edit (allow date changes) vs workflow update (preserve dates)
-		$is_manual_admin_edit = is_admin() && ! wp_doing_ajax() && ! defined( 'DOING_CRON' );
-		$date_manually_changed = $existing_install_date && ( $submitted_installation_date !== $existing_install_date );
+		// Check if installation date changed (from ANY context - admin, frontend, or workflow)
+		$date_changed = $existing_install_date && $submitted_installation_date && ( $submitted_installation_date !== $existing_install_date );
 
 		// Check if existing production dates need recalculation
 		// Production should be scheduled backward from install_date, so prod_end
@@ -362,7 +361,8 @@ class BookingHandler {
 
 		}
 
-		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! ( $is_manual_admin_edit && $date_manually_changed ) && ! $dates_inconsistent ) {
+		// FORCE RECALCULATION if installation date changed OR LM changed OR dates are inconsistent
+		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! $date_changed && ! $dates_inconsistent ) {
 			// Re-booking with unchanged LM: Keep ALL existing booking data
 			// IGNORE the submitted installation_date entirely - JavaScript may have changed it
 			// EXCEPTION: Allow date changes when manually editing in admin
@@ -380,8 +380,12 @@ class BookingHandler {
 			$use_existing_allocation = false;
 
 			// Determine final installation date based on the scenario
-			if ( $existing_install_date && $lm_changed ) {
-				// LM changed: Use submitted date if valid, otherwise use calculated minimum
+			if ( $date_changed ) {
+				// Installation date changed: ALWAYS use the new submitted date
+				// This is the user's explicit choice - respect it
+				$installation_date = $submitted_installation_date;
+			} elseif ( $existing_install_date && $lm_changed ) {
+				// LM changed but date didn't: Use submitted date if valid, otherwise use calculated minimum
 				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
 					$installation_date = $submitted_installation_date;
 				} else {
@@ -394,11 +398,8 @@ class BookingHandler {
 				} else {
 					$installation_date = $schedule['installation_minimum'];
 				}
-			} elseif ( $is_manual_admin_edit && $date_manually_changed ) {
-				// Manual admin date change: use the submitted date
-				$installation_date = $submitted_installation_date;
 			} elseif ( $dates_inconsistent ) {
-				// Inconsistent dates: keep existing install date
+				// Inconsistent dates: keep existing install date but recalculate allocation
 				$installation_date = $existing_install_date;
 			}
 
