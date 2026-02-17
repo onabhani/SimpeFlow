@@ -168,14 +168,14 @@ class ScheduleView {
 						$install_count = isset( $bookings[ $day_date ] ) ? count( $bookings[ $day_date ]['entries'] ) : 0;
 						$total_lm = isset( $bookings[ $day_date ] ) ? $bookings[ $day_date ]['total_lm'] : 0;
 
-						// Determine color
+						// Determine color based on LM load
 						if ( $is_off_day || $is_holiday ) {
 							$bg_color = '#e0e0e0';
-						} elseif ( $install_count >= 5 ) {
+						} elseif ( $total_lm >= $daily_capacity ) {
 							$bg_color = '#ffcccc';
-						} elseif ( $install_count >= 3 ) {
+						} elseif ( $total_lm >= ( $daily_capacity * 0.7 ) ) {
 							$bg_color = '#fff4cc';
-						} elseif ( $install_count > 0 ) {
+						} elseif ( $total_lm > 0 ) {
 							$bg_color = '#d4edda';
 						} else {
 							$bg_color = '#ccffcc';
@@ -186,11 +186,8 @@ class ScheduleView {
 
 						if ( $is_off_day || $is_holiday ) {
 							echo '<div style="font-size: 12px;">OFF</div>';
-						} elseif ( $install_count > 0 ) {
-							echo '<div style="font-size: 12px;">' . $install_count . ' install' . ( $install_count > 1 ? 's' : '' ) . '</div>';
-							echo '<div style="font-size: 11px; color: #666;">' . $total_lm . ' LM</div>';
 						} else {
-							echo '<div style="font-size: 12px; color: #999;">No installs</div>';
+							echo '<div style="font-size: 12px;">' . $total_lm . ' LM</div>';
 						}
 
 						if ( isset( $bookings[ $day_date ] ) && ! empty( $bookings[ $day_date ]['entries'] ) ) {
@@ -235,10 +232,10 @@ class ScheduleView {
 
 		<div style="margin: 20px 0; padding: 15px; background: #f9f9f9; border-left: 3px solid #0073aa;">
 			<strong>Legend:</strong>
-			<span style="display: inline-block; margin-left: 20px; padding: 5px 10px; background: #ccffcc;">No Installs</span>
-			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #d4edda;">1-2 Installs</span>
-			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #fff4cc;">3-4 Installs</span>
-			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #ffcccc;">5+ Installs</span>
+			<span style="display: inline-block; margin-left: 20px; padding: 5px 10px; background: #ccffcc;">0 LM</span>
+			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #d4edda;">&lt;70% LM</span>
+			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #fff4cc;">70-99% LM</span>
+			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #ffcccc;">100%+ LM</span>
 			<span style="display: inline-block; margin-left: 10px; padding: 5px 10px; background: #e0e0e0;">Off Day</span>
 		</div>
 		<?php
