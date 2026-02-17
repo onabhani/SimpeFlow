@@ -328,8 +328,11 @@ class BillingStepPreview {
 					em.entry_id,
 					em.meta_value as allocation,
 					cm.meta_value as capacity_at_booking,
-					sm.meta_value as booking_status
+					sm.meta_value as booking_status,
+					wf.meta_value as workflow_status
 				FROM {$wpdb->prefix}gf_entry_meta em
+				INNER JOIN {$wpdb->prefix}gf_entry e
+					ON em.entry_id = e.id
 				INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
 					ON em.entry_id = start_meta.entry_id
 					AND start_meta.meta_key = '_prod_start_date'
@@ -342,7 +345,11 @@ class BillingStepPreview {
 				LEFT JOIN {$wpdb->prefix}gf_entry_meta sm
 					ON em.entry_id = sm.entry_id
 					AND sm.meta_key = '_prod_booking_status'
+				LEFT JOIN {$wpdb->prefix}gf_entry_meta wf
+					ON em.entry_id = wf.entry_id
+					AND wf.meta_key = 'workflow_final_status'
 				WHERE em.meta_key = '_prod_slots_allocation'
+				AND e.status = 'active'
 				AND start_meta.meta_value <= %s
 				AND end_meta.meta_value >= %s" . $exclude_sql,
 				$end_date,
@@ -359,9 +366,16 @@ class BillingStepPreview {
 			$allocation = json_decode( $row['allocation'], true );
 			$capacity_at_booking = isset( $row['capacity_at_booking'] ) ? (int) $row['capacity_at_booking'] : null;
 			$booking_status = isset( $row['booking_status'] ) ? $row['booking_status'] : 'confirmed';
+			$workflow_status = isset( $row['workflow_status'] ) ? $row['workflow_status'] : '';
 
 			// Skip canceled bookings - they don't consume capacity
+			// Also check workflow_final_status as a fallback (hooks may not always fire)
 			if ( 'canceled' === $booking_status ) {
+				continue;
+			}
+			if ( in_array( $workflow_status, [ 'cancelled', 'canceled' ], true ) ) {
+				// Sync the booking status so future queries skip faster
+				gform_update_meta( $row['entry_id'], '_prod_booking_status', 'canceled' );
 				continue;
 			}
 
