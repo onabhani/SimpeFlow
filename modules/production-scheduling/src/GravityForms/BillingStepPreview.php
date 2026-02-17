@@ -331,6 +331,8 @@ class BillingStepPreview {
 					sm.meta_value as booking_status,
 					wf.meta_value as workflow_status
 				FROM {$wpdb->prefix}gf_entry_meta em
+				INNER JOIN {$wpdb->prefix}gf_entry e
+					ON em.entry_id = e.id
 				INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
 					ON em.entry_id = start_meta.entry_id
 					AND start_meta.meta_key = '_prod_start_date'
@@ -347,6 +349,7 @@ class BillingStepPreview {
 					ON em.entry_id = wf.entry_id
 					AND wf.meta_key = 'workflow_final_status'
 				WHERE em.meta_key = '_prod_slots_allocation'
+				AND e.status = 'active'
 				AND start_meta.meta_value <= %s
 				AND end_meta.meta_value >= %s" . $exclude_sql,
 				$end_date,
