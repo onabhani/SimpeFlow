@@ -417,7 +417,6 @@ class ScheduleView {
 					// Workflow is cancelled but booking status doesn't reflect it - fix it now
 					gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
 					$booking_status = 'canceled';
-					error_log( sprintf( 'Production Booking: Synced canceled status for entry %d (workflow was cancelled)', $entry_id ) );
 				}
 			}
 
