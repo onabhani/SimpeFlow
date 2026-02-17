@@ -462,16 +462,21 @@ class BookingHandler {
 			$prod_start_date = $schedule['production_start'];
 			$prod_end_date = $schedule['production_end'];
 
+			// AUTO-ADJUST installation date to the LAST day of allocation
+			// This handles cases where:
+			// - The requested installation date was full, so allocation spilled to next days
+			// - The LM required more days than expected
+			// Installation date = production_end (last day of allocated slots)
+			$installation_date = $prod_end_date;
+
 			if ( $prod_start_field_id ) {
 				\GFAPI::update_entry_field( $entry_id, $prod_start_field_id, $prod_start_date );
 			}
 			if ( $prod_end_field_id ) {
 				\GFAPI::update_entry_field( $entry_id, $prod_end_field_id, $prod_end_date );
 			}
-			// Also sync the installation date field if it was adjusted
-			// (e.g. LM changed and the new minimum is later than the
-			// submitted date).
-			if ( $install_field_id && $installation_date !== $submitted_installation_date ) {
+			// Always sync the installation date field to the actual last day of allocation
+			if ( $install_field_id ) {
 				\GFAPI::update_entry_field( $entry_id, $install_field_id, $installation_date );
 			}
 		}

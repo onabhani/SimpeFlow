@@ -132,16 +132,17 @@ class Scheduler {
 	 * Calculate production schedule FORWARD from installation date
 	 *
 	 * Production is allocated forward starting from installation date, filling
-	 * available slots. If capacity is exceeded, overflow goes to subsequent days.
+	 * available slots based on configured daily capacity. If requested date is
+	 * full or LM exceeds available capacity, overflow goes to subsequent days.
 	 *
-	 * Example: 20 LM with install date 20 March, capacity 19/day:
-	 * - 20 March: 19 LM (fills capacity)
-	 * - 21 March: 1 LM (overflow)
+	 * Example: 20 LM with install date 20 March, configured capacity/day:
+	 * - If 20 March has 9 available: allocates 9 LM there, 11 LM on 21 March
+	 * - Installation date auto-adjusts to 21 March (last day of allocation)
 	 *
 	 * @param int      $lm_required        Linear meters needed
 	 * @param DateTime $installation_date  Target installation date (first day of allocation)
 	 * @param DateTime $earliest_start     Floor date - production cannot start before this
-	 * @param int      $daily_capacity     Default production capacity (LM/day)
+	 * @param int      $daily_capacity     Default production capacity (LM/day) from settings
 	 * @param array    $capacity_overrides [date_string => custom_capacity]
 	 * @param array    $existing_bookings  [date_string => total_lm_used]
 	 * @param array    $off_days           [0,5] = Sunday, Friday off (0=Sun, 6=Sat)
