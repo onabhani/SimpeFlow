@@ -35,15 +35,13 @@ class BookingHandler {
 		// Hook into workflow status changes
 		add_action( 'gravityflow_status_updated', [ $this, 'handle_workflow_status_change' ], 10, 4 );
 
-		// Hook into entry meta updates to catch workflow cancellation
-		add_action( 'updated_post_meta', [ $this, 'handle_meta_update' ], 10, 4 );
-
 		// Hook directly into GravityFlow cancel workflow action (try multiple possible action names)
 		add_action( 'wp_ajax_gravityflow_cancel_workflow', [ $this, 'handle_cancel_workflow_ajax' ], 5 );
 		add_action( 'wp_ajax_gf_cancel_workflow', [ $this, 'handle_cancel_workflow_ajax' ], 5 );
 
-		// Hook into admin_init to catch cancel workflow action
+		// Hook into admin_init to catch cancel workflow action and sync cancelled statuses
 		add_action( 'admin_init', [ $this, 'check_cancel_workflow_request' ] );
+		add_action( 'admin_init', [ $this, 'sync_cancelled_workflow_bookings' ] );
 
 		// AJAX hook for capacity check before admin save
 		add_action( 'wp_ajax_sfa_prod_check_capacity_before_save', [ $this, 'ajax_check_capacity_before_save' ] );
@@ -709,35 +707,35 @@ class BookingHandler {
 	}
 
 	/**
-	 * Handle entry meta updates to catch workflow cancellation
+	 * Sync cancelled workflow bookings on admin page load
 	 *
-	 * This catches when GravityFlow updates workflow status meta
-	 *
-	 * @param int    $meta_id    ID of updated metadata entry
-	 * @param int    $object_id  Post ID (entry ID in GF context)
-	 * @param string $meta_key   Metadata key
-	 * @param mixed  $meta_value Metadata value
+	 * Checks for entries where workflow is cancelled but booking status
+	 * hasn't been updated. This is a safety net for when hooks don't fire.
+	 * Only runs on production schedule admin page to avoid unnecessary queries.
 	 */
-	public function handle_meta_update( $meta_id, $object_id, $meta_key, $meta_value ) {
-		// Check for various GravityFlow status meta keys
-		$workflow_status_keys = [
-			'workflow_final_status',
-			'_gravityflow_workflow_status',
-			'gravityflow_workflow_status'
-		];
-
-		if ( ! in_array( $meta_key, $workflow_status_keys, true ) ) {
+	public function sync_cancelled_workflow_bookings() {
+		// Only run on the production schedule page
+		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'sfa-production-schedule' ) {
 			return;
 		}
 
-		$entry_id = $object_id;
+		global $wpdb;
 
-		// If workflow is cancelled, mark booking as canceled
-		if ( 'cancelled' === $meta_value || 'canceled' === $meta_value ) {
-			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
-			if ( $existing_booking ) {
-				gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
-			}
+		// Find entries where workflow is cancelled but booking is still confirmed
+		$entries = $wpdb->get_results(
+			"SELECT bs.entry_id
+			FROM {$wpdb->prefix}gf_entry_meta bs
+			INNER JOIN {$wpdb->prefix}gf_entry_meta wf
+				ON bs.entry_id = wf.entry_id
+				AND wf.meta_key = 'workflow_final_status'
+				AND wf.meta_value IN ('cancelled', 'canceled')
+			WHERE bs.meta_key = '_prod_booking_status'
+			AND bs.meta_value = 'confirmed'",
+			ARRAY_A
+		);
+
+		foreach ( $entries as $row ) {
+			gform_update_meta( (int) $row['entry_id'], '_prod_booking_status', 'canceled' );
 		}
 	}
 
