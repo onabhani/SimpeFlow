@@ -129,21 +129,25 @@ class Scheduler {
 	}
 
 	/**
-	 * Calculate production schedule constrained by an installation date
+	 * Calculate production schedule FORWARD from installation date
 	 *
-	 * Production is allocated forward from earliest_start up to
-	 * (install_date - buffer), filling partially-used days first so that
-	 * capacity is utilized efficiently before opening new days.
+	 * Production is allocated forward starting from installation date, filling
+	 * available slots based on configured daily capacity. If requested date is
+	 * full or LM exceeds available capacity, overflow goes to subsequent days.
+	 *
+	 * Example: 20 LM with install date 20 March, configured capacity/day:
+	 * - If 20 March has 9 available: allocates 9 LM there, 11 LM on 21 March
+	 * - Installation date auto-adjusts to 21 March (last day of allocation)
 	 *
 	 * @param int      $lm_required        Linear meters needed
-	 * @param DateTime $installation_date  Target installation date
+	 * @param DateTime $installation_date  Target installation date (first day of allocation)
 	 * @param DateTime $earliest_start     Floor date - production cannot start before this
-	 * @param int      $daily_capacity     Default production capacity (LM/day)
+	 * @param int      $daily_capacity     Default production capacity (LM/day) from settings
 	 * @param array    $capacity_overrides [date_string => custom_capacity]
 	 * @param array    $existing_bookings  [date_string => total_lm_used]
 	 * @param array    $off_days           [0,5] = Sunday, Friday off (0=Sun, 6=Sat)
 	 * @param array    $holidays           ["2025-12-25", "2026-01-01"]
-	 * @param int      $install_buffer     Days after production before install (0 = same day)
+	 * @param int      $install_buffer     Not used in this mode (kept for API compatibility)
 	 *
 	 * @return array Same structure as calculate_schedule()
 	 */
@@ -166,41 +170,25 @@ class Scheduler {
 			throw new \InvalidArgumentException( 'Daily capacity must be greater than 0' );
 		}
 
-		// Latest production date = installation_date - buffer
-		$latest_prod_date = clone $installation_date;
-		if ( $install_buffer > 0 ) {
-			$latest_prod_date->modify( "-{$install_buffer} days" );
-		}
+		// Start from installation date
+		$start_date = clone $installation_date;
 
-		// Cannot schedule if latest production date is before earliest start
-		if ( $latest_prod_date < $earliest_start ) {
-			throw new \RuntimeException(
-				sprintf(
-					'Installation date %s with buffer %d results in production date %s before earliest start %s',
-					$installation_date->format( 'Y-m-d' ),
-					$install_buffer,
-					$latest_prod_date->format( 'Y-m-d' ),
-					$earliest_start->format( 'Y-m-d' )
-				)
-			);
+		// If installation date is before earliest start, use earliest start
+		if ( $start_date < $earliest_start ) {
+			$start_date = clone $earliest_start;
 		}
 
 		$allocation = [];
 		$lm_remaining = $lm_required;
-		$current_date = clone $earliest_start;
+		$current_date = clone $start_date;
 		$max_iterations = 365;
 		$iterations = 0;
 
-		// Allocate forward from earliest start, bounded by latest production date
-		// This fills partially-used days first before opening new days
+		// Allocate FORWARD from installation date
+		// Fill installation date first, then overflow to subsequent days
 		while ( $lm_remaining > 0 && $iterations < $max_iterations ) {
 			$iterations++;
 			$date_str = $current_date->format( 'Y-m-d' );
-
-			// Cannot go past latest production date
-			if ( $current_date > $latest_prod_date ) {
-				break;
-			}
 
 			// Skip if off day or holiday
 			if ( $this->is_off_day( $current_date, $off_days, $holidays ) ) {
@@ -237,10 +225,9 @@ class Scheduler {
 		if ( $lm_remaining > 0 ) {
 			throw new \RuntimeException(
 				sprintf(
-					'Unable to allocate %d LM between %s and %s (capacity exhausted)',
+					'Unable to allocate %d LM starting from %s (capacity exhausted within 365 days)',
 					$lm_required,
-					$earliest_start->format( 'Y-m-d' ),
-					$latest_prod_date->format( 'Y-m-d' )
+					$installation_date->format( 'Y-m-d' )
 				)
 			);
 		}
