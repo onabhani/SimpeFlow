@@ -83,7 +83,8 @@ class ScheduleView {
 		// Render UI
 		?>
 		<div class="wrap">
-			<h1>Production Schedule</h1>
+			<h1>Installation Schedule</h1>
+			<p style="color: #666; margin-top: -5px;">Calendar shows LM allocation based on installation dates (working backward from each entry's installation date)</p>
 
 			<?php $this->render_month_navigation( $date ); ?>
 
@@ -313,35 +314,50 @@ class ScheduleView {
 	}
 
 	/**
-	 * Load bookings for date range (grouped by production dates)
+	 * Load bookings for date range - DYNAMICALLY calculated from installation dates
+	 *
+	 * Each entry's allocation is calculated backward from its installation date.
+	 * This ensures the calendar always reflects the current installation date.
 	 */
 	private function load_bookings( $start_date, $end_date ) {
 		global $wpdb;
 
-		// Query all entries with production bookings that overlap this month
+		// Load settings for allocation calculation
+		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 19 );
+		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
+		$working_days = json_decode( $working_days_json, true );
+		$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
+		$holidays = json_decode( $holidays_json, true );
+
+		// Calculate off days
+		$all_days = [ 0, 1, 2, 3, 4, 5, 6 ];
+		$off_days = array_values( array_diff( $all_days, $working_days ) );
+
+		// Extend search range backward to find entries whose allocation might fall in this month
+		// An entry with large LM could have install date in next month but allocation in this month
+		$search_start = date( 'Y-m-d', strtotime( $start_date . ' -60 days' ) );
+		$search_end = date( 'Y-m-d', strtotime( $end_date . ' +60 days' ) );
+
+		// Query all entries with installation dates that could have allocations in this range
 		$results = $wpdb->get_results(
 			$wpdb->prepare(
-				"SELECT entry_id, meta_key, meta_value
-				FROM {$wpdb->prefix}gf_entry_meta
-				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking')
-				AND entry_id IN (
-					SELECT DISTINCT em.entry_id
-					FROM {$wpdb->prefix}gf_entry_meta em
-					INNER JOIN {$wpdb->prefix}gf_entry_meta start_meta
-						ON em.entry_id = start_meta.entry_id
-						AND start_meta.meta_key = '_prod_start_date'
-					LEFT JOIN {$wpdb->prefix}gf_entry_meta end_meta
-						ON em.entry_id = end_meta.entry_id
-						AND end_meta.meta_key = '_prod_end_date'
-					INNER JOIN {$wpdb->prefix}gf_entry e ON em.entry_id = e.id
-					WHERE em.meta_key = '_prod_slots_allocation'
-					AND start_meta.meta_value <= %s
-					AND (end_meta.meta_value IS NULL OR end_meta.meta_value >= %s)
-					AND e.status = 'active'
+				"SELECT em.entry_id, em.meta_key, em.meta_value
+				FROM {$wpdb->prefix}gf_entry_meta em
+				INNER JOIN {$wpdb->prefix}gf_entry e ON em.entry_id = e.id
+				WHERE em.meta_key IN ('_prod_lm_required', '_prod_total_slots', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking')
+				AND e.status = 'active'
+				AND em.entry_id IN (
+					SELECT DISTINCT install_meta.entry_id
+					FROM {$wpdb->prefix}gf_entry_meta install_meta
+					INNER JOIN {$wpdb->prefix}gf_entry e2 ON install_meta.entry_id = e2.id
+					WHERE install_meta.meta_key = '_install_date'
+					AND install_meta.meta_value >= %s
+					AND install_meta.meta_value <= %s
+					AND e2.status = 'active'
 				)
-				ORDER BY entry_id",
-				$end_date,
-				$start_date
+				ORDER BY em.entry_id",
+				$search_start,
+				$search_end
 			),
 			ARRAY_A
 		);
@@ -357,41 +373,26 @@ class ScheduleView {
 			$entries[ $entry_id ][ $key ] = $row['meta_value'];
 		}
 
-		// Organize by production date
+		// Organize by calculated allocation dates (backward from installation date)
 		$bookings = [];
 		$form_title_cache = [];
 
 		foreach ( $entries as $entry_id => $entry_data ) {
-			if ( empty( $entry_data['slots_allocation'] ) ) {
+			// Get installation date and LM
+			$install_date = isset( $entry_data['install_date'] ) ? $entry_data['install_date'] : '';
+			$lm_required = isset( $entry_data['lm_required'] ) ? (int) $entry_data['lm_required'] : 0;
+
+			// Try total_slots if lm_required not set
+			if ( $lm_required <= 0 && isset( $entry_data['total_slots'] ) ) {
+				$lm_required = (int) $entry_data['total_slots'];
+			}
+
+			if ( empty( $install_date ) || $lm_required <= 0 ) {
 				continue;
 			}
 
-			$allocation = json_decode( $entry_data['slots_allocation'], true );
-
-			if ( ! is_array( $allocation ) ) {
-				continue;
-			}
-
-			// Get form ID and entry creator for entry
-			$entry_row = $wpdb->get_row( $wpdb->prepare(
-				"SELECT form_id, created_by FROM {$wpdb->prefix}gf_entry WHERE id = %d",
-				$entry_id
-			), ARRAY_A );
-			$form_id = $entry_row ? $entry_row['form_id'] : null;
-			$entry_created_by = $entry_row ? (int) $entry_row['created_by'] : 0;
-
-			// Get form title (cached)
-			if ( $form_id && ! isset( $form_title_cache[ $form_id ] ) ) {
-				$form_obj = \GFAPI::get_form( $form_id );
-				$form_title_cache[ $form_id ] = is_array( $form_obj ) ? rgar( $form_obj, 'title' ) : '';
-			}
-			$form_title = $form_id ? ( $form_title_cache[ $form_id ] ?? '' ) : '';
-
-			// Get booking status (default to confirmed for backwards compatibility)
+			// Get booking status
 			$booking_status = isset( $entry_data['booking_status'] ) ? $entry_data['booking_status'] : 'confirmed';
-
-			// Get capacity at time of booking
-			$capacity_at_booking = isset( $entry_data['daily_capacity_at_booking'] ) ? (int) $entry_data['daily_capacity_at_booking'] : null;
 
 			// Sync booking status with GravityFlow workflow status
 			$workflow_status = gform_get_meta( $entry_id, 'workflow_final_status' );
@@ -407,7 +408,44 @@ class ScheduleView {
 				continue;
 			}
 
+			// Get form ID and entry creator
+			$entry_row = $wpdb->get_row( $wpdb->prepare(
+				"SELECT form_id, created_by FROM {$wpdb->prefix}gf_entry WHERE id = %d",
+				$entry_id
+			), ARRAY_A );
+			$form_id = $entry_row ? $entry_row['form_id'] : null;
+			$entry_created_by = $entry_row ? (int) $entry_row['created_by'] : 0;
+
+			// Get form title (cached)
+			if ( $form_id && ! isset( $form_title_cache[ $form_id ] ) ) {
+				$form_obj = \GFAPI::get_form( $form_id );
+				$form_title_cache[ $form_id ] = is_array( $form_obj ) ? rgar( $form_obj, 'title' ) : '';
+			}
+			$form_title = $form_id ? ( $form_title_cache[ $form_id ] ?? '' ) : '';
+
+			// Get capacity at time of booking
+			$capacity_at_booking = isset( $entry_data['daily_capacity_at_booking'] ) ? (int) $entry_data['daily_capacity_at_booking'] : $daily_capacity;
+
+			// CALCULATE ALLOCATION BACKWARD FROM INSTALLATION DATE
+			$allocation = $this->calculate_backward_allocation(
+				$install_date,
+				$lm_required,
+				$capacity_at_booking,
+				$off_days,
+				$holidays
+			);
+
+			// Calculate production start/end from allocation
+			$allocation_dates = array_keys( $allocation );
+			$prod_start = ! empty( $allocation_dates ) ? min( $allocation_dates ) : $install_date;
+			$prod_end = ! empty( $allocation_dates ) ? max( $allocation_dates ) : $install_date;
+
 			foreach ( $allocation as $date => $lm ) {
+				// Only include dates within the requested range
+				if ( $date < $start_date || $date > $end_date ) {
+					continue;
+				}
+
 				if ( ! isset( $bookings[ $date ] ) ) {
 					$bookings[ $date ] = [
 						'total_lm' => 0,
@@ -432,10 +470,10 @@ class ScheduleView {
 					'form_id' => $form_id,
 					'form_title' => $form_title,
 					'lm_on_date' => $lm,
-					'lm_required' => isset( $entry_data['lm_required'] ) ? $entry_data['lm_required'] : 0,
-					'prod_start' => isset( $entry_data['start_date'] ) ? $entry_data['start_date'] : '',
-					'prod_end' => isset( $entry_data['end_date'] ) ? $entry_data['end_date'] : '',
-					'install_date' => isset( $entry_data['install_date'] ) ? $entry_data['install_date'] : '',
+					'lm_required' => $lm_required,
+					'prod_start' => $prod_start,
+					'prod_end' => $prod_end,
+					'install_date' => $install_date,
 					'status' => $booking_status,
 					'booked_at' => isset( $entry_data['booked_at'] ) ? $entry_data['booked_at'] : '',
 					'booked_by' => $entry_created_by,
@@ -444,5 +482,66 @@ class ScheduleView {
 		}
 
 		return $bookings;
+	}
+
+	/**
+	 * Calculate allocation backward from installation date
+	 *
+	 * Allocates LM working backward from installation date.
+	 * Example: 20 LM with install date 20/04 and capacity 19:
+	 * - 19/04: 19 LM
+	 * - 20/04: 1 LM
+	 *
+	 * @param string $install_date Installation date (Y-m-d)
+	 * @param int    $total_lm     Total LM to allocate
+	 * @param int    $capacity     Daily capacity
+	 * @param array  $off_days     Days of week that are off (0=Sunday, 6=Saturday)
+	 * @param array  $holidays     Array of holiday dates (Y-m-d)
+	 * @return array Date => LM allocation
+	 */
+	private function calculate_backward_allocation( $install_date, $total_lm, $capacity, $off_days, $holidays ) {
+		$allocation = [];
+		$remaining = $total_lm;
+
+		// Calculate how many working days we need
+		$days_needed = ceil( $total_lm / $capacity );
+
+		// Find working days backward from installation date
+		$working_dates = [];
+		$current = new \DateTime( $install_date );
+		$max_lookback = 365; // Safety limit
+		$lookback_count = 0;
+
+		// Include installation date as the LAST day of production
+		while ( count( $working_dates ) < $days_needed && $lookback_count < $max_lookback ) {
+			$date_str = $current->format( 'Y-m-d' );
+			$day_of_week = (int) $current->format( 'w' );
+
+			// Check if this is a working day
+			$is_off_day = in_array( $day_of_week, $off_days, true );
+			$is_holiday = in_array( $date_str, $holidays, true );
+
+			if ( ! $is_off_day && ! $is_holiday ) {
+				// Add to beginning of array (so dates are in chronological order)
+				array_unshift( $working_dates, $date_str );
+			}
+
+			// Move to previous day
+			$current->modify( '-1 day' );
+			$lookback_count++;
+		}
+
+		// Allocate LM to each working day (forward chronologically)
+		foreach ( $working_dates as $date ) {
+			if ( $remaining <= 0 ) {
+				break;
+			}
+
+			$to_allocate = min( $remaining, $capacity );
+			$allocation[ $date ] = $to_allocate;
+			$remaining -= $to_allocate;
+		}
+
+		return $allocation;
 	}
 }
