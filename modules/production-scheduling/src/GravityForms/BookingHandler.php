@@ -218,6 +218,26 @@ class BookingHandler {
 		// Store the submitted installation date for later comparison (before any modifications)
 		$submitted_installation_date = $installation_date;
 
+		// Check if "Skip Production Booking" checkbox is checked
+		$skip_booking_field_id = FormSettings::get_skip_booking_field_id( $form );
+		$skip_booking = false;
+		if ( $skip_booking_field_id > 0 ) {
+			// Gravity Forms checkboxes store values as field_id.1, field_id.2, etc.
+			// Check if any checkbox choice is checked (has a non-empty value)
+			foreach ( $entry as $key => $value ) {
+				if ( strpos( $key, $skip_booking_field_id . '.' ) === 0 && ! empty( $value ) ) {
+					$skip_booking = true;
+					break;
+				}
+			}
+		}
+
+		// If skip booking is checked and we have an installation date, save date-only booking
+		if ( $skip_booking && $installation_date ) {
+			$this->save_date_only_booking( $entry_id, $installation_date, $install_field_id );
+			return;
+		}
+
 		// Handle multi-field or legacy mode
 		$total_slots = 0;
 		$lm_required = 0; // Initialize for both modes
@@ -245,22 +265,20 @@ class BookingHandler {
 				}
 			}
 
+			// Skip booking if no production values entered yet (prevents premature booking)
+			if ( ! $has_values ) {
+				return;
+			}
+
 			// Calculate total slots
-			$total_slots = $has_values ? FormSettings::calculate_total_slots( $field_values, $production_fields ) : 0;
+			$total_slots = FormSettings::calculate_total_slots( $field_values, $production_fields );
+
+			if ( $total_slots <= 0 ) {
+				return;
+			}
 
 			// For multi-field mode, lm_required represents total slots
 			$lm_required = $total_slots;
-
-			// Zero-slot booking: installation date set but no production capacity needed
-			if ( $lm_required <= 0 && $installation_date ) {
-				$this->save_date_only_booking( $entry_id, $installation_date, $install_field_id );
-				return;
-			}
-
-			// Skip booking if no production values and no installation date
-			if ( $lm_required <= 0 ) {
-				return;
-			}
 
 			// Store field breakdown in entry meta
 			gform_update_meta( $entry_id, '_prod_field_breakdown', wp_json_encode( $field_breakdown ) );
@@ -278,12 +296,6 @@ class BookingHandler {
 		} else {
 			// Legacy mode (single LM field)
 			$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
-
-			// Zero-slot booking: installation date set but no LM required
-			if ( $lm_required <= 0 && $installation_date ) {
-				$this->save_date_only_booking( $entry_id, $installation_date, $install_field_id );
-				return;
-			}
 
 			if ( $lm_required <= 0 ) {
 				return;

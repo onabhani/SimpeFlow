@@ -86,10 +86,14 @@ class FormSettings {
 			}
 		}
 
+		// Get skip booking field setting
+		$skip_booking_field_id = (int) rgar( $form, 'sfa_prod_skip_booking_field' );
+
 		// Build field options
 		$number_fields = [];
 		$date_fields = [];
 		$hidden_fields = [];
+		$checkbox_fields = [];
 
 		foreach ( $form['fields'] as $field ) {
 			if ( $field->type === 'number' ) {
@@ -108,6 +112,12 @@ class FormSettings {
 				$hidden_fields[] = [
 					'value' => $field->id,
 					'label' => $field->label . ' (ID: ' . $field->id . ') - ' . ucfirst( $field->type ),
+				];
+			}
+			if ( $field->type === 'checkbox' ) {
+				$checkbox_fields[] = [
+					'value' => $field->id,
+					'label' => $field->label . ' (ID: ' . $field->id . ')',
 				];
 			}
 		}
@@ -218,6 +228,25 @@ class FormSettings {
 							<div class="notice notice-error inline">
 								<p>⚠️ No date fields found in this form. Please add a date field for installation date.</p>
 							</div>
+						</td>
+					</tr>
+					<?php endif; ?>
+
+					<?php if ( ! empty( $checkbox_fields ) ): ?>
+					<tr id="sfa_prod_skip_booking_field_row" style="<?php echo ! $enabled ? 'display:none;' : ''; ?>">
+						<th scope="row">
+							<label for="sfa_prod_skip_booking_field">Skip Production Booking Checkbox</label>
+						</th>
+						<td>
+							<select name="sfa_prod_skip_booking_field" id="sfa_prod_skip_booking_field" class="widefat">
+								<option value="">None (optional)</option>
+								<?php foreach ( $checkbox_fields as $field ): ?>
+									<option value="<?php echo esc_attr( $field['value'] ); ?>" <?php selected( $skip_booking_field_id, $field['value'] ); ?>>
+										<?php echo esc_html( $field['label'] ); ?>
+									</option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description">When this checkbox is checked, the entry will have an installation date but will NOT consume any production capacity. Entry will still appear on calendar with 0 LM.</p>
 						</td>
 					</tr>
 					<?php endif; ?>
@@ -386,9 +415,9 @@ class FormSettings {
 			// Toggle visibility of all production scheduling rows
 			$("#sfa_prod_enabled").on("change", function() {
 				if ($(this).is(":checked")) {
-					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row, #sfa_prod_booking_step_row").show();
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_skip_booking_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row, #sfa_prod_booking_step_row").show();
 				} else {
-					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row, #sfa_prod_booking_step_row").hide();
+					$("#sfa_prod_lm_field_row, #sfa_prod_install_field_row, #sfa_prod_skip_booking_field_row, #sfa_prod_fields_row, #sfa_prod_start_field_row, #sfa_prod_end_field_row, #sfa_prod_booking_step_row").hide();
 				}
 			}).trigger("change");
 
@@ -474,6 +503,7 @@ class FormSettings {
 		$form['sfa_prod_enabled'] = isset( $_POST['sfa_prod_enabled'] ) ? true : false;
 		$form['sfa_prod_lm_field'] = isset( $_POST['sfa_prod_lm_field'] ) ? absint( $_POST['sfa_prod_lm_field'] ) : 0;
 		$form['sfa_prod_install_field'] = isset( $_POST['sfa_prod_install_field'] ) ? absint( $_POST['sfa_prod_install_field'] ) : 0;
+		$form['sfa_prod_skip_booking_field'] = isset( $_POST['sfa_prod_skip_booking_field'] ) ? absint( $_POST['sfa_prod_skip_booking_field'] ) : 0;
 		$form['sfa_prod_start_field'] = isset( $_POST['sfa_prod_start_field'] ) ? absint( $_POST['sfa_prod_start_field'] ) : 0;
 		$form['sfa_prod_end_field'] = isset( $_POST['sfa_prod_end_field'] ) ? absint( $_POST['sfa_prod_end_field'] ) : 0;
 		$form['sfa_prod_booking_step'] = isset( $_POST['sfa_prod_booking_step'] ) ? absint( $_POST['sfa_prod_booking_step'] ) : 0;
@@ -562,6 +592,14 @@ class FormSettings {
 	 */
 	public static function get_booking_step_id( $form ) {
 		return (int) rgar( $form, 'sfa_prod_booking_step' );
+	}
+
+	/**
+	 * Get skip production booking checkbox field ID
+	 * When this checkbox is checked, entry gets installation date but no production allocation
+	 */
+	public static function get_skip_booking_field_id( $form ) {
+		return (int) rgar( $form, 'sfa_prod_skip_booking_field' );
 	}
 
 	/**
