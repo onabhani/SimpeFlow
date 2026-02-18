@@ -135,6 +135,22 @@ class SettingsPage {
 	 */
 	public function sanitize_holidays( $value ) {
 		if ( is_string( $value ) ) {
+			// If value is already valid JSON array, return as-is
+			$decoded = json_decode( $value, true );
+			if ( is_array( $decoded ) ) {
+				// Verify all entries are valid dates
+				$all_valid = true;
+				foreach ( $decoded as $d ) {
+					if ( ! is_string( $d ) || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $d ) ) {
+						$all_valid = false;
+						break;
+					}
+				}
+				if ( $all_valid ) {
+					return $value;
+				}
+			}
+
 			// Parse textarea input (one date per line)
 			$lines = explode( "\n", $value );
 			$dates = [];
@@ -201,8 +217,7 @@ class SettingsPage {
 
 			update_option( 'sfa_prod_installation_buffer', absint( $_POST['installation_buffer'] ) );
 
-			$this->sanitize_holidays( $_POST['holidays'] );
-			update_option( 'sfa_prod_holidays', $this->sanitize_holidays( $_POST['holidays'] ) );
+			update_option( 'sfa_prod_holidays', $this->sanitize_holidays( isset( $_POST['holidays'] ) ? $_POST['holidays'] : '' ) );
 
 			update_option( 'sfa_prod_earliest_start_date', $this->sanitize_date( $_POST['earliest_start_date'] ) );
 

@@ -218,6 +218,26 @@ class BookingHandler {
 		// Store the submitted installation date for later comparison (before any modifications)
 		$submitted_installation_date = $installation_date;
 
+		// Check if "Skip Production Booking" checkbox is checked
+		$skip_booking_field_id = FormSettings::get_skip_booking_field_id( $form );
+		$skip_booking = false;
+		if ( $skip_booking_field_id > 0 ) {
+			// Gravity Forms checkboxes store values as field_id.1, field_id.2, etc.
+			// Check if any checkbox choice is checked (has a non-empty value)
+			foreach ( $entry as $key => $value ) {
+				if ( strpos( $key, $skip_booking_field_id . '.' ) === 0 && ! empty( $value ) ) {
+					$skip_booking = true;
+					break;
+				}
+			}
+		}
+
+		// If skip booking is checked and we have an installation date, save date-only booking
+		if ( $skip_booking && $installation_date ) {
+			$this->save_date_only_booking( $entry_id, $installation_date, $install_field_id );
+			return;
+		}
+
 		// Handle multi-field or legacy mode
 		$total_slots = 0;
 		$lm_required = 0; // Initialize for both modes
@@ -291,7 +311,7 @@ class BookingHandler {
 			try {
 				$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
 			} catch ( \Throwable $e ) {
-				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine() ) );
+				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getLine() ) );
 				return;
 			}
 		}
@@ -584,6 +604,47 @@ class BookingHandler {
 				$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
 			}
 		}
+	}
+
+	/**
+	 * Save a date-only booking (installation date without production allocation)
+	 *
+	 * Used when an installation date is set but no LM/production slots are required.
+	 * Stores the installation date and booking metadata without consuming any
+	 * production capacity.
+	 *
+	 * @param int    $entry_id         The entry ID
+	 * @param string $installation_date The installation date (YYYY-MM-DD)
+	 * @param string $install_field_id  The Gravity Forms field ID for installation date
+	 */
+	private function save_date_only_booking( $entry_id, $installation_date, $install_field_id ) {
+		// Store minimal booking meta - no allocation, no production dates
+		gform_update_meta( $entry_id, '_prod_lm_required', 0 );
+		gform_update_meta( $entry_id, '_prod_total_slots', 0 );
+		gform_update_meta( $entry_id, '_prod_slots_allocation', wp_json_encode( [] ) );
+		gform_update_meta( $entry_id, '_prod_start_date', '' );
+		gform_update_meta( $entry_id, '_prod_end_date', '' );
+		gform_update_meta( $entry_id, '_install_date', $installation_date );
+		gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
+		gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
+
+		$creator_id = 0;
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( ! is_wp_error( $entry ) && $entry ) {
+			$creator_id = isset( $entry['created_by'] ) ? (int) $entry['created_by'] : 0;
+		}
+		gform_update_meta( $entry_id, '_prod_booked_by', $creator_id );
+
+		// Sync the installation date field
+		if ( $install_field_id ) {
+			\GFAPI::update_entry_field( $entry_id, $install_field_id, $installation_date );
+		}
+
+		// Audit log
+		$this->log_booking_audit( $entry_id, 'date_only_booking', [
+			'install_date' => $installation_date,
+			'lm_required' => 0,
+		] );
 	}
 
 	/**
