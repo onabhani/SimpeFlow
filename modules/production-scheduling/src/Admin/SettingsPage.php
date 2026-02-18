@@ -132,37 +132,75 @@ class SettingsPage {
 
 	/**
 	 * Sanitize holidays
+	 * Supports format: YYYY-MM-DD | Optional Label (one per line)
 	 */
 	public function sanitize_holidays( $value ) {
 		if ( is_string( $value ) ) {
-			// If value is already valid JSON array, return as-is
+			// If value is already valid JSON array, check format and return
 			$decoded = json_decode( $value, true );
 			if ( is_array( $decoded ) ) {
-				// Verify all entries are valid dates
-				$all_valid = true;
-				foreach ( $decoded as $d ) {
-					if ( ! is_string( $d ) || ! preg_match( '/^\d{4}-\d{2}-\d{2}$/', $d ) ) {
-						$all_valid = false;
+				// Check if it's the new format (array of objects with date/label)
+				$is_new_format = true;
+				foreach ( $decoded as $item ) {
+					if ( ! is_array( $item ) || ! isset( $item['date'] ) ) {
+						$is_new_format = false;
 						break;
 					}
 				}
-				if ( $all_valid ) {
+				if ( $is_new_format ) {
 					return $value;
 				}
+
+				// Old format (array of date strings) - convert to new format
+				$holidays = [];
+				foreach ( $decoded as $d ) {
+					if ( is_string( $d ) && preg_match( '/^\d{4}-\d{2}-\d{2}$/', $d ) ) {
+						$holidays[] = [ 'date' => $d, 'label' => '' ];
+					}
+				}
+				return wp_json_encode( $holidays );
 			}
 
-			// Parse textarea input (one date per line)
+			// Parse textarea input (one date per line, optional label after |)
 			$lines = explode( "\n", $value );
-			$dates = [];
+			$holidays = [];
 
 			foreach ( $lines as $line ) {
 				$line = trim( $line );
-				if ( $line && strtotime( $line ) ) {
-					$dates[] = date( 'Y-m-d', strtotime( $line ) );
+				if ( empty( $line ) ) {
+					continue;
+				}
+
+				// Check for label separator
+				$label = '';
+				if ( strpos( $line, '|' ) !== false ) {
+					list( $date_part, $label ) = explode( '|', $line, 2 );
+					$date_part = trim( $date_part );
+					$label = trim( $label );
+				} else {
+					$date_part = $line;
+				}
+
+				// Parse the date
+				if ( strtotime( $date_part ) ) {
+					$holidays[] = [
+						'date' => date( 'Y-m-d', strtotime( $date_part ) ),
+						'label' => $label,
+					];
 				}
 			}
 
-			return wp_json_encode( array_unique( $dates ) );
+			// Remove duplicates by date
+			$unique_holidays = [];
+			$seen_dates = [];
+			foreach ( $holidays as $holiday ) {
+				if ( ! in_array( $holiday['date'], $seen_dates, true ) ) {
+					$unique_holidays[] = $holiday;
+					$seen_dates[] = $holiday['date'];
+				}
+			}
+
+			return wp_json_encode( $unique_holidays );
 		}
 
 		return wp_json_encode( [] );
@@ -309,8 +347,24 @@ class SettingsPage {
 						</th>
 						<td>
 							<textarea name="holidays" id="holidays" rows="6" cols="50"
-							          class="large-text"><?php echo esc_textarea( implode( "\n", $holidays ) ); ?></textarea>
-							<p class="description">One date per line (YYYY-MM-DD format, e.g., 2026-01-01)</p>
+							          class="large-text"><?php
+								// Format holidays for textarea display
+								$holiday_lines = [];
+								foreach ( $holidays as $holiday ) {
+									if ( is_array( $holiday ) && isset( $holiday['date'] ) ) {
+										$line = $holiday['date'];
+										if ( ! empty( $holiday['label'] ) ) {
+											$line .= ' | ' . $holiday['label'];
+										}
+										$holiday_lines[] = $line;
+									} elseif ( is_string( $holiday ) ) {
+										// Old format fallback
+										$holiday_lines[] = $holiday;
+									}
+								}
+								echo esc_textarea( implode( "\n", $holiday_lines ) );
+							?></textarea>
+							<p class="description">One date per line (YYYY-MM-DD format, e.g., 2026-01-01). Add optional label after | (e.g., 2026-03-19 | Eid Alfitr)</p>
 						</td>
 					</tr>
 				</table>
