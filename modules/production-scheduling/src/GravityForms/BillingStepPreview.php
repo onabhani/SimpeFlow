@@ -104,7 +104,9 @@ class BillingStepPreview {
 		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
 		$working_days = json_decode( $working_days_json, true );
 		$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
-		$holidays = json_decode( $holidays_json, true );
+		$holidays_raw = json_decode( $holidays_json, true );
+		// Extract flat date array for Scheduler (supports both old and new format)
+		$holidays = self::extract_holiday_dates( $holidays_raw );
 		$earliest_start_str = get_option( 'sfa_prod_earliest_start_date', '' );
 
 		// Determine earliest start date
@@ -221,7 +223,9 @@ class BillingStepPreview {
 		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
 		$working_days = json_decode( $working_days_json, true );
 		$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
-		$holidays = json_decode( $holidays_json, true );
+		$holidays_raw = json_decode( $holidays_json, true );
+		// Extract flat date array for Scheduler (supports both old and new format)
+		$holidays = self::extract_holiday_dates( $holidays_raw );
 		$earliest_start_str = get_option( 'sfa_prod_earliest_start_date', '' );
 
 		// Determine earliest start date (floor for production)
@@ -413,5 +417,30 @@ class BillingStepPreview {
 			'last_filled_date' => $last_filled_date,
 			'capacity_per_date' => $capacity_per_date,
 		];
+	}
+
+	/**
+	 * Extract flat array of date strings from holidays data
+	 *
+	 * Handles both old format (array of date strings) and new format
+	 * (array of objects with date/label keys).
+	 *
+	 * @param array $holidays_raw Raw holidays array from option
+	 * @return array Flat array of date strings ["2026-03-19", "2026-03-21"]
+	 */
+	public static function extract_holiday_dates( $holidays_raw ) {
+		if ( ! is_array( $holidays_raw ) ) {
+			return [];
+		}
+
+		$dates = [];
+		foreach ( $holidays_raw as $holiday ) {
+			if ( is_array( $holiday ) && isset( $holiday['date'] ) ) {
+				$dates[] = $holiday['date'];
+			} elseif ( is_string( $holiday ) ) {
+				$dates[] = $holiday;
+			}
+		}
+		return $dates;
 	}
 }

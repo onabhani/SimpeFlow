@@ -368,6 +368,17 @@ class FrontendCalendar {
 		$days_in_month = (int) $date->format( 't' );
 		$first_day_of_week = (int) $date->format( 'w' ); // 0=Sunday
 
+		// Build holiday lookup map (date => label) for quick access
+		$holiday_map = [];
+		foreach ( $holidays as $holiday ) {
+			if ( is_array( $holiday ) && isset( $holiday['date'] ) ) {
+				$holiday_map[ $holiday['date'] ] = isset( $holiday['label'] ) ? $holiday['label'] : '';
+			} elseif ( is_string( $holiday ) ) {
+				// Old format fallback
+				$holiday_map[ $holiday ] = '';
+			}
+		}
+
 		?>
 		<div class="sfa-prod-calendar-wrap">
 		<table class="sfa-prod-calendar">
@@ -400,7 +411,8 @@ class FrontendCalendar {
 
 						// Check if off day or holiday
 						$is_off_day = in_array( $day_of_week, $off_days, true );
-						$is_holiday = in_array( $day_date, $holidays, true );
+						$is_holiday = isset( $holiday_map[ $day_date ] );
+						$holiday_label = $is_holiday ? $holiday_map[ $day_date ] : '';
 
 						// Get capacity for this day
 						if ( isset( $bookings[ $day_date ] ) && $bookings[ $day_date ]['historical_capacity'] !== null ) {
@@ -417,8 +429,12 @@ class FrontendCalendar {
 						// Calculate percentage
 						$percentage = $capacity > 0 ? ( $used / $capacity ) * 100 : 0;
 
-						// Determine color
-						if ( $is_off_day || $is_holiday || $capacity === 0 ) {
+						// Determine color and text
+						if ( $is_holiday ) {
+							$bg_color = '#e0e0e0';
+							$text_color = '#666';
+							$text = $holiday_label ? esc_html( $holiday_label ) : 'Holiday';
+						} elseif ( $is_off_day || $capacity === 0 ) {
 							$bg_color = '#e0e0e0';
 							$text_color = '#666';
 							$text = 'OFF';
@@ -438,7 +454,11 @@ class FrontendCalendar {
 
 						echo '<td style="background: ' . $bg_color . ';">';
 						echo '<div class="sfa-prod-day">' . $current_day . '</div>';
-						echo '<div class="sfa-prod-capacity" style="color: ' . $text_color . ';">' . $text . ' LM</div>';
+						if ( $is_holiday || $is_off_day || $capacity === 0 ) {
+							echo '<div class="sfa-prod-capacity" style="color: ' . $text_color . ';">' . $text . '</div>';
+						} else {
+							echo '<div class="sfa-prod-capacity" style="color: ' . $text_color . ';">' . $text . ' LM</div>';
+						}
 
 						if ( isset( $bookings[ $day_date ] ) && ! empty( $bookings[ $day_date ]['entries'] ) ) {
 							$entry_count = count( $bookings[ $day_date ]['entries'] );
@@ -452,9 +472,14 @@ class FrontendCalendar {
 							echo '<div style="font-weight: bold; padding: 8px 10px; background: #f8f8f8; border-bottom: 1px solid #eee;">Orders on ' . date( 'M j', strtotime( $day_date ) ) . ':</div>';
 							foreach ( $bookings[ $day_date ]['entries'] as $entry_info ) {
 								$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_info['form_id'] . '&lid=' . $entry_info['entry_id'];
+								$is_date_only = isset( $entry_info['is_date_only'] ) && $entry_info['is_date_only'];
 								echo '<a href="' . esc_url( $workflow_url ) . '" target="_blank" class="sfa-tooltip-entry" style="display: block; padding: 6px 10px; border-bottom: 1px solid #f0f0f0; color: #0073aa; text-decoration: none; cursor: pointer;">';
 								echo '<strong>#' . $entry_info['entry_id'] . '</strong>';
-								echo ' - ' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' );
+								if ( $is_date_only ) {
+									echo ' - <em style="color: #666;">Install only</em>';
+								} else {
+									echo ' - ' . $entry_info['lm_on_date'] . ' slot' . ( $entry_info['lm_on_date'] > 1 ? 's' : '' );
+								}
 								if ( ! empty( $entry_info['form_name'] ) ) {
 									echo ' <span style="color: #888;">(' . esc_html( $entry_info['form_name'] ) . ')</span>';
 								}
@@ -693,6 +718,34 @@ class FrontendCalendar {
 			$wpdb->prepare( $query, $end_date, $start_date )
 		);
 
+		// Also query date-only bookings (0 LM entries with just installation date)
+		$date_only_query = "
+			SELECT
+				inst.entry_id,
+				e.form_id,
+				inst.meta_value as install_date,
+				f.title as form_name
+			FROM {$wpdb->prefix}gf_entry_meta inst
+			INNER JOIN {$wpdb->prefix}gf_entry e ON inst.entry_id = e.id
+			INNER JOIN {$wpdb->prefix}gf_form f ON e.form_id = f.id
+			LEFT JOIN {$wpdb->prefix}gf_entry_meta lm
+				ON inst.entry_id = lm.entry_id
+				AND lm.meta_key = '_prod_lm_required'
+			LEFT JOIN {$wpdb->prefix}gf_entry_meta sm
+				ON inst.entry_id = sm.entry_id
+				AND sm.meta_key = '_prod_booking_status'
+			WHERE inst.meta_key = '_install_date'
+			AND inst.meta_value >= %s
+			AND inst.meta_value <= %s
+			AND (lm.meta_value IS NULL OR lm.meta_value = '' OR lm.meta_value = '0')
+			AND (sm.meta_value IS NULL OR sm.meta_value != 'canceled')
+			AND e.status = 'active'
+		";
+
+		$date_only_results = $wpdb->get_results(
+			$wpdb->prepare( $date_only_query, $start_date, $end_date )
+		);
+
 		$bookings = [];
 
 		foreach ( $results as $row ) {
@@ -727,6 +780,26 @@ class FrontendCalendar {
 					$bookings[ $date ]['historical_capacity'] = (int) $row->capacity_at_booking;
 				}
 			}
+		}
+
+		// Add date-only bookings
+		foreach ( $date_only_results as $row ) {
+			$date = $row->install_date;
+			if ( ! isset( $bookings[ $date ] ) ) {
+				$bookings[ $date ] = [
+					'total_lm' => 0,
+					'entries' => [],
+					'historical_capacity' => null,
+				];
+			}
+
+			$bookings[ $date ]['entries'][] = [
+				'entry_id' => $row->entry_id,
+				'form_id' => $row->form_id,
+				'lm_on_date' => 0,
+				'form_name' => $row->form_name,
+				'is_date_only' => true,
+			];
 		}
 
 		return $bookings;

@@ -261,10 +261,15 @@ class Scheduler {
 			return true;
 		}
 
-		// Check if holiday
+		// Check if holiday (supports both flat date strings and objects with date/label)
 		$date_str = $date->format( 'Y-m-d' );
-		if ( in_array( $date_str, $holidays, true ) ) {
-			return true;
+		foreach ( $holidays as $holiday ) {
+			if ( is_string( $holiday ) && $holiday === $date_str ) {
+				return true;
+			}
+			if ( is_array( $holiday ) && isset( $holiday['date'] ) && $holiday['date'] === $date_str ) {
+				return true;
+			}
 		}
 
 		return false;
