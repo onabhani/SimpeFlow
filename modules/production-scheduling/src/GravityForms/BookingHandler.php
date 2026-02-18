@@ -62,6 +62,15 @@ class BookingHandler {
 			return;
 		}
 
+		// Reload form to ensure we have all custom settings (skip_booking_field, etc.)
+		$form_id = isset( $form['id'] ) ? (int) $form['id'] : ( isset( $entry['form_id'] ) ? (int) $entry['form_id'] : 0 );
+		if ( $form_id > 0 ) {
+			$reloaded_form = \GFAPI::get_form( $form_id );
+			if ( ! is_wp_error( $reloaded_form ) && $reloaded_form ) {
+				$form = $reloaded_form;
+			}
+		}
+
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
 			return;
@@ -224,16 +233,37 @@ class BookingHandler {
 		if ( $skip_booking_field_id > 0 ) {
 			// Gravity Forms checkboxes store values as field_id.1, field_id.2, etc.
 			// Check if any checkbox choice is checked (has a non-empty value)
+			$field_id_prefix = (string) $skip_booking_field_id . '.';
 			foreach ( $entry as $key => $value ) {
-				if ( strpos( $key, $skip_booking_field_id . '.' ) === 0 && ! empty( $value ) ) {
+				$key_str = (string) $key;
+				if ( strpos( $key_str, $field_id_prefix ) === 0 && ! empty( $value ) ) {
 					$skip_booking = true;
 					break;
+				}
+			}
+
+			// Fallback: Also check via GFAPI for checkbox fields in case entry array doesn't have it
+			if ( ! $skip_booking && function_exists( 'GFAPI' ) ) {
+				$checkbox_value = rgar( $entry, $skip_booking_field_id );
+				if ( ! empty( $checkbox_value ) ) {
+					$skip_booking = true;
 				}
 			}
 		}
 
 		// If skip booking is checked and we have an installation date, save date-only booking
 		if ( $skip_booking && $installation_date ) {
+			// Clear old allocation cache before converting to date-only
+			$old_allocation_json = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+			if ( $old_allocation_json ) {
+				$old_allocation = json_decode( $old_allocation_json, true );
+				if ( is_array( $old_allocation ) && ! empty( $old_allocation ) ) {
+					foreach ( array_keys( $old_allocation ) as $old_date ) {
+						$year_month = substr( $old_date, 0, 7 );
+						wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+					}
+				}
+			}
 			$this->save_date_only_booking( $entry_id, $installation_date, $install_field_id );
 			return;
 		}
@@ -659,6 +689,15 @@ class BookingHandler {
 	 * @param int    $step_id   The step ID (NOT status!)
 	 */
 	public function handle_workflow_processing( $form, $entry_id, $step, $step_id ) {
+		// Reload form to ensure we have all custom settings (skip_booking_field, etc.)
+		$form_id = isset( $form['id'] ) ? (int) $form['id'] : 0;
+		if ( $form_id > 0 ) {
+			$reloaded_form = \GFAPI::get_form( $form_id );
+			if ( ! is_wp_error( $reloaded_form ) && $reloaded_form ) {
+				$form = $reloaded_form;
+			}
+		}
+
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
 			return;

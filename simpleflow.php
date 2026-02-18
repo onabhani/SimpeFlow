@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Basic plugin constants
  */
-define( 'SIMPLEFLOW_VER',  '0.2.23' );
+define( 'SIMPLEFLOW_VER',  '0.2.24' );
 define( 'SIMPLEFLOW_FILE', __FILE__ );
 define( 'SIMPLEFLOW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SIMPLEFLOW_URL',  plugin_dir_url( __FILE__ ) );
