@@ -130,6 +130,17 @@ class ScheduleView {
 		$days_in_month = (int) $date->format( 't' );
 		$first_day_of_week = (int) $date->format( 'w' ); // 0=Sunday
 
+		// Build holiday lookup map (date => label) for quick access
+		$holiday_map = [];
+		foreach ( $holidays as $holiday ) {
+			if ( is_array( $holiday ) && isset( $holiday['date'] ) ) {
+				$holiday_map[ $holiday['date'] ] = isset( $holiday['label'] ) ? $holiday['label'] : '';
+			} elseif ( is_string( $holiday ) ) {
+				// Old format fallback
+				$holiday_map[ $holiday ] = '';
+			}
+		}
+
 		?>
 		<table class="widefat" style="width: 100%; border-collapse: collapse; margin: 20px 0;">
 			<thead>
@@ -161,7 +172,8 @@ class ScheduleView {
 
 						// Check if off day or holiday
 						$is_off_day = in_array( $day_of_week, $off_days, true );
-						$is_holiday = in_array( $day_date, $holidays, true );
+						$is_holiday = isset( $holiday_map[ $day_date ] );
+						$holiday_label = $is_holiday ? $holiday_map[ $day_date ] : '';
 
 						// Get capacity for this day
 						if ( isset( $bookings[ $day_date ] ) && $bookings[ $day_date ]['historical_capacity'] !== null ) {
@@ -178,8 +190,11 @@ class ScheduleView {
 						// Calculate percentage
 						$percentage = $capacity > 0 ? ( $used / $capacity ) * 100 : 0;
 
-						// Determine color
-						if ( $is_off_day || $is_holiday || $capacity === 0 ) {
+						// Determine color and text
+						if ( $is_holiday ) {
+							$bg_color = '#e0e0e0';
+							$text = $holiday_label ? esc_html( $holiday_label ) : 'Holiday';
+						} elseif ( $is_off_day || $capacity === 0 ) {
 							$bg_color = '#e0e0e0';
 							$text = 'OFF';
 						} elseif ( $percentage >= 100 ) {
