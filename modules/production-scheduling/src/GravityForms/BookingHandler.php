@@ -245,20 +245,22 @@ class BookingHandler {
 				}
 			}
 
-			// Skip booking if no production values entered yet (prevents premature booking)
-			if ( ! $has_values ) {
-				return;
-			}
-
 			// Calculate total slots
-			$total_slots = FormSettings::calculate_total_slots( $field_values, $production_fields );
-
-			if ( $total_slots <= 0 ) {
-				return;
-			}
+			$total_slots = $has_values ? FormSettings::calculate_total_slots( $field_values, $production_fields ) : 0;
 
 			// For multi-field mode, lm_required represents total slots
 			$lm_required = $total_slots;
+
+			// Zero-slot booking: installation date set but no production capacity needed
+			if ( $lm_required <= 0 && $installation_date ) {
+				$this->save_date_only_booking( $entry_id, $installation_date, $install_field_id );
+				return;
+			}
+
+			// Skip booking if no production values and no installation date
+			if ( $lm_required <= 0 ) {
+				return;
+			}
 
 			// Store field breakdown in entry meta
 			gform_update_meta( $entry_id, '_prod_field_breakdown', wp_json_encode( $field_breakdown ) );
@@ -277,6 +279,12 @@ class BookingHandler {
 			// Legacy mode (single LM field)
 			$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
 
+			// Zero-slot booking: installation date set but no LM required
+			if ( $lm_required <= 0 && $installation_date ) {
+				$this->save_date_only_booking( $entry_id, $installation_date, $install_field_id );
+				return;
+			}
+
 			if ( $lm_required <= 0 ) {
 				return;
 			}
@@ -291,7 +299,7 @@ class BookingHandler {
 			try {
 				$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
 			} catch ( \Throwable $e ) {
-				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine() ) );
+				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getLine() ) );
 				return;
 			}
 		}
@@ -584,6 +592,47 @@ class BookingHandler {
 				$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
 			}
 		}
+	}
+
+	/**
+	 * Save a date-only booking (installation date without production allocation)
+	 *
+	 * Used when an installation date is set but no LM/production slots are required.
+	 * Stores the installation date and booking metadata without consuming any
+	 * production capacity.
+	 *
+	 * @param int    $entry_id         The entry ID
+	 * @param string $installation_date The installation date (YYYY-MM-DD)
+	 * @param string $install_field_id  The Gravity Forms field ID for installation date
+	 */
+	private function save_date_only_booking( $entry_id, $installation_date, $install_field_id ) {
+		// Store minimal booking meta - no allocation, no production dates
+		gform_update_meta( $entry_id, '_prod_lm_required', 0 );
+		gform_update_meta( $entry_id, '_prod_total_slots', 0 );
+		gform_update_meta( $entry_id, '_prod_slots_allocation', wp_json_encode( [] ) );
+		gform_update_meta( $entry_id, '_prod_start_date', '' );
+		gform_update_meta( $entry_id, '_prod_end_date', '' );
+		gform_update_meta( $entry_id, '_install_date', $installation_date );
+		gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
+		gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
+
+		$creator_id = 0;
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( ! is_wp_error( $entry ) && $entry ) {
+			$creator_id = isset( $entry['created_by'] ) ? (int) $entry['created_by'] : 0;
+		}
+		gform_update_meta( $entry_id, '_prod_booked_by', $creator_id );
+
+		// Sync the installation date field
+		if ( $install_field_id ) {
+			\GFAPI::update_entry_field( $entry_id, $install_field_id, $installation_date );
+		}
+
+		// Audit log
+		$this->log_booking_audit( $entry_id, 'date_only_booking', [
+			'install_date' => $installation_date,
+			'lm_required' => 0,
+		] );
 	}
 
 	/**
