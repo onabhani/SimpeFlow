@@ -391,9 +391,15 @@ class BookingHandler {
 		// should be close to (install_date - buffer). If it's far earlier, dates
 		// are stale (from old forward scheduling) and need recalculation.
 		$dates_inconsistent = false;
+		$today_str = date( 'Y-m-d' );
 		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
+			// CRITICAL: If production dates are in the past, force recalculation
+			// This prevents re-processed entries from keeping stale past-date allocations
+			if ( $existing_prod_end < $today_str ) {
+				$dates_inconsistent = true;
+			}
 			// Impossible states: production ends after installation, or start > end
-			if ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
+			elseif ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
 				$dates_inconsistent = true;
 			} else {
 				// Check if prod_end is too far before install_date (stale forward-scheduled dates)
@@ -581,7 +587,12 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_end_date', $prod_end_date );
 			gform_update_meta( $entry_id, '_install_date', $installation_date );
 			gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
-			gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
+
+			// Only set booked_at for NEW bookings - preserve the original timestamp on re-processing
+			$existing_booked_at = gform_get_meta( $entry_id, '_prod_booked_at' );
+			if ( ! $existing_booked_at ) {
+				gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
+			}
 
 			// Always store entry creator as booked_by (deterministic - never changes)
 			$creator_id = isset( $entry['created_by'] ) ? (int) $entry['created_by'] : 0;
