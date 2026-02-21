@@ -551,6 +551,30 @@ class BookingHandler {
 			}
 		}
 
+		// Determine booking type: 'automatic' or 'manual'
+		// Automatic = system-calculated installation date was used
+		// Manual = user explicitly changed the installation date
+		$existing_booking_type = gform_get_meta( $entry_id, '_prod_booking_type' );
+		if ( $use_existing_allocation ) {
+			// Preserving existing allocation - keep existing type (default to 'automatic' for legacy)
+			$booking_type = $existing_booking_type ? $existing_booking_type : 'automatic';
+		} elseif ( $date_changed ) {
+			// User explicitly changed the installation date - this is a manual booking
+			$booking_type = 'manual';
+		} elseif ( isset( $schedule['installation_minimum'] ) ) {
+			// Compare final installation date with system-calculated minimum
+			// If they match, it's automatic; if different, it's manual
+			if ( $installation_date === $schedule['installation_minimum'] ) {
+				$booking_type = 'automatic';
+			} else {
+				// User submitted a different date than the system calculated
+				$booking_type = 'manual';
+			}
+		} else {
+			// Fallback: preserve existing or default to automatic
+			$booking_type = $existing_booking_type ? $existing_booking_type : 'automatic';
+		}
+
 		// Save to entry meta (note: _prod_lm_required already saved above in both multi-field and legacy modes)
 
 		// Use existing or new allocation based on whether data was preserved
@@ -602,6 +626,10 @@ class BookingHandler {
 			$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
 			gform_update_meta( $entry_id, '_prod_daily_capacity_at_booking', $daily_capacity_at_booking );
 
+			// Store booking type for queue position tracking
+			// 'automatic' = system-calculated date, 'manual' = user-selected date
+			gform_update_meta( $entry_id, '_prod_booking_type', $booking_type );
+
 			// All updates successful - commit transaction
 			$wpdb->query( 'COMMIT' );
 
@@ -612,6 +640,7 @@ class BookingHandler {
 				'prod_end' => $prod_end_date,
 				'lm_required' => $lm_required,
 				'capacity_at_booking' => $daily_capacity_at_booking,
+				'booking_type' => $booking_type,
 			] );
 
 		} catch ( Exception $e ) {
@@ -915,6 +944,7 @@ class BookingHandler {
 		gform_delete_meta( $entry_id, '_prod_booked_by' );
 		gform_delete_meta( $entry_id, '_prod_daily_capacity_at_booking' );
 		gform_delete_meta( $entry_id, '_prod_field_breakdown' );
+		gform_delete_meta( $entry_id, '_prod_booking_type' );
 
 		// Clear general availability cache
 		wp_cache_delete( 'sfa_prod_availability_next_30_days' );

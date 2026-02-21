@@ -147,7 +147,21 @@ class BillingStepPreview {
 		// Extract booking information
 		$existing_bookings = $booking_data['bookings'];
 		$last_filled_date = $booking_data['last_filled_date'];
+		$last_automatic_booking_date = $booking_data['last_automatic_booking_date'];
 		$historical_capacity = $booking_data['capacity_per_date'];
+
+		// QUEUE POSITION: For automatic scheduling, start from the day after the last automatic booking
+		// This ensures new automatic bookings continue the queue sequentially,
+		// ignoring any gaps from cancelled orders or manual bookings
+		if ( $last_automatic_booking_date ) {
+			$queue_position = new \DateTime( $last_automatic_booking_date );
+			$queue_position->modify( '+1 day' );
+
+			// Use the later of: today, configured earliest_start, or queue position
+			if ( $queue_position > $earliest_start ) {
+				$earliest_start = $queue_position;
+			}
+		}
 
 		// Build capacity overrides: use historical capacity for dates up to last filled date,
 		// then merge with manual capacity overrides
@@ -309,6 +323,7 @@ class BillingStepPreview {
 	 * @return array [
 	 *   'bookings' => [date => total_slots_used],
 	 *   'last_filled_date' => 'YYYY-MM-DD' or null,
+	 *   'last_automatic_booking_date' => 'YYYY-MM-DD' or null (queue position for automatic scheduling),
 	 *   'capacity_per_date' => [date => capacity]
 	 * ]
 	 */
@@ -333,7 +348,9 @@ class BillingStepPreview {
 					em.meta_value as allocation,
 					cm.meta_value as capacity_at_booking,
 					sm.meta_value as booking_status,
-					wf.meta_value as workflow_status
+					wf.meta_value as workflow_status,
+					bt.meta_value as booking_type,
+					end_meta.meta_value as prod_end_date
 				FROM {$wpdb->prefix}gf_entry_meta em
 				INNER JOIN {$wpdb->prefix}gf_entry e
 					ON em.entry_id = e.id
@@ -352,6 +369,9 @@ class BillingStepPreview {
 				LEFT JOIN {$wpdb->prefix}gf_entry_meta wf
 					ON em.entry_id = wf.entry_id
 					AND wf.meta_key = 'workflow_final_status'
+				LEFT JOIN {$wpdb->prefix}gf_entry_meta bt
+					ON em.entry_id = bt.entry_id
+					AND bt.meta_key = '_prod_booking_type'
 				WHERE em.meta_key = '_prod_slots_allocation'
 				AND e.status = 'active'
 				AND start_meta.meta_value <= %s
@@ -365,12 +385,15 @@ class BillingStepPreview {
 		$bookings = [];
 		$capacity_per_date = [];
 		$last_filled_date = null;
+		$last_automatic_booking_date = null;
 
 		foreach ( $results as $row ) {
 			$allocation = json_decode( $row['allocation'], true );
 			$capacity_at_booking = isset( $row['capacity_at_booking'] ) ? (int) $row['capacity_at_booking'] : null;
 			$booking_status = isset( $row['booking_status'] ) ? $row['booking_status'] : 'confirmed';
 			$workflow_status = isset( $row['workflow_status'] ) ? $row['workflow_status'] : '';
+			$booking_type = isset( $row['booking_type'] ) ? $row['booking_type'] : 'automatic'; // Default to automatic for legacy entries
+			$prod_end_date = isset( $row['prod_end_date'] ) ? $row['prod_end_date'] : null;
 
 			// Skip canceled bookings - they don't consume capacity
 			// Also check workflow_final_status as a fallback (hooks may not always fire)
@@ -385,6 +408,14 @@ class BillingStepPreview {
 
 			if ( ! is_array( $allocation ) ) {
 				continue;
+			}
+
+			// Track last automatic booking end date (for queue position)
+			// Only consider 'automatic' bookings, ignore 'manual' ones
+			if ( 'automatic' === $booking_type && $prod_end_date ) {
+				if ( ! $last_automatic_booking_date || $prod_end_date > $last_automatic_booking_date ) {
+					$last_automatic_booking_date = $prod_end_date;
+				}
 			}
 
 			foreach ( $allocation as $date => $slots ) {
@@ -415,6 +446,7 @@ class BillingStepPreview {
 		return [
 			'bookings' => $bookings,
 			'last_filled_date' => $last_filled_date,
+			'last_automatic_booking_date' => $last_automatic_booking_date,
 			'capacity_per_date' => $capacity_per_date,
 		];
 	}
