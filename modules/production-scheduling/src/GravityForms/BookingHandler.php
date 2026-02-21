@@ -391,9 +391,15 @@ class BookingHandler {
 		// should be close to (install_date - buffer). If it's far earlier, dates
 		// are stale (from old forward scheduling) and need recalculation.
 		$dates_inconsistent = false;
+		$today_str = date( 'Y-m-d' );
 		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
+			// CRITICAL: If production dates are in the past, force recalculation
+			// This prevents re-processed entries from keeping stale past-date allocations
+			if ( $existing_prod_end < $today_str ) {
+				$dates_inconsistent = true;
+			}
 			// Impossible states: production ends after installation, or start > end
-			if ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
+			elseif ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
 				$dates_inconsistent = true;
 			} else {
 				// Check if prod_end is too far before install_date (stale forward-scheduled dates)
@@ -545,6 +551,30 @@ class BookingHandler {
 			}
 		}
 
+		// Determine booking type: 'automatic' or 'manual'
+		// Automatic = system-calculated installation date was used
+		// Manual = user explicitly changed the installation date
+		$existing_booking_type = gform_get_meta( $entry_id, '_prod_booking_type' );
+		if ( $use_existing_allocation ) {
+			// Preserving existing allocation - keep existing type (default to 'automatic' for legacy)
+			$booking_type = $existing_booking_type ? $existing_booking_type : 'automatic';
+		} elseif ( $date_changed ) {
+			// User explicitly changed the installation date - this is a manual booking
+			$booking_type = 'manual';
+		} elseif ( isset( $schedule['installation_minimum'] ) ) {
+			// Compare final installation date with system-calculated minimum
+			// If they match, it's automatic; if different, it's manual
+			if ( $installation_date === $schedule['installation_minimum'] ) {
+				$booking_type = 'automatic';
+			} else {
+				// User submitted a different date than the system calculated
+				$booking_type = 'manual';
+			}
+		} else {
+			// Fallback: preserve existing or default to automatic
+			$booking_type = $existing_booking_type ? $existing_booking_type : 'automatic';
+		}
+
 		// Save to entry meta (note: _prod_lm_required already saved above in both multi-field and legacy modes)
 
 		// Use existing or new allocation based on whether data was preserved
@@ -581,7 +611,12 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_end_date', $prod_end_date );
 			gform_update_meta( $entry_id, '_install_date', $installation_date );
 			gform_update_meta( $entry_id, '_prod_booking_status', 'confirmed' );
-			gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
+
+			// Only set booked_at for NEW bookings - preserve the original timestamp on re-processing
+			$existing_booked_at = gform_get_meta( $entry_id, '_prod_booked_at' );
+			if ( ! $existing_booked_at ) {
+				gform_update_meta( $entry_id, '_prod_booked_at', current_time( 'mysql' ) );
+			}
 
 			// Always store entry creator as booked_by (deterministic - never changes)
 			$creator_id = isset( $entry['created_by'] ) ? (int) $entry['created_by'] : 0;
@@ -590,6 +625,10 @@ class BookingHandler {
 			// Store the daily capacity at time of booking for historical tracking
 			$daily_capacity_at_booking = (int) get_option( 'sfa_prod_daily_capacity', 10 );
 			gform_update_meta( $entry_id, '_prod_daily_capacity_at_booking', $daily_capacity_at_booking );
+
+			// Store booking type for queue position tracking
+			// 'automatic' = system-calculated date, 'manual' = user-selected date
+			gform_update_meta( $entry_id, '_prod_booking_type', $booking_type );
 
 			// All updates successful - commit transaction
 			$wpdb->query( 'COMMIT' );
@@ -601,6 +640,7 @@ class BookingHandler {
 				'prod_end' => $prod_end_date,
 				'lm_required' => $lm_required,
 				'capacity_at_booking' => $daily_capacity_at_booking,
+				'booking_type' => $booking_type,
 			] );
 
 		} catch ( Exception $e ) {
@@ -904,6 +944,7 @@ class BookingHandler {
 		gform_delete_meta( $entry_id, '_prod_booked_by' );
 		gform_delete_meta( $entry_id, '_prod_daily_capacity_at_booking' );
 		gform_delete_meta( $entry_id, '_prod_field_breakdown' );
+		gform_delete_meta( $entry_id, '_prod_booking_type' );
 
 		// Clear general availability cache
 		wp_cache_delete( 'sfa_prod_availability_next_30_days' );
