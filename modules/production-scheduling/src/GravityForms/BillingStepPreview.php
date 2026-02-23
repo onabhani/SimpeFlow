@@ -150,12 +150,12 @@ class BillingStepPreview {
 		$last_automatic_booking_date = $booking_data['last_automatic_booking_date'];
 		$historical_capacity = $booking_data['capacity_per_date'];
 
-		// QUEUE POSITION: For automatic scheduling, start from the day after the last automatic booking
+		// QUEUE POSITION: For automatic scheduling, start from the last automatic booking date
 		// This ensures new automatic bookings continue the queue sequentially,
 		// ignoring any gaps from cancelled orders or manual bookings
+		// NOTE: We use the same date (not +1 day) to fill any remaining capacity first
 		if ( $last_automatic_booking_date ) {
 			$queue_position = new \DateTime( $last_automatic_booking_date );
-			$queue_position->modify( '+1 day' );
 
 			// Use the later of: today, configured earliest_start, or queue position
 			if ( $queue_position > $earliest_start ) {
