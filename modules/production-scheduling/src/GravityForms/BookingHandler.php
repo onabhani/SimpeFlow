@@ -391,15 +391,9 @@ class BookingHandler {
 		// should be close to (install_date - buffer). If it's far earlier, dates
 		// are stale (from old forward scheduling) and need recalculation.
 		$dates_inconsistent = false;
-		$today_str = date( 'Y-m-d' );
 		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
-			// CRITICAL: If production dates are in the past, force recalculation
-			// This prevents re-processed entries from keeping stale past-date allocations
-			if ( $existing_prod_end < $today_str ) {
-				$dates_inconsistent = true;
-			}
 			// Impossible states: production ends after installation, or start > end
-			elseif ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
+			if ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
 				$dates_inconsistent = true;
 			} else {
 				// Check if prod_end is too far before install_date (stale forward-scheduled dates)
