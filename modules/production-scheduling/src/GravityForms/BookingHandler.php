@@ -391,15 +391,9 @@ class BookingHandler {
 		// should be close to (install_date - buffer). If it's far earlier, dates
 		// are stale (from old forward scheduling) and need recalculation.
 		$dates_inconsistent = false;
-		$today_str = date( 'Y-m-d' );
 		if ( $existing_install_date && $existing_prod_start && $existing_prod_end ) {
-			// CRITICAL: If production dates are in the past, force recalculation
-			// This prevents re-processed entries from keeping stale past-date allocations
-			if ( $existing_prod_end < $today_str ) {
-				$dates_inconsistent = true;
-			}
 			// Impossible states: production ends after installation, or start > end
-			elseif ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
+			if ( $existing_prod_end > $existing_install_date || $existing_prod_start > $existing_prod_end ) {
 				$dates_inconsistent = true;
 			} else {
 				// Check if prod_end is too far before install_date (stale forward-scheduled dates)
@@ -432,8 +426,42 @@ class BookingHandler {
 
 			// DON'T recalculate schedule at all - we're using existing data
 			// Skip the schedule calculation entirely
+
+			// LOG: Allocation preserved (no changes)
+			$this->log_booking_audit( $entry_id, 'allocation_preserved', [
+				'reason' => 'No changes detected',
+				'existing_allocation' => $existing_allocation,
+			] );
 		} else {
 			$use_existing_allocation = false;
+
+			// LOG: Allocation being recalculated - capture reason and before state
+			$recalc_reasons = [];
+			if ( ! $existing_install_date ) {
+				$recalc_reasons[] = 'New booking';
+			}
+			if ( ! $existing_allocation ) {
+				$recalc_reasons[] = 'No existing allocation';
+			}
+			if ( $lm_changed ) {
+				$recalc_reasons[] = 'LM changed: ' . $existing_lm . ' -> ' . $lm_required;
+			}
+			if ( $date_changed ) {
+				$recalc_reasons[] = 'Date changed: ' . $existing_install_date . ' -> ' . $submitted_installation_date;
+			}
+			if ( $dates_inconsistent ) {
+				$recalc_reasons[] = 'Dates inconsistent';
+			}
+
+			$this->log_booking_audit( $entry_id, 'allocation_recalculating', [
+				'reasons' => $recalc_reasons,
+				'before_allocation' => $existing_allocation,
+				'before_install_date' => $existing_install_date,
+				'before_prod_start' => $existing_prod_start,
+				'before_prod_end' => $existing_prod_end,
+				'before_lm' => $existing_lm,
+				'new_lm' => $lm_required,
+			] );
 
 			// Determine final installation date based on the scenario
 			if ( $date_changed ) {
@@ -1200,10 +1228,10 @@ class BookingHandler {
 			wp_json_encode( $data )
 		) );
 
-		// Store in WordPress option for persistent audit trail (last 100 entries)
+		// Store in WordPress option for persistent audit trail (last 500 entries)
 		$audit_log = get_option( 'sfa_prod_audit_log', [] );
 		array_unshift( $audit_log, $audit_entry ); // Add to beginning
-		$audit_log = array_slice( $audit_log, 0, 100 ); // Keep only last 100 entries
+		$audit_log = array_slice( $audit_log, 0, 500 ); // Keep only last 500 entries
 		update_option( 'sfa_prod_audit_log', $audit_log, false ); // false = don't autoload
 
 		// Allow other plugins to hook into audit events
