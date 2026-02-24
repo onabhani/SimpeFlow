@@ -177,26 +177,6 @@ class ValidationHandler {
 			return $validation_result;
 		}
 
-		// Validate installation date is not too early
-		if ( $installation_date && $installation_date < $schedule['installation_minimum'] ) {
-			$validation_result['is_valid'] = false;
-
-			foreach ( $form['fields'] as &$field ) {
-				if ( $field->id == $install_field_id ) {
-					$field->failed_validation = true;
-					$field->validation_message = sprintf(
-						'Installation date cannot be earlier than %s (production completes on %s)',
-						date( 'F j, Y', strtotime( $schedule['installation_minimum'] ) ),
-						date( 'F j, Y', strtotime( $schedule['production_end'] ) )
-					);
-					break;
-				}
-			}
-
-			$validation_result['form'] = $form;
-			return $validation_result;
-		}
-
 		// Validate installation date is not in the past
 		// P3 FIX: Use WordPress timezone function instead of PHP date()
 		if ( $installation_date && $installation_date < current_time( 'Y-m-d' ) ) {
@@ -212,6 +192,74 @@ class ValidationHandler {
 
 			$validation_result['form'] = $form;
 			return $validation_result;
+		}
+
+		// Validate installation date availability
+		// If user entered a date BEFORE the queue-based minimum, this is a manual booking.
+		// Manual bookings bypass the queue but must have available capacity on the chosen date.
+		if ( $installation_date && $installation_date < $schedule['installation_minimum'] ) {
+			// Check if the manually chosen date has available capacity
+			$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+
+			// Check for capacity override on this date
+			$repo = new \SFA\ProductionScheduling\Database\CapacityRepository();
+			$overrides = $repo->get_range( $installation_date, $installation_date );
+			if ( isset( $overrides[ $installation_date ] ) ) {
+				$daily_capacity = (int) $overrides[ $installation_date ];
+			}
+
+			// Check working day
+			$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
+			$working_days = json_decode( $working_days_json, true );
+			$day_of_week = (int) date( 'w', strtotime( $installation_date ) );
+			$is_working_day = in_array( $day_of_week, $working_days, true );
+
+			// Check holiday
+			$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
+			$holidays_raw = json_decode( $holidays_json, true );
+			$holidays = BillingStepPreview::extract_holiday_dates( $holidays_raw );
+			$is_holiday = in_array( $installation_date, $holidays, true );
+
+			if ( ! $is_working_day || $is_holiday || $daily_capacity <= 0 ) {
+				// Non-working day or holiday: block
+				$validation_result['is_valid'] = false;
+				foreach ( $form['fields'] as &$field ) {
+					if ( $field->id == $install_field_id ) {
+						$field->failed_validation = true;
+						$field->validation_message = sprintf(
+							'%s is not a working day. Please choose a valid production date.',
+							date( 'F j, Y', strtotime( $installation_date ) )
+						);
+						break;
+					}
+				}
+				$validation_result['form'] = $form;
+				return $validation_result;
+			}
+
+			// Check existing bookings on the chosen date
+			$booking_data = BillingStepPreview::load_existing_bookings( $installation_date, $installation_date );
+			$booked = isset( $booking_data['bookings'][ $installation_date ] ) ? (int) $booking_data['bookings'][ $installation_date ] : 0;
+
+			if ( $booked >= $daily_capacity ) {
+				// Date is fully booked - block submission
+				$validation_result['is_valid'] = false;
+				foreach ( $form['fields'] as &$field ) {
+					if ( $field->id == $install_field_id ) {
+						$field->failed_validation = true;
+						$field->validation_message = sprintf(
+							'%s is fully booked (%d/%d slots used). Please choose a different date.',
+							date( 'F j, Y', strtotime( $installation_date ) ),
+							$booked,
+							$daily_capacity
+						);
+						break;
+					}
+				}
+				$validation_result['form'] = $form;
+				return $validation_result;
+			}
+			// Else: date has capacity, allow as manual booking
 		}
 
 		$validation_result['form'] = $form;

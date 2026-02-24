@@ -1185,6 +1185,17 @@ class BookingHandler {
 	 * @return array ['capacity' => int, 'booked' => int, 'available' => int]
 	 */
 	private function check_date_capacity( $date, $entry_id = null ) {
+		// Guard: reject invalid or past dates
+		$timestamp = strtotime( $date );
+		if ( $timestamp === false || date( 'Y-m-d', $timestamp ) < date( 'Y-m-d' ) ) {
+			return [
+				'capacity' => 0,
+				'booked' => 0,
+				'available' => 0,
+				'reason' => 'invalid_or_past_date',
+			];
+		}
+
 		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
 
 		// Check for capacity override on this date
@@ -1201,7 +1212,7 @@ class BookingHandler {
 		// Check if this is a working day
 		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
 		$working_days = json_decode( $working_days_json, true );
-		$day_of_week = (int) date( 'w', strtotime( $date ) );
+		$day_of_week = (int) date( 'w', $timestamp );
 
 		if ( ! in_array( $day_of_week, $working_days, true ) ) {
 			// Non-working day: 0 capacity
