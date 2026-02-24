@@ -114,8 +114,16 @@ class BillingStepPreview {
 
 		// Determine earliest start date
 		// If manual_start_date is provided, use it (user explicitly chose a date)
+		// but never allow it to bypass the configured earliest-start floor
 		if ( $manual_start_date && strtotime( $manual_start_date ) ) {
 			$earliest_start = new \DateTime( $manual_start_date );
+			// Enforce configured earliest-start floor even for manual dates
+			if ( $earliest_start_str && strtotime( $earliest_start_str ) ) {
+				$configured_floor = new \DateTime( $earliest_start_str );
+				if ( $configured_floor > $earliest_start ) {
+					$earliest_start = $configured_floor;
+				}
+			}
 		} elseif ( $earliest_start_str && strtotime( $earliest_start_str ) ) {
 			$earliest_start = new \DateTime( $earliest_start_str );
 		} else {
