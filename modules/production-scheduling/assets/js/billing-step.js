@@ -327,6 +327,21 @@
         html += '<td style="padding: 8px; border: 1px solid #ddd;"><strong>Total Days:</strong></td>';
         html += '<td style="padding: 8px; border: 1px solid #ddd;">' + schedule.total_days + ' day' + (schedule.total_days > 1 ? 's' : '') + '</td>';
         html += '</tr>';
+
+        // Calculate total LM from allocation
+        var totalLM = 0;
+        if (schedule.allocation) {
+            for (var date in schedule.allocation) {
+                if (schedule.allocation.hasOwnProperty(date)) {
+                    totalLM += parseFloat(schedule.allocation[date]) || 0;
+                }
+            }
+        }
+        html += '<tr>';
+        html += '<td style="padding: 8px; border: 1px solid #ddd;"><strong>Total LM:</strong></td>';
+        html += '<td style="padding: 8px; border: 1px solid #ddd;">' + totalLM + ' LM</td>';
+        html += '</tr>';
+
         html += '<tr style="background: #d4edda; border-left: 4px solid #28a745;">';
         html += '<td style="padding: 10px; border: 1px solid #c3e6cb; font-weight: bold; font-size: 14px;">📦 Earliest Installation:</td>';
         html += '<td style="padding: 10px; border: 1px solid #c3e6cb; font-weight: bold; font-size: 14px; color: #155724;">' + formatDateDisplay(schedule.installation_minimum) + '</td>';
