@@ -446,10 +446,12 @@ class BookingHandler {
 			// Otherwise: AUTOMATIC booking (no manual_start_date, uses queue)
 
 			// For MANUAL bookings: check if chosen date has available capacity
-			if ( $is_manual_booking && $manual_start_date ) {
+			// - For NEW submissions: block if date is fully booked (user should choose different date)
+			// - For EDITS ($date_changed): allow even if fully booked - scheduler will spill to next day
+			if ( $is_manual_booking && $manual_start_date && ! $date_changed ) {
 				$capacity_check = $this->check_date_capacity( $manual_start_date, $entry_id );
 				if ( $capacity_check['available'] <= 0 ) {
-					// Date is fully booked - block the submission
+					// Date is fully booked - block NEW submissions only
 					$formatted_date = date( 'F j, Y', strtotime( $manual_start_date ) );
 					error_log( sprintf(
 						'Production Booking BLOCKED for entry %d: %s is fully booked (0/%d capacity)',
