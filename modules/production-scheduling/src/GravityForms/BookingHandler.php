@@ -447,8 +447,9 @@ class BookingHandler {
 
 			// For MANUAL bookings: check if chosen date has available capacity
 			// - For NEW submissions: block if date is fully booked (user should choose different date)
-			// - For EDITS ($date_changed): allow even if fully booked - scheduler will spill to next day
-			if ( $is_manual_booking && $manual_start_date && ! $date_changed ) {
+			// - For EDITS or reprocessing: allow even if fully booked - scheduler will spill to next day
+			$is_new_submission = ! $existing_install_date && $submitted_installation_date;
+			if ( $is_manual_booking && $manual_start_date && $is_new_submission ) {
 				$capacity_check = $this->check_date_capacity( $manual_start_date, $entry_id );
 				if ( $capacity_check['available'] <= 0 ) {
 					// Date is fully booked - block NEW submissions only
