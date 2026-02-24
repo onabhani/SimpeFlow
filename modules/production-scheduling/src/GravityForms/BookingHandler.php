@@ -482,18 +482,41 @@ class BookingHandler {
 				}
 			}
 
-			// Calculate schedule using FORWARD scheduling
-			// - Manual bookings: start from the chosen date (no queue logic)
-			// - Automatic bookings: start from queue position (queue logic applied)
+			// Check admin capacity choice (over_capacity vs fill_spill)
+			// This is set via hidden field when admin chooses from the capacity dialog
+			$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
+
+			// Calculate schedule based on capacity choice or default behavior
 			try {
-				if ( ! empty( $production_fields ) ) {
-					$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id, $manual_start_date );
+				if ( $capacity_choice === 'over_capacity' && $manual_start_date ) {
+					// OVER-CAPACITY MODE: Force all LM onto the selected date (backward scheduling)
+					// This will exceed daily capacity but admin has explicitly chosen this
+					if ( ! empty( $production_fields ) ) {
+						$schedule = BillingStepPreview::calculate_schedule_for_date( $manual_start_date, $field_values, $production_fields, $entry_id );
+					} else {
+						$schedule = BillingStepPreview::calculate_schedule_for_date( $manual_start_date, $lm_required, null, $entry_id );
+					}
+
+					// Store booking mode for audit trail
+					gform_update_meta( $entry_id, '_prod_capacity_mode', 'over_capacity' );
 				} else {
-					$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id, $manual_start_date );
+					// FILL+SPILL MODE (default): Forward scheduling respects capacity limits
+					// - Manual bookings: start from the chosen date (no queue logic)
+					// - Automatic bookings: start from queue position (queue logic applied)
+					if ( ! empty( $production_fields ) ) {
+						$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id, $manual_start_date );
+					} else {
+						$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id, $manual_start_date );
+					}
+
+					// Store booking mode for audit trail (only if explicitly chosen)
+					if ( $capacity_choice === 'fill_spill' ) {
+						gform_update_meta( $entry_id, '_prod_capacity_mode', 'fill_spill' );
+					}
 				}
 			} catch ( \Throwable $e ) {
 				error_log( sprintf(
-					'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)',
+					'Production Booking FATAL: Schedule calculation crashed for entry %d: %s (%s at %s:%d)',
 					$entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine()
 				) );
 				return;
@@ -1385,7 +1408,7 @@ class BookingHandler {
 		$booking_data = BillingStepPreview::load_existing_bookings( $prod_start_date, $prod_end_date, $entry_id );
 		$existing_bookings = $booking_data['bookings'];
 
-		// Check for overbooking
+		// Check for overbooking (over-capacity scenario)
 		$overbooked_dates = [];
 		foreach ( $schedule['allocation'] as $date => $lm_to_add ) {
 			$existing_lm = isset( $existing_bookings[ $date ] ) ? $existing_bookings[ $date ] : 0;
@@ -1403,14 +1426,38 @@ class BookingHandler {
 			}
 		}
 
-		// Return result
-		if ( ! empty( $overbooked_dates ) ) {
-			wp_send_json_success( [
-				'has_overbooking' => true,
-				'overbooked_dates' => $overbooked_dates,
-			] );
-		} else {
+		// If no overbooking, return early
+		if ( empty( $overbooked_dates ) ) {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
+
+		// Calculate fill+spill allocation (forward scheduling from selected date)
+		if ( ! empty( $production_fields ) ) {
+			$fill_spill_schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id, $prod_start_date );
+		} else {
+			$fill_spill_schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id, $prod_start_date );
+		}
+
+		$fill_spill_allocation = [];
+		if ( ! is_wp_error( $fill_spill_schedule ) && ! empty( $fill_spill_schedule['allocation'] ) ) {
+			foreach ( $fill_spill_schedule['allocation'] as $date => $lm ) {
+				$fill_spill_allocation[] = [
+					'date' => $date,
+					'date_formatted' => date( 'F j, Y', strtotime( $date ) ),
+					'lm' => $lm,
+				];
+			}
+		}
+
+		// Return result with both options
+		wp_send_json_success( [
+			'has_overbooking' => true,
+			'total_lm' => $lm_required,
+			'target_date' => $prod_start_date,
+			'target_date_formatted' => date( 'F j, Y', strtotime( $prod_start_date ) ),
+			'overbooked_dates' => $overbooked_dates,
+			'fill_spill_allocation' => $fill_spill_allocation,
+			'over_capacity_allocation' => $schedule['allocation'],
+		] );
 	}
 }
