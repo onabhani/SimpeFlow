@@ -74,9 +74,12 @@ class BillingStepPreview {
 	 * @param int|array $lm_or_field_values Legacy: int LM value, or array of field_id => value
 	 * @param array|null $field_configs Field configurations (required if using multi-field)
 	 * @param int|null $entry_id Entry ID to exclude from bookings (for edit mode)
+	 * @param string|null $manual_start_date Optional manual start date (Y-m-d). When provided,
+	 *                                        scheduling starts from this date and queue logic is skipped.
+	 *                                        Used for manual date entries where user explicitly chose a date.
 	 * @return array|\WP_Error
 	 */
-	public static function calculate_schedule( $lm_or_field_values, $field_configs = null, $entry_id = null ) {
+	public static function calculate_schedule( $lm_or_field_values, $field_configs = null, $entry_id = null, $manual_start_date = null ) {
 		// Handle legacy single LM value (backwards compatibility)
 		if ( is_int( $lm_or_field_values ) || is_numeric( $lm_or_field_values ) ) {
 			$lm_required = (int) $lm_or_field_values;
@@ -110,7 +113,10 @@ class BillingStepPreview {
 		$earliest_start_str = get_option( 'sfa_prod_earliest_start_date', '' );
 
 		// Determine earliest start date
-		if ( $earliest_start_str && strtotime( $earliest_start_str ) ) {
+		// If manual_start_date is provided, use it (user explicitly chose a date)
+		if ( $manual_start_date && strtotime( $manual_start_date ) ) {
+			$earliest_start = new \DateTime( $manual_start_date );
+		} elseif ( $earliest_start_str && strtotime( $earliest_start_str ) ) {
 			$earliest_start = new \DateTime( $earliest_start_str );
 		} else {
 			$earliest_start = new \DateTime( 'today' );
@@ -154,7 +160,8 @@ class BillingStepPreview {
 		// This ensures new automatic bookings continue the queue sequentially,
 		// ignoring any gaps from cancelled orders or manual bookings
 		// NOTE: We use the same date (not +1 day) to fill any remaining capacity first
-		if ( $last_automatic_booking_date ) {
+		// SKIP queue logic if manual_start_date is provided (user explicitly chose a date)
+		if ( ! $manual_start_date && $last_automatic_booking_date ) {
 			$queue_position = new \DateTime( $last_automatic_booking_date );
 
 			// Use the later of: today, configured earliest_start, or queue position

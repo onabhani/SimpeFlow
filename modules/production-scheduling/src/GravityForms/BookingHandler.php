@@ -315,14 +315,6 @@ class BookingHandler {
 			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
 			// IMPORTANT: Save _prod_lm_required for date preservation logic to work
 			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
-
-			// Recalculate schedule with live data (multi-field)
-			try {
-				$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id );
-			} catch ( \Throwable $e ) {
-				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine() ) );
-				return;
-			}
 		} else {
 			// Legacy mode (single LM field)
 			$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
@@ -336,44 +328,10 @@ class BookingHandler {
 			// Store LM in entry meta for backwards compatibility
 			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
 			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
-
-			// Recalculate schedule with live data (legacy)
-			try {
-				$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id );
-			} catch ( \Throwable $e ) {
-				error_log( sprintf( 'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)', $entry_id, $e->getMessage(), get_class( $e ), $e->getLine() ) );
-				return;
-			}
-		}
-
-		if ( is_wp_error( $schedule ) ) {
-			// Log error but don't block submission (validation should have caught this)
-			error_log( sprintf(
-				'Production scheduling error for entry %d: %s',
-				$entry_id,
-				$schedule->get_error_message()
-			) );
-
-			// CRITICAL: If admin is manually creating/editing entry, show warning
-			if ( is_admin() && ! wp_doing_ajax() ) {
-				add_action( 'admin_notices', function() use ( $schedule, $entry_id ) {
-					echo '<div class="notice notice-error is-dismissible">';
-					echo '<p><strong>Production Scheduling Error (Entry #' . $entry_id . '):</strong> ' . esc_html( $schedule->get_error_message() ) . '</p>';
-					echo '<p>This usually means production capacity is fully booked for the next 365 days. The entry was NOT given a production schedule.</p>';
-					echo '</div>';
-				} );
-			}
-
-			return;
-		}
-
-		// CRITICAL SECURITY: Check if admin is bypassing capacity validation
-		// Validation is skipped in admin area, so we need to warn about overbooking
-		if ( is_admin() && ! wp_doing_ajax() && ! defined( 'DOING_CRON' ) ) {
-			$this->check_admin_overbooking_warning( $schedule, $entry_id );
 		}
 
 		// Check if this is a re-booking (existing booking meta)
+		// NOTE: This check is moved BEFORE schedule calculation to determine manual vs automatic booking
 		$existing_install_date = gform_get_meta( $entry_id, '_install_date' );
 		$existing_lm = gform_get_meta( $entry_id, '_prod_lm_required' );
 		$existing_prod_start = gform_get_meta( $entry_id, '_prod_start_date' );
@@ -410,6 +368,9 @@ class BookingHandler {
 			}
 
 		}
+
+		// Track whether this is a manual booking (user chose date) vs automatic (queue-based)
+		$is_manual_booking = false;
 
 		// FORCE RECALCULATION if installation date changed OR LM changed OR dates are inconsistent
 		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! $date_changed && ! $dates_inconsistent ) {
@@ -463,55 +424,95 @@ class BookingHandler {
 				'new_lm' => $lm_required,
 			] );
 
-			// Determine final installation date based on the scenario
+			// Determine booking type: MANUAL (user chose date) or AUTOMATIC (queue-based)
+			// Manual bookings: user explicitly entered a date → forward schedule from that date
+			// Automatic bookings: no date entered → forward schedule from queue position
+			$is_manual_booking = false;
+			$manual_start_date = null;
+
 			if ( $date_changed ) {
-				// Installation date changed: ALWAYS use the new submitted date
-				// This is the user's explicit choice - respect it
-				$installation_date = $submitted_installation_date;
-			} elseif ( $existing_install_date && $lm_changed ) {
-				// LM changed but date didn't: Use submitted date if valid, otherwise use calculated minimum
-				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
-					$installation_date = $submitted_installation_date;
-				} else {
-					$installation_date = $schedule['installation_minimum'];
+				// Existing entry with date change: MANUAL booking from the new date
+				$is_manual_booking = true;
+				$manual_start_date = $submitted_installation_date;
+			} elseif ( ! $existing_install_date && $submitted_installation_date ) {
+				// New entry with a submitted date: MANUAL booking from that date
+				$is_manual_booking = true;
+				$manual_start_date = $submitted_installation_date;
+			} elseif ( $dates_inconsistent && $existing_install_date ) {
+				// Inconsistent dates: treat as manual from existing date
+				$is_manual_booking = true;
+				$manual_start_date = $existing_install_date;
+			}
+			// Otherwise: AUTOMATIC booking (no manual_start_date, uses queue)
+
+			// For MANUAL bookings: check if chosen date has available capacity
+			if ( $is_manual_booking && $manual_start_date ) {
+				$capacity_check = $this->check_date_capacity( $manual_start_date, $entry_id );
+				if ( $capacity_check['available'] <= 0 ) {
+					// Date is fully booked - block the submission
+					$formatted_date = date( 'F j, Y', strtotime( $manual_start_date ) );
+					error_log( sprintf(
+						'Production Booking BLOCKED for entry %d: %s is fully booked (0/%d capacity)',
+						$entry_id, $manual_start_date, $capacity_check['capacity']
+					) );
+
+					// Show error to admin
+					if ( is_admin() && ! wp_doing_ajax() ) {
+						add_action( 'admin_notices', function() use ( $formatted_date, $entry_id, $capacity_check ) {
+							echo '<div class="notice notice-error is-dismissible">';
+							echo '<p><strong>Production Scheduling Error (Entry #' . esc_html( $entry_id ) . '):</strong></p>';
+							echo '<p>' . esc_html( $formatted_date ) . ' is fully booked (0/' . esc_html( $capacity_check['capacity'] ) . ' slots available).</p>';
+							echo '<p>Please choose a different date with available capacity.</p>';
+							echo '</div>';
+						} );
+					}
+
+					// Log audit
+					$this->log_booking_audit( $entry_id, 'booking_blocked', [
+						'reason' => 'Date fully booked',
+						'date' => $manual_start_date,
+						'capacity' => $capacity_check['capacity'],
+						'booked' => $capacity_check['booked'],
+					] );
+
+					return;
 				}
-			} elseif ( ! $existing_install_date ) {
-				// New booking: use submitted date if valid, otherwise use calculated minimum
-				if ( $submitted_installation_date && $submitted_installation_date >= $schedule['installation_minimum'] ) {
-					$installation_date = $submitted_installation_date;
-				} else {
-					$installation_date = $schedule['installation_minimum'];
-				}
-			} elseif ( $dates_inconsistent ) {
-				// Inconsistent dates: keep existing install date but recalculate allocation
-				$installation_date = $existing_install_date;
 			}
 
-			// Schedule BACKWARD from installation date so production aligns with it.
-			// The installation date is the anchor; production dates are derived from it,
-			// respecting the installation buffer setting (0 = same day allowed).
+			// Calculate schedule using FORWARD scheduling
+			// - Manual bookings: start from the chosen date (no queue logic)
+			// - Automatic bookings: start from queue position (queue logic applied)
 			try {
 				if ( ! empty( $production_fields ) ) {
-					$new_schedule = BillingStepPreview::calculate_schedule_for_date( $installation_date, $field_values, $production_fields, $entry_id );
+					$schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id, $manual_start_date );
 				} else {
-					$new_schedule = BillingStepPreview::calculate_schedule_for_date( $installation_date, $lm_required, null, $entry_id );
-				}
-
-				if ( is_wp_error( $new_schedule ) ) {
-					error_log( sprintf(
-						'Production Booking ERROR: Backward scheduling failed for entry %d: %s. Using forward-scheduled fallback.',
-						$entry_id, $new_schedule->get_error_message()
-					) );
-					// Keep using the forward-scheduled $schedule as fallback
-				} else {
-					$schedule = $new_schedule;
+					$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id, $manual_start_date );
 				}
 			} catch ( \Throwable $e ) {
 				error_log( sprintf(
-					'Production Booking THROWABLE: Backward scheduling failed for entry %d: %s (Type: %s, File: %s, Line: %d)',
+					'Production Booking FATAL: Forward schedule crashed for entry %d: %s (%s at %s:%d)',
 					$entry_id, $e->getMessage(), get_class( $e ), $e->getFile(), $e->getLine()
 				) );
-				// Keep using the forward-scheduled $schedule as fallback
+				return;
+			}
+
+			// Handle schedule errors
+			if ( is_wp_error( $schedule ) ) {
+				error_log( sprintf(
+					'Production scheduling error for entry %d: %s',
+					$entry_id,
+					$schedule->get_error_message()
+				) );
+
+				if ( is_admin() && ! wp_doing_ajax() ) {
+					add_action( 'admin_notices', function() use ( $schedule, $entry_id ) {
+						echo '<div class="notice notice-error is-dismissible">';
+						echo '<p><strong>Production Scheduling Error (Entry #' . $entry_id . '):</strong> ' . esc_html( $schedule->get_error_message() ) . '</p>';
+						echo '<p>This usually means production capacity is fully booked for the next 365 days. The entry was NOT given a production schedule.</p>';
+						echo '</div>';
+					} );
+				}
+				return;
 			}
 
 			// SAFETY CHECK: Verify schedule is valid array before accessing keys
@@ -521,9 +522,6 @@ class BookingHandler {
 					$entry_id,
 					is_wp_error( $schedule ) ? 'WP_Error: ' . $schedule->get_error_message() : gettype( $schedule )
 				) );
-
-				// Cannot proceed without valid schedule - this should never happen as initial schedule
-				// calculation would have failed and returned early, but adding safety check
 				return;
 			}
 
@@ -537,22 +535,15 @@ class BookingHandler {
 				return;
 			}
 
-			// Get production dates from the freshly calculated schedule.
-			// IMPORTANT: Do NOT read dates back from the entry's form
-			// fields here — they still contain the OLD values when only
-			// the installation date was changed.  Instead, write the
-			// recalculated dates INTO those fields so the entry stays
-			// in sync with the new allocation.
+			// Get production dates from the calculated schedule
 			$prod_start_date = $schedule['production_start'];
 			$prod_end_date = $schedule['production_end'];
 
-			// AUTO-ADJUST installation date to the LAST day of allocation
-			// This handles cases where:
-			// - The requested installation date was full, so allocation spilled to next days
-			// - The LM required more days than expected
 			// Installation date = production_end (last day of allocated slots)
+			// This is the date when the order is ready for installation
 			$installation_date = $prod_end_date;
 
+			// Update entry fields to reflect the calculated schedule
 			if ( $prod_start_field_id ) {
 				\GFAPI::update_entry_field( $entry_id, $prod_start_field_id, $prod_start_date );
 			}
@@ -563,6 +554,12 @@ class BookingHandler {
 			if ( $install_field_id ) {
 				\GFAPI::update_entry_field( $entry_id, $install_field_id, $installation_date );
 			}
+		}
+
+		// CRITICAL SECURITY: Check if admin is bypassing capacity validation
+		// Validation is skipped in admin area, so we need to warn about overbooking
+		if ( ! $use_existing_allocation && is_admin() && ! wp_doing_ajax() && ! defined( 'DOING_CRON' ) ) {
+			$this->check_admin_overbooking_warning( $schedule, $entry_id );
 		}
 
 		// Clear cache for old allocation dates (only if recalculating)
@@ -580,27 +577,18 @@ class BookingHandler {
 		}
 
 		// Determine booking type: 'automatic' or 'manual'
-		// Automatic = system-calculated installation date was used
-		// Manual = user explicitly changed the installation date
+		// Automatic = system-calculated installation date was used (from queue)
+		// Manual = user explicitly chose the installation date
 		$existing_booking_type = gform_get_meta( $entry_id, '_prod_booking_type' );
 		if ( $use_existing_allocation ) {
 			// Preserving existing allocation - keep existing type (default to 'automatic' for legacy)
 			$booking_type = $existing_booking_type ? $existing_booking_type : 'automatic';
-		} elseif ( $date_changed ) {
-			// User explicitly changed the installation date - this is a manual booking
+		} elseif ( $is_manual_booking ) {
+			// User explicitly chose the date - this is a manual booking
 			$booking_type = 'manual';
-		} elseif ( isset( $schedule['installation_minimum'] ) ) {
-			// Compare final installation date with system-calculated minimum
-			// If they match, it's automatic; if different, it's manual
-			if ( $installation_date === $schedule['installation_minimum'] ) {
-				$booking_type = 'automatic';
-			} else {
-				// User submitted a different date than the system calculated
-				$booking_type = 'manual';
-			}
 		} else {
-			// Fallback: preserve existing or default to automatic
-			$booking_type = $existing_booking_type ? $existing_booking_type : 'automatic';
+			// System calculated the date from queue - this is an automatic booking
+			$booking_type = 'automatic';
 		}
 
 		// Save to entry meta (note: _prod_lm_required already saved above in both multi-field and legacy modes)
@@ -1185,6 +1173,68 @@ class BookingHandler {
 				echo '</div>';
 			} );
 		}
+	}
+
+	/**
+	 * Check available capacity for a specific date
+	 *
+	 * Used to validate manual date entries before scheduling.
+	 *
+	 * @param string   $date     The date to check (Y-m-d format)
+	 * @param int|null $entry_id Entry ID to exclude (for edit mode)
+	 * @return array ['capacity' => int, 'booked' => int, 'available' => int]
+	 */
+	private function check_date_capacity( $date, $entry_id = null ) {
+		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+
+		// Check for capacity override on this date
+		$repo = new \SFA\ProductionScheduling\Database\CapacityRepository();
+		$overrides = $repo->get_range( $date, $date );
+		if ( isset( $overrides[ $date ] ) ) {
+			$daily_capacity = (int) $overrides[ $date ];
+		}
+
+		// Load existing bookings for this date
+		$booking_data = BillingStepPreview::load_existing_bookings( $date, $date, $entry_id );
+		$booked = isset( $booking_data['bookings'][ $date ] ) ? (int) $booking_data['bookings'][ $date ] : 0;
+
+		// Check if this is a working day
+		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
+		$working_days = json_decode( $working_days_json, true );
+		$day_of_week = (int) date( 'w', strtotime( $date ) );
+
+		if ( ! in_array( $day_of_week, $working_days, true ) ) {
+			// Non-working day: 0 capacity
+			return [
+				'capacity' => 0,
+				'booked' => 0,
+				'available' => 0,
+				'reason' => 'non_working_day',
+			];
+		}
+
+		// Check if this is a holiday
+		$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
+		$holidays_raw = json_decode( $holidays_json, true );
+		$holidays = BillingStepPreview::extract_holiday_dates( $holidays_raw );
+
+		if ( in_array( $date, $holidays, true ) ) {
+			// Holiday: 0 capacity
+			return [
+				'capacity' => 0,
+				'booked' => 0,
+				'available' => 0,
+				'reason' => 'holiday',
+			];
+		}
+
+		$available = max( 0, $daily_capacity - $booked );
+
+		return [
+			'capacity' => $daily_capacity,
+			'booked' => $booked,
+			'available' => $available,
+		];
 	}
 
 	/**
