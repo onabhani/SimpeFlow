@@ -123,16 +123,18 @@ add_action( 'init', function () {
 /**
  * Enqueue admin entry edit script on Gravity Forms entry detail page
  */
-add_action( 'admin_enqueue_scripts', function() {
-	// Check if we're on a Gravity Forms entry detail page
-	$screen = get_current_screen();
-
-	if ( ! $screen || $screen->id !== 'toplevel_page_gf_entries' ) {
+add_action( 'admin_enqueue_scripts', function( $hook ) {
+	// Check if we're on the Gravity Forms entries page
+	if ( $hook !== 'toplevel_page_gf_entries' && $hook !== 'forms_page_gf_entries' ) {
 		return;
 	}
 
-	// Check if we're viewing/editing a specific entry (lid parameter)
-	if ( ! isset( $_GET['lid'] ) || ! isset( $_GET['page'] ) || $_GET['page'] !== 'gf_entries' ) {
+	// Check if we're viewing/editing a specific entry (view=entry and lid parameter)
+	if ( ! isset( $_GET['view'] ) || $_GET['view'] !== 'entry' ) {
+		return;
+	}
+
+	if ( ! isset( $_GET['lid'] ) || ! absint( $_GET['lid'] ) ) {
 		return;
 	}
 
