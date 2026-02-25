@@ -158,16 +158,19 @@
     }
 
     /**
-     * Add hidden field for capacity choice
+     * Store capacity choice via AJAX (more reliable than hidden field)
      */
-    function setCapacityChoice(choice) {
-        // Remove existing hidden field
-        $('input[name="sfa_capacity_choice"]').remove();
-
-        if (choice) {
-            // Add hidden field with choice
-            $('#entry_form').append('<input type="hidden" name="sfa_capacity_choice" value="' + choice + '">');
-        }
+    function setCapacityChoice(choice, entryId) {
+        return $.ajax({
+            url: sfaProdAdmin.ajaxurl,
+            type: 'POST',
+            data: {
+                action: 'sfa_prod_store_capacity_choice',
+                entry_id: entryId,
+                choice: choice,
+                nonce: sfaProdAdmin.nonce
+            }
+        });
     }
 
     /**
@@ -211,10 +214,18 @@
                         // Show choice dialog
                         showCapacityChoiceDialog(response.data).then(function(choice) {
                             if (choice) {
-                                // Admin made a choice - set hidden field and submit
-                                setCapacityChoice(choice);
-                                capacityCheckPassed = true;
-                                $('#entry_form').submit();
+                                // Admin made a choice - store via AJAX then submit
+                                $submitBtn.val('Saving choice...').prop('disabled', true);
+                                setCapacityChoice(choice, entryId)
+                                    .done(function() {
+                                        capacityCheckPassed = true;
+                                        $('#entry_form').submit();
+                                    })
+                                    .fail(function() {
+                                        // If AJAX fails, try anyway
+                                        capacityCheckPassed = true;
+                                        $('#entry_form').submit();
+                                    });
                             } else {
                                 // Admin cancelled - restore button
                                 $submitBtn.val(originalBtnText).prop('disabled', false);

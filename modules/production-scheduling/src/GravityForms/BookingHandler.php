@@ -46,6 +46,42 @@ class BookingHandler {
 		// AJAX hook for capacity check before admin save
 		add_action( 'wp_ajax_sfa_prod_check_capacity_before_save', [ $this, 'ajax_check_capacity_before_save' ] );
 
+		// AJAX hook to store capacity choice
+		add_action( 'wp_ajax_sfa_prod_store_capacity_choice', [ $this, 'ajax_store_capacity_choice' ] );
+
+	}
+
+	/**
+	 * AJAX handler: Store capacity choice for an entry
+	 *
+	 * Stores the admin's over-capacity/fill-spill choice in a transient
+	 * so it can be retrieved when the entry is saved.
+	 */
+	public function ajax_store_capacity_choice() {
+		// Verify nonce
+		if ( ! isset( $_POST['nonce'] ) || ! wp_verify_nonce( $_POST['nonce'], 'sfa_prod_admin_capacity_check' ) ) {
+			wp_send_json_error( [ 'message' => 'Invalid nonce' ] );
+		}
+
+		// Verify user is admin
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
+		}
+
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : 0;
+		$choice = isset( $_POST['choice'] ) ? sanitize_text_field( $_POST['choice'] ) : '';
+
+		if ( ! $entry_id || ! in_array( $choice, [ 'over_capacity', 'fill_spill' ], true ) ) {
+			wp_send_json_error( [ 'message' => 'Invalid parameters' ] );
+		}
+
+		// Store in transient (expires in 5 minutes)
+		$transient_key = 'sfa_capacity_choice_' . $entry_id;
+		set_transient( $transient_key, $choice, 5 * MINUTE_IN_SECONDS );
+
+		error_log( sprintf( 'Production Booking: Stored capacity choice "%s" for entry %d', $choice, $entry_id ) );
+
+		wp_send_json_success( [ 'stored' => true ] );
 	}
 
 	/**
@@ -483,8 +519,26 @@ class BookingHandler {
 			}
 
 			// Check admin capacity choice (over_capacity vs fill_spill)
-			// This is set via hidden field when admin chooses from the capacity dialog
-			$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
+			// First check transient (set by AJAX before form submission), then fall back to POST
+			$transient_key = 'sfa_capacity_choice_' . $entry_id;
+			$capacity_choice = get_transient( $transient_key );
+
+			if ( $capacity_choice ) {
+				// Clear the transient after reading (one-time use)
+				delete_transient( $transient_key );
+				error_log( sprintf( 'Production Booking: Entry %d - retrieved capacity_choice=%s from transient', $entry_id, $capacity_choice ) );
+			} else {
+				// Fall back to POST (legacy support)
+				$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
+			}
+
+			// Debug logging
+			error_log( sprintf(
+				'Production Booking: Entry %d - capacity_choice=%s, manual_start_date=%s',
+				$entry_id,
+				$capacity_choice ?: '(empty)',
+				$manual_start_date ?: '(empty)'
+			) );
 
 			// Calculate schedule based on capacity choice or default behavior
 			try {
@@ -1367,13 +1421,24 @@ class BookingHandler {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
 
-		// Get the Linear Meter field value
+		// Get the Linear Meter field value OR calculate from production fields
 		$lm_field_id = FormSettings::get_lm_field_id( $form );
-		if ( ! $lm_field_id ) {
-			wp_send_json_error( [ 'message' => 'LM field not configured' ] );
+		$production_fields = FormSettings::get_production_fields( $form );
+		$lm_required = 0;
+		$field_values = [];
+
+		if ( ! empty( $production_fields ) ) {
+			// Multi-field mode: calculate total from production fields
+			foreach ( $production_fields as $pf ) {
+				$fid = $pf['field_id'];
+				$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
+			}
+			$lm_required = FormSettings::calculate_total_slots( $field_values, $production_fields );
+		} elseif ( $lm_field_id ) {
+			// Legacy mode: single LM field
+			$lm_required = isset( $entry[ $lm_field_id ] ) ? floatval( $entry[ $lm_field_id ] ) : 0;
 		}
 
-		$lm_required = isset( $entry[ $lm_field_id ] ) ? floatval( $entry[ $lm_field_id ] ) : 0;
 		if ( $lm_required <= 0 ) {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
@@ -1382,13 +1447,7 @@ class BookingHandler {
 		$install_date = $this->normalize_date( $install_date );
 
 		// Calculate schedule backward from the target installation date
-		$production_fields = FormSettings::get_production_fields( $form );
 		if ( ! empty( $production_fields ) ) {
-			$field_values = [];
-			foreach ( $production_fields as $pf ) {
-				$fid = $pf['field_id'];
-				$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
-			}
 			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $field_values, $production_fields, $entry_id );
 		} else {
 			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $lm_required, null, $entry_id );
