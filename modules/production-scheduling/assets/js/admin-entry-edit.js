@@ -32,51 +32,42 @@
     }
 
     /**
-     * Find the installation date field value
+     * Find the installation date field value using configured field ID
      */
     function getInstallationDate() {
-        // Try common field patterns
-        let installDate = null;
+        // Use configured field ID from PHP
+        if (!sfaProdAdmin.formId || !sfaProdAdmin.installFieldId) {
+            return null;
+        }
 
-        // Pattern 1: input_X_Y format (where X is form ID, Y is field ID)
-        $('input[id*="input_"][id*="_"]').each(function() {
-            let $field = $(this);
-            let fieldName = $field.attr('name') || '';
+        // Gravity Forms admin uses input_FIELDID format for entry edit
+        let $field = $('input[name="input_' + sfaProdAdmin.installFieldId + '"]');
 
-            // Check if this looks like an installation date field
-            if (fieldName.toLowerCase().includes('install') ||
-                $field.closest('.gfield').find('label').text().toLowerCase().includes('install')) {
-                installDate = $field.val();
-                return false; // Break loop
-            }
-        });
+        if ($field.length) {
+            return $field.val();
+        }
 
-        return installDate;
+        // Fallback: try alternative selector patterns
+        $field = $('#input_' + sfaProdAdmin.formId + '_' + sfaProdAdmin.installFieldId);
+        if ($field.length) {
+            return $field.val();
+        }
+
+        return null;
     }
 
     /**
-     * Get entry ID from URL or form
+     * Get entry ID from config or URL
      */
     function getEntryId() {
-        // Try URL parameter
+        // Use configured entry ID from PHP
+        if (sfaProdAdmin.entryId) {
+            return sfaProdAdmin.entryId;
+        }
+
+        // Fallback: try URL parameter
         let urlParams = new URLSearchParams(window.location.search);
-        let entryId = urlParams.get('lid');
-
-        if (!entryId) {
-            // Try hidden field in form
-            entryId = $('input[name="entry_id"]').val();
-        }
-
-        if (!entryId) {
-            // Try from form action URL
-            let action = $('#entry_form').attr('action') || '';
-            let match = action.match(/lid=(\d+)/);
-            if (match) {
-                entryId = match[1];
-            }
-        }
-
-        return entryId;
+        return urlParams.get('lid');
     }
 
     /**

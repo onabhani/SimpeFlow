@@ -138,12 +138,38 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
 		return;
 	}
 
+	// Get form ID from URL
+	$form_id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
+	if ( ! $form_id ) {
+		return;
+	}
+
+	// Get form and check if production scheduling is enabled
+	$form = \GFAPI::get_form( $form_id );
+	if ( ! $form || is_wp_error( $form ) ) {
+		return;
+	}
+
+	// Check if production scheduling is enabled for this form
+	if ( ! SFA\ProductionScheduling\Admin\FormSettings::is_enabled( $form ) ) {
+		return;
+	}
+
+	// Get the configured installation date field ID
+	$install_field_id = SFA\ProductionScheduling\Admin\FormSettings::get_install_field_id( $form );
+	if ( ! $install_field_id ) {
+		return;
+	}
+
 	// Enqueue the script
 	wp_enqueue_script( 'sfa-prod-admin-entry-edit' );
 
-	// Localize script with nonce and ajaxurl
+	// Localize script with config
 	wp_localize_script( 'sfa-prod-admin-entry-edit', 'sfaProdAdmin', [
 		'nonce' => wp_create_nonce( 'sfa_prod_admin_capacity_check' ),
 		'ajaxurl' => admin_url( 'admin-ajax.php' ),
+		'formId' => $form_id,
+		'installFieldId' => $install_field_id,
+		'entryId' => absint( $_GET['lid'] ),
 	] );
 } );
