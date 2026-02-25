@@ -543,13 +543,20 @@ class BookingHandler {
 			// Calculate schedule based on capacity choice or default behavior
 			try {
 				if ( $capacity_choice === 'over_capacity' && $manual_start_date ) {
-					// OVER-CAPACITY MODE: Force all LM onto the selected date (backward scheduling)
-					// This will exceed daily capacity but admin has explicitly chosen this
-					if ( ! empty( $production_fields ) ) {
-						$schedule = BillingStepPreview::calculate_schedule_for_date( $manual_start_date, $field_values, $production_fields, $entry_id );
-					} else {
-						$schedule = BillingStepPreview::calculate_schedule_for_date( $manual_start_date, $lm_required, null, $entry_id );
-					}
+					// OVER-CAPACITY MODE: Force ALL LM onto the selected date
+					// Bypass scheduler entirely - admin explicitly chose to exceed capacity
+					$schedule = [
+						'production_start'     => $manual_start_date,
+						'production_end'       => $manual_start_date,
+						'installation_minimum' => $manual_start_date,
+						'total_days'           => 1,
+						'allocation'           => [ $manual_start_date => $lm_required ],
+					];
+
+					error_log( sprintf(
+						'Production Booking: Entry %d - OVER-CAPACITY forced allocation: %d LM on %s',
+						$entry_id, $lm_required, $manual_start_date
+					) );
 
 					// Store booking mode for audit trail
 					gform_update_meta( $entry_id, '_prod_capacity_mode', 'over_capacity' );
