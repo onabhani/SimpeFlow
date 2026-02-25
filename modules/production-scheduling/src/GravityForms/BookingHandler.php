@@ -486,6 +486,15 @@ class BookingHandler {
 			// This is set via hidden field when admin chooses from the capacity dialog
 			$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
 
+			// Debug logging
+			error_log( sprintf(
+				'Production Booking: Entry %d - capacity_choice=%s, manual_start_date=%s, POST keys=%s',
+				$entry_id,
+				$capacity_choice ?: '(empty)',
+				$manual_start_date ?: '(empty)',
+				implode( ',', array_keys( $_POST ) )
+			) );
+
 			// Calculate schedule based on capacity choice or default behavior
 			try {
 				if ( $capacity_choice === 'over_capacity' && $manual_start_date ) {
@@ -1367,13 +1376,24 @@ class BookingHandler {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
 
-		// Get the Linear Meter field value
+		// Get the Linear Meter field value OR calculate from production fields
 		$lm_field_id = FormSettings::get_lm_field_id( $form );
-		if ( ! $lm_field_id ) {
-			wp_send_json_error( [ 'message' => 'LM field not configured' ] );
+		$production_fields = FormSettings::get_production_fields( $form );
+		$lm_required = 0;
+		$field_values = [];
+
+		if ( ! empty( $production_fields ) ) {
+			// Multi-field mode: calculate total from production fields
+			foreach ( $production_fields as $pf ) {
+				$fid = $pf['field_id'];
+				$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
+			}
+			$lm_required = FormSettings::calculate_total_slots( $field_values, $production_fields );
+		} elseif ( $lm_field_id ) {
+			// Legacy mode: single LM field
+			$lm_required = isset( $entry[ $lm_field_id ] ) ? floatval( $entry[ $lm_field_id ] ) : 0;
 		}
 
-		$lm_required = isset( $entry[ $lm_field_id ] ) ? floatval( $entry[ $lm_field_id ] ) : 0;
 		if ( $lm_required <= 0 ) {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
@@ -1382,13 +1402,7 @@ class BookingHandler {
 		$install_date = $this->normalize_date( $install_date );
 
 		// Calculate schedule backward from the target installation date
-		$production_fields = FormSettings::get_production_fields( $form );
 		if ( ! empty( $production_fields ) ) {
-			$field_values = [];
-			foreach ( $production_fields as $pf ) {
-				$fid = $pf['field_id'];
-				$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
-			}
 			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $field_values, $production_fields, $entry_id );
 		} else {
 			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $lm_required, null, $entry_id );
