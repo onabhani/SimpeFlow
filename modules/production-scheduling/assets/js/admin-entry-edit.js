@@ -201,8 +201,8 @@
         e.preventDefault();
         isCheckingCapacity = true;
 
-        // Show loading indicator
-        let $submitBtn = $('#entry_form input[type="submit"]');
+        // Show loading indicator - target only the first/main submit button
+        let $submitBtn = $('#entry_form input[type="submit"]').first();
         let originalBtnText = $submitBtn.val();
         $submitBtn.val('Checking capacity...').prop('disabled', true);
 
