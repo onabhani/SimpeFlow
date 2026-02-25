@@ -79,8 +79,6 @@ class BookingHandler {
 		$transient_key = 'sfa_capacity_choice_' . $entry_id;
 		set_transient( $transient_key, $choice, 5 * MINUTE_IN_SECONDS );
 
-		error_log( sprintf( 'Production Booking: Stored capacity choice "%s" for entry %d', $choice, $entry_id ) );
-
 		wp_send_json_success( [ 'stored' => true ] );
 	}
 
@@ -526,19 +524,10 @@ class BookingHandler {
 			if ( $capacity_choice ) {
 				// Clear the transient after reading (one-time use)
 				delete_transient( $transient_key );
-				error_log( sprintf( 'Production Booking: Entry %d - retrieved capacity_choice=%s from transient', $entry_id, $capacity_choice ) );
 			} else {
 				// Fall back to POST (legacy support)
 				$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
 			}
-
-			// Debug logging
-			error_log( sprintf(
-				'Production Booking: Entry %d - capacity_choice=%s, manual_start_date=%s',
-				$entry_id,
-				$capacity_choice ?: '(empty)',
-				$manual_start_date ?: '(empty)'
-			) );
 
 			// Calculate schedule based on capacity choice or default behavior
 			try {
@@ -552,11 +541,6 @@ class BookingHandler {
 						'total_days'           => 1,
 						'allocation'           => [ $manual_start_date => $lm_required ],
 					];
-
-					error_log( sprintf(
-						'Production Booking: Entry %d - OVER-CAPACITY forced allocation: %d LM on %s',
-						$entry_id, $lm_required, $manual_start_date
-					) );
 
 					// Store booking mode for audit trail
 					gform_update_meta( $entry_id, '_prod_capacity_mode', 'over_capacity' );
