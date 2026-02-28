@@ -464,12 +464,17 @@ class BookingHandler {
 			$is_manual_booking = false;
 			$manual_start_date = null;
 
+			// Check the frontend booking mode flag (set by billing-step.js)
+			// 'manual' = user explicitly changed the installation date
+			// 'automatic' = system auto-filled the date from preview calculation
+			$frontend_booking_mode = isset( $_POST['_sfa_booking_mode'] ) ? sanitize_text_field( $_POST['_sfa_booking_mode'] ) : '';
+
 			if ( $date_changed ) {
 				// Existing entry with date change: MANUAL booking from the new date
 				$is_manual_booking = true;
 				$manual_start_date = $submitted_installation_date;
-			} elseif ( ! $existing_install_date && $submitted_installation_date ) {
-				// New entry with a submitted date: MANUAL booking from that date
+			} elseif ( ! $existing_install_date && $submitted_installation_date && $frontend_booking_mode === 'manual' ) {
+				// New entry where user explicitly chose a date: MANUAL booking from that date
 				$is_manual_booking = true;
 				$manual_start_date = $submitted_installation_date;
 			} elseif ( $dates_inconsistent && $existing_install_date ) {
@@ -478,6 +483,7 @@ class BookingHandler {
 				$manual_start_date = $existing_install_date;
 			}
 			// Otherwise: AUTOMATIC booking (no manual_start_date, uses queue)
+			// This includes new entries where the date was auto-filled by the preview
 
 			// For MANUAL bookings: check if chosen date has available capacity
 			// - For NEW submissions: block if date is fully booked (user should choose different date)
@@ -1437,55 +1443,42 @@ class BookingHandler {
 		// Normalize installation date
 		$install_date = $this->normalize_date( $install_date );
 
-		// Calculate schedule backward from the target installation date
-		if ( ! empty( $production_fields ) ) {
-			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $field_values, $production_fields, $entry_id );
-		} else {
-			$schedule = BillingStepPreview::calculate_schedule_for_date( $install_date, $lm_required, null, $entry_id );
-		}
-
-		if ( is_wp_error( $schedule ) || ! $schedule || empty( $schedule['allocation'] ) ) {
-			wp_send_json_error( [ 'message' => 'Could not calculate schedule' ] );
-		}
-
 		// Get daily capacity
 		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
 
-		// Load existing bookings for the date range (excluding current entry)
-		$prod_start_date = $schedule['production_start'];
-		$prod_end_date = $schedule['production_end'];
+		// Check available capacity on the target date FIRST
+		// This determines if the order fits entirely on the target date or needs spill/over-capacity
+		$capacity_check = $this->check_date_capacity( $install_date, $entry_id );
+		$available_on_target = $capacity_check['available'];
+		$target_capacity = $capacity_check['capacity'];
 
-		$booking_data = BillingStepPreview::load_existing_bookings( $prod_start_date, $prod_end_date, $entry_id );
-		$existing_bookings = $booking_data['bookings'];
-
-		// Check for overbooking (over-capacity scenario)
-		$overbooked_dates = [];
-		foreach ( $schedule['allocation'] as $date => $lm_to_add ) {
-			$existing_lm = isset( $existing_bookings[ $date ] ) ? $existing_bookings[ $date ] : 0;
-			$new_total = $existing_lm + $lm_to_add;
-
-			if ( $new_total > $daily_capacity ) {
-				$overbooked_dates[] = [
-					'date' => $date,
-					'date_formatted' => date( 'F j, Y', strtotime( $date ) ),
-					'existing' => $existing_lm,
-					'new_total' => $new_total,
-					'capacity' => $daily_capacity,
-					'overage' => $new_total - $daily_capacity,
-				];
-			}
-		}
-
-		// If no overbooking, return early
-		if ( empty( $overbooked_dates ) ) {
+		// If order fits entirely on the target date, no dialog needed
+		if ( $lm_required <= $available_on_target ) {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
 
+		// Order exceeds available capacity on target date - show dialog
+		// Calculate the overage for the over-capacity option
+		$existing_on_target = $capacity_check['booked'];
+		$new_total_if_forced = $existing_on_target + $lm_required;
+		$overage = $new_total_if_forced - $target_capacity;
+
+		$overbooked_dates = [
+			[
+				'date'           => $install_date,
+				'date_formatted' => date( 'F j, Y', strtotime( $install_date ) ),
+				'existing'       => $existing_on_target,
+				'new_total'      => $new_total_if_forced,
+				'capacity'       => $target_capacity,
+				'overage'        => max( 0, $overage ),
+			],
+		];
+
 		// Calculate fill+spill allocation (forward scheduling from selected date)
 		if ( ! empty( $production_fields ) ) {
-			$fill_spill_schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id, $prod_start_date );
+			$fill_spill_schedule = BillingStepPreview::calculate_schedule( $field_values, $production_fields, $entry_id, $install_date );
 		} else {
-			$fill_spill_schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id, $prod_start_date );
+			$fill_spill_schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id, $install_date );
 		}
 
 		$fill_spill_allocation = [];
@@ -1503,11 +1496,11 @@ class BookingHandler {
 		wp_send_json_success( [
 			'has_overbooking' => true,
 			'total_lm' => $lm_required,
-			'target_date' => $prod_start_date,
-			'target_date_formatted' => date( 'F j, Y', strtotime( $prod_start_date ) ),
+			'target_date' => $install_date,
+			'target_date_formatted' => date( 'F j, Y', strtotime( $install_date ) ),
 			'overbooked_dates' => $overbooked_dates,
 			'fill_spill_allocation' => $fill_spill_allocation,
-			'over_capacity_allocation' => $schedule['allocation'],
+			'over_capacity_allocation' => [ $install_date => $lm_required ],
 		] );
 	}
 }

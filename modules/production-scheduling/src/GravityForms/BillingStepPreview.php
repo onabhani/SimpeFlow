@@ -269,10 +269,14 @@ class BillingStepPreview {
 		$all_days = [ 0, 1, 2, 3, 4, 5, 6 ];
 		$off_days = array_values( array_diff( $all_days, $working_days ) );
 
-		// Load capacity overrides and bookings covering the range from earliest_start to install_date
+		// Load capacity overrides and bookings covering the range from earliest_start
+		// to beyond install_date. The scheduler fills forward from install_date and may
+		// spill to subsequent days, so we need booking data for those spill dates too.
+		// Use ceil(total_slots / daily_capacity) * 2 + 30 days as a safe buffer.
 		$install_dt = new \DateTime( $installation_date );
+		$spill_buffer_days = max( 30, (int) ceil( $total_slots / max( 1, $daily_capacity ) ) * 2 + 30 );
 		$range_end = clone $install_dt;
-		$range_end->modify( '+1 day' ); // Include install date itself
+		$range_end->modify( '+' . $spill_buffer_days . ' days' );
 
 		$repo = new CapacityRepository();
 		$capacity_overrides = $repo->get_range(

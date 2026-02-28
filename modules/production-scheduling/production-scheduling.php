@@ -86,11 +86,10 @@ add_action( 'plugins_loaded', function () {
  */
 add_action( 'init', function () {
 	$version = SFA_PROD_VER;
-	$timestamp = time(); // Cache bust during development
 
 	wp_register_script(
 		'sfa-prod-billing',
-		SFA_PROD_URL . 'assets/js/billing-step.js?v=' . $timestamp,
+		SFA_PROD_URL . 'assets/js/billing-step.js',
 		array( 'jquery' ),
 		$version,
 		true
@@ -98,7 +97,7 @@ add_action( 'init', function () {
 
 	wp_register_script(
 		'sfa-prod-calendar',
-		SFA_PROD_URL . 'assets/js/calendar-view.js?v=' . $timestamp,
+		SFA_PROD_URL . 'assets/js/calendar-view.js',
 		array( 'jquery' ),
 		$version,
 		true
@@ -106,7 +105,7 @@ add_action( 'init', function () {
 
 	wp_register_script(
 		'sfa-prod-admin-entry-edit',
-		SFA_PROD_URL . 'assets/js/admin-entry-edit.js?v=' . $timestamp,
+		SFA_PROD_URL . 'assets/js/admin-entry-edit.js',
 		array( 'jquery' ),
 		$version,
 		true
@@ -114,7 +113,7 @@ add_action( 'init', function () {
 
 	wp_register_style(
 		'sfa-prod-styles',
-		SFA_PROD_URL . 'assets/css/production-schedule.css?v=' . $timestamp,
+		SFA_PROD_URL . 'assets/css/production-schedule.css',
 		array(),
 		$version
 	);
