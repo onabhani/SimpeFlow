@@ -112,6 +112,13 @@
             }
         }
 
+        // Add hidden field to track booking mode (automatic vs manual)
+        // This tells the backend whether the user explicitly chose the installation date
+        var $form = $installField.closest('form');
+        if ($form.length && !$form.find('input[name="_sfa_booking_mode"]').length) {
+            $form.append('<input type="hidden" name="_sfa_booking_mode" value="automatic">');
+        }
+
         // Re-detect edit mode EVERY time we initialize (important for workflow navigation)
         var initialInstallDate = $installField.val();
         if (initialInstallDate && initialInstallDate.trim() !== '') {
@@ -146,6 +153,8 @@
             var currentValue = $(this).val();
             if (currentValue && currentValue !== preservedInstallDate) {
                 hasUserChangedDate = true;
+                // Mark booking as manual since user explicitly changed the date
+                $form.find('input[name="_sfa_booking_mode"]').val('manual');
             }
         });
 
@@ -359,16 +368,20 @@
         $installField.attr('min', schedule.installation_minimum);
 
         // Handle date field population based on mode
+        var $form = $installField.closest('form');
         if (isEditMode && preservedInstallDate && !hasUserChangedDate) {
             // EDIT MODE: Restore the preserved date (ignore AJAX-calculated date)
             $installField.val(preservedInstallDate);
         } else if (hasUserChangedDate) {
             // User manually changed the date - respect their choice
             $installField.val(currentInstallDateBeforeAjax);
+            // Keep booking mode as manual (already set by change handler)
         } else {
-            // NEW ENTRY MODE: Set to calculated minimum
+            // NEW ENTRY MODE: Set to calculated minimum (automatic booking)
             var installDateFormatted = formatDateDisplay(schedule.installation_minimum);
             $installField.val(installDateFormatted);
+            // Ensure booking mode stays automatic since system calculated this date
+            $form.find('input[name="_sfa_booking_mode"]').val('automatic');
         }
 
         // Handle production date fields
