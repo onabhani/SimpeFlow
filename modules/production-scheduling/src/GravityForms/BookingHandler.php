@@ -473,8 +473,10 @@ class BookingHandler {
 				// Existing entry with date change: MANUAL booking from the new date
 				$is_manual_booking = true;
 				$manual_start_date = $submitted_installation_date;
-			} elseif ( ! $existing_install_date && $submitted_installation_date && $frontend_booking_mode === 'manual' ) {
-				// New entry where user explicitly chose a date: MANUAL booking from that date
+			} elseif ( ! $existing_install_date && $submitted_installation_date && $frontend_booking_mode !== 'automatic' ) {
+				// New entry where user explicitly chose a date (or no frontend flag present,
+				// e.g. admin-created entries, workflow steps): MANUAL booking from that date
+				// Only frontend auto-filled dates (mode='automatic') skip this to use queue scheduling
 				$is_manual_booking = true;
 				$manual_start_date = $submitted_installation_date;
 			} elseif ( $dates_inconsistent && $existing_install_date ) {
@@ -1442,9 +1444,6 @@ class BookingHandler {
 
 		// Normalize installation date
 		$install_date = $this->normalize_date( $install_date );
-
-		// Get daily capacity
-		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
 
 		// Check available capacity on the target date FIRST
 		// This determines if the order fits entirely on the target date or needs spill/over-capacity
