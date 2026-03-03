@@ -13,6 +13,7 @@ class ScheduleView {
 	public function __construct() {
 		add_action( 'admin_menu', [ $this, 'add_menu_page' ], 100 ); // Load after SimpleFlow parent menu
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
+		add_action( 'wp_ajax_sfa_prod_search_entry', [ $this, 'ajax_search_entry' ] );
 	}
 
 	/**
@@ -85,6 +86,8 @@ class ScheduleView {
 		<div class="wrap">
 			<h1>Production Schedule</h1>
 
+			<?php $this->render_entry_search(); ?>
+
 			<?php $this->render_month_navigation( $date ); ?>
 
 			<?php $this->render_calendar( $date, $bookings, $daily_capacity, $capacity_overrides, $off_days, $holidays ); ?>
@@ -120,6 +123,157 @@ class ScheduleView {
 				<?php echo $next_month->format( 'M Y' ); ?> ▶
 			</a>
 		</div>
+		<?php
+	}
+
+	/**
+	 * Render entry search bar
+	 */
+	private function render_entry_search() {
+		$nonce = wp_create_nonce( 'sfa_prod_search_entry' );
+		?>
+		<div style="margin: 20px 0; padding: 15px; background: #f9f9f9; border: 1px solid #ddd; border-radius: 4px;">
+			<div style="display: flex; align-items: center; gap: 10px;">
+				<label for="sfa-entry-search" style="font-weight: 600; white-space: nowrap;">Search Entry:</label>
+				<input type="number" id="sfa-entry-search" placeholder="Enter Entry ID" min="1" style="width: 200px; padding: 6px 10px;">
+				<button type="button" id="sfa-entry-search-btn" class="button button-primary">Search</button>
+				<span id="sfa-entry-search-loading" style="display: none; color: #666;">Searching...</span>
+			</div>
+			<div id="sfa-entry-search-result" style="display: none; margin-top: 15px;"></div>
+		</div>
+
+		<script>
+		jQuery(document).ready(function($) {
+			var searchNonce = '<?php echo esc_js( $nonce ); ?>';
+
+			function esc(str) {
+				var d = document.createElement('div');
+				d.appendChild(document.createTextNode(String(str)));
+				return d.innerHTML;
+			}
+
+			function escAttr(str) {
+				return esc(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+			}
+
+			function searchEntry() {
+				var entryId = $('#sfa-entry-search').val().trim();
+				if (!entryId || parseInt(entryId) <= 0) {
+					$('#sfa-entry-search-result').html(
+						'<div style="padding: 10px; background: #fee; border-left: 3px solid #c00; color: #c00;">Please enter a valid entry ID.</div>'
+					).show();
+					return;
+				}
+
+				$('#sfa-entry-search-btn').prop('disabled', true);
+				$('#sfa-entry-search-loading').show();
+				$('#sfa-entry-search-result').hide();
+
+				$.ajax({
+					url: ajaxurl,
+					method: 'POST',
+					data: {
+						action: 'sfa_prod_search_entry',
+						nonce: searchNonce,
+						entry_id: entryId
+					},
+					success: function(response) {
+						$('#sfa-entry-search-btn').prop('disabled', false);
+						$('#sfa-entry-search-loading').hide();
+
+						if (response.success) {
+							displaySearchResult(response.data);
+						} else {
+							$('#sfa-entry-search-result').html(
+								'<div style="padding: 10px; background: #fee; border-left: 3px solid #c00; color: #c00;">' + esc(response.data.message) + '</div>'
+							).show();
+						}
+					},
+					error: function() {
+						$('#sfa-entry-search-btn').prop('disabled', false);
+						$('#sfa-entry-search-loading').hide();
+						$('#sfa-entry-search-result').html(
+							'<div style="padding: 10px; background: #fee; border-left: 3px solid #c00; color: #c00;">Network error. Please try again.</div>'
+						).show();
+					}
+				});
+			}
+
+			function displaySearchResult(data) {
+				var statusColor = data.booking_status === 'confirmed' ? '#28a745' : (data.booking_status === 'canceled' ? '#dc3545' : '#6c757d');
+				var statusBg = data.booking_status === 'confirmed' ? '#d4edda' : (data.booking_status === 'canceled' ? '#f8d7da' : '#e9ecef');
+
+				var html = '<div style="padding: 15px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">';
+				html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">';
+				html += '<h3 style="margin: 0;">Entry #' + esc(data.entry_id) + '</h3>';
+				html += '<a href="' + escAttr(data.workflow_url) + '" target="_blank" class="button button-small">View Entry</a>';
+				html += '</div>';
+
+				html += '<table class="widefat" style="margin: 0;">';
+				html += '<tbody>';
+
+				html += '<tr><td style="width: 180px; font-weight: 600;">Form</td>';
+				html += '<td>' + esc(data.form_title || 'Form #' + data.form_id) + '</td></tr>';
+
+				html += '<tr><td style="font-weight: 600;">Installation Date</td>';
+				if (data.install_date) {
+					var installFormatted = formatDate(data.install_date);
+					html += '<td style="font-size: 16px; font-weight: 700; color: #0073aa;">' + esc(installFormatted) + '</td>';
+				} else {
+					html += '<td><em style="color: #999;">Not set</em></td>';
+				}
+				html += '</tr>';
+
+				if (data.prod_start && data.prod_end) {
+					html += '<tr><td style="font-weight: 600;">Production Dates</td>';
+					html += '<td>' + esc(formatDate(data.prod_start)) + ' - ' + esc(formatDate(data.prod_end)) + '</td></tr>';
+				}
+
+				html += '<tr><td style="font-weight: 600;">LM Required</td>';
+				html += '<td>' + (parseInt(data.lm_required) > 0 ? esc(data.lm_required) + ' LM' : '<em style="color: #999;">0 (Install only)</em>') + '</td></tr>';
+
+				html += '<tr><td style="font-weight: 600;">Booking Status</td>';
+				html += '<td><span style="display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; background: ' + escAttr(statusBg) + '; color: ' + escAttr(statusColor) + '; text-transform: uppercase;">' + esc(data.booking_status) + '</span></td></tr>';
+
+				html += '<tr><td style="font-weight: 600;">Entry Status</td>';
+				html += '<td>' + esc(data.entry_status) + '</td></tr>';
+
+				// Show allocation if available
+				if (data.allocation && Object.keys(data.allocation).length > 0) {
+					html += '<tr><td style="font-weight: 600; vertical-align: top;">Slot Allocation</td>';
+					html += '<td>';
+					for (var date in data.allocation) {
+						if (data.allocation.hasOwnProperty(date)) {
+							html += '<span style="display: inline-block; margin: 2px 4px 2px 0; padding: 3px 8px; background: #e7f5fe; border-radius: 3px; font-size: 12px;">' + esc(formatDate(date)) + ': ' + esc(data.allocation[date]) + ' slot' + (data.allocation[date] > 1 ? 's' : '') + '</span>';
+						}
+					}
+					html += '</td></tr>';
+				}
+
+				html += '</tbody></table>';
+				html += '</div>';
+
+				$('#sfa-entry-search-result').html(html).show();
+			}
+
+			function formatDate(dateStr) {
+				if (!dateStr) return '';
+				var parts = String(dateStr).split('-');
+				if (parts.length !== 3) return String(dateStr);
+				var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+				return months[parseInt(parts[1]) - 1] + ' ' + parseInt(parts[2]) + ', ' + parts[0];
+			}
+
+			$('#sfa-entry-search-btn').on('click', searchEntry);
+
+			$('#sfa-entry-search').on('keypress', function(e) {
+				if (e.which === 13) {
+					e.preventDefault();
+					searchEntry();
+				}
+			});
+		});
+		</script>
 		<?php
 	}
 
@@ -343,6 +497,61 @@ class ScheduleView {
 			</table>
 		<?php endif; ?>
 		<?php
+	}
+
+	/**
+	 * AJAX handler: Search for an entry and return its installation date
+	 */
+	public function ajax_search_entry() {
+		check_ajax_referer( 'sfa_prod_search_entry', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( [ 'message' => 'Permission denied.' ] );
+		}
+
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : 0;
+
+		if ( ! $entry_id ) {
+			wp_send_json_error( [ 'message' => 'Please enter a valid entry ID.' ] );
+		}
+
+		// Get the entry
+		$entry = \GFAPI::get_entry( $entry_id );
+
+		if ( is_wp_error( $entry ) ) {
+			wp_send_json_error( [ 'message' => 'Entry #' . $entry_id . ' not found.' ] );
+		}
+
+		// Get installation date from entry meta
+		$install_date = gform_get_meta( $entry_id, '_install_date' );
+		$prod_start = gform_get_meta( $entry_id, '_prod_start_date' );
+		$prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
+		$lm_required = gform_get_meta( $entry_id, '_prod_lm_required' );
+		$booking_status = gform_get_meta( $entry_id, '_prod_booking_status' );
+		$allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+
+		// Get form title
+		$form = \GFAPI::get_form( $entry['form_id'] );
+		$form_title = is_array( $form ) ? rgar( $form, 'title' ) : '';
+
+		// Build workflow URL
+		$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry['form_id'] . '&lid=' . $entry_id;
+
+		$data = [
+			'entry_id'       => $entry_id,
+			'form_id'        => $entry['form_id'],
+			'form_title'     => $form_title,
+			'install_date'   => $install_date ?: '',
+			'prod_start'     => $prod_start ?: '',
+			'prod_end'       => $prod_end ?: '',
+			'lm_required'    => $lm_required ?: '0',
+			'booking_status' => $booking_status ?: 'none',
+			'allocation'     => $allocation ? json_decode( $allocation, true ) : [],
+			'entry_status'   => $entry['status'],
+			'workflow_url'   => $workflow_url,
+		];
+
+		wp_send_json_success( $data );
 	}
 
 	/**
