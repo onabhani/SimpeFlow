@@ -146,6 +146,16 @@ class ScheduleView {
 		jQuery(document).ready(function($) {
 			var searchNonce = '<?php echo esc_js( $nonce ); ?>';
 
+			function esc(str) {
+				var d = document.createElement('div');
+				d.appendChild(document.createTextNode(String(str)));
+				return d.innerHTML;
+			}
+
+			function escAttr(str) {
+				return esc(str).replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+			}
+
 			function searchEntry() {
 				var entryId = $('#sfa-entry-search').val().trim();
 				if (!entryId || parseInt(entryId) <= 0) {
@@ -175,7 +185,7 @@ class ScheduleView {
 							displaySearchResult(response.data);
 						} else {
 							$('#sfa-entry-search-result').html(
-								'<div style="padding: 10px; background: #fee; border-left: 3px solid #c00; color: #c00;">' + response.data.message + '</div>'
+								'<div style="padding: 10px; background: #fee; border-left: 3px solid #c00; color: #c00;">' + esc(response.data.message) + '</div>'
 							).show();
 						}
 					},
@@ -195,20 +205,20 @@ class ScheduleView {
 
 				var html = '<div style="padding: 15px; background: #fff; border: 1px solid #ddd; border-radius: 4px;">';
 				html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">';
-				html += '<h3 style="margin: 0;">Entry #' + data.entry_id + '</h3>';
-				html += '<a href="' + data.workflow_url + '" target="_blank" class="button button-small">View Entry</a>';
+				html += '<h3 style="margin: 0;">Entry #' + esc(data.entry_id) + '</h3>';
+				html += '<a href="' + escAttr(data.workflow_url) + '" target="_blank" class="button button-small">View Entry</a>';
 				html += '</div>';
 
 				html += '<table class="widefat" style="margin: 0;">';
 				html += '<tbody>';
 
 				html += '<tr><td style="width: 180px; font-weight: 600;">Form</td>';
-				html += '<td>' + (data.form_title || 'Form #' + data.form_id) + '</td></tr>';
+				html += '<td>' + esc(data.form_title || 'Form #' + data.form_id) + '</td></tr>';
 
 				html += '<tr><td style="font-weight: 600;">Installation Date</td>';
 				if (data.install_date) {
 					var installFormatted = formatDate(data.install_date);
-					html += '<td style="font-size: 16px; font-weight: 700; color: #0073aa;">' + installFormatted + '</td>';
+					html += '<td style="font-size: 16px; font-weight: 700; color: #0073aa;">' + esc(installFormatted) + '</td>';
 				} else {
 					html += '<td><em style="color: #999;">Not set</em></td>';
 				}
@@ -216,17 +226,17 @@ class ScheduleView {
 
 				if (data.prod_start && data.prod_end) {
 					html += '<tr><td style="font-weight: 600;">Production Dates</td>';
-					html += '<td>' + formatDate(data.prod_start) + ' - ' + formatDate(data.prod_end) + '</td></tr>';
+					html += '<td>' + esc(formatDate(data.prod_start)) + ' - ' + esc(formatDate(data.prod_end)) + '</td></tr>';
 				}
 
 				html += '<tr><td style="font-weight: 600;">LM Required</td>';
-				html += '<td>' + (parseInt(data.lm_required) > 0 ? data.lm_required + ' LM' : '<em style="color: #999;">0 (Install only)</em>') + '</td></tr>';
+				html += '<td>' + (parseInt(data.lm_required) > 0 ? esc(data.lm_required) + ' LM' : '<em style="color: #999;">0 (Install only)</em>') + '</td></tr>';
 
 				html += '<tr><td style="font-weight: 600;">Booking Status</td>';
-				html += '<td><span style="display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; background: ' + statusBg + '; color: ' + statusColor + '; text-transform: uppercase;">' + data.booking_status + '</span></td></tr>';
+				html += '<td><span style="display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 11px; font-weight: 600; background: ' + escAttr(statusBg) + '; color: ' + escAttr(statusColor) + '; text-transform: uppercase;">' + esc(data.booking_status) + '</span></td></tr>';
 
 				html += '<tr><td style="font-weight: 600;">Entry Status</td>';
-				html += '<td>' + data.entry_status + '</td></tr>';
+				html += '<td>' + esc(data.entry_status) + '</td></tr>';
 
 				// Show allocation if available
 				if (data.allocation && Object.keys(data.allocation).length > 0) {
@@ -234,7 +244,7 @@ class ScheduleView {
 					html += '<td>';
 					for (var date in data.allocation) {
 						if (data.allocation.hasOwnProperty(date)) {
-							html += '<span style="display: inline-block; margin: 2px 4px 2px 0; padding: 3px 8px; background: #e7f5fe; border-radius: 3px; font-size: 12px;">' + formatDate(date) + ': ' + data.allocation[date] + ' slot' + (data.allocation[date] > 1 ? 's' : '') + '</span>';
+							html += '<span style="display: inline-block; margin: 2px 4px 2px 0; padding: 3px 8px; background: #e7f5fe; border-radius: 3px; font-size: 12px;">' + esc(formatDate(date)) + ': ' + esc(data.allocation[date]) + ' slot' + (data.allocation[date] > 1 ? 's' : '') + '</span>';
 						}
 					}
 					html += '</td></tr>';
@@ -248,8 +258,8 @@ class ScheduleView {
 
 			function formatDate(dateStr) {
 				if (!dateStr) return '';
-				var parts = dateStr.split('-');
-				if (parts.length !== 3) return dateStr;
+				var parts = String(dateStr).split('-');
+				if (parts.length !== 3) return String(dateStr);
 				var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 				return months[parseInt(parts[1]) - 1] + ' ' + parseInt(parts[2]) + ', ' + parts[0];
 			}
