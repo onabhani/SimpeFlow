@@ -761,7 +761,12 @@ class BookingHandler {
 		wp_cache_delete( 'sfa_prod_availability_next_30_days' );
 
 		// Allow other plugins to react to booking
-		do_action( 'sfa_production_booking_saved', $entry_id, $schedule, $installation_date );
+		$booking_data = [
+			'production_start' => $prod_start_date,
+			'production_end'   => $prod_end_date,
+			'allocation'       => $allocation_array,
+		];
+		do_action( 'sfa_production_booking_saved', $entry_id, $booking_data, $installation_date );
 
 		} finally {
 			// CRITICAL: Always release MySQL lock, even if error occurs
