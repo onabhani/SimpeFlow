@@ -1451,6 +1451,18 @@ class BookingHandler {
 		// Normalize installation date
 		$install_date = $this->normalize_date( $install_date );
 
+		// Short-circuit: if the entry already has a booking and neither the
+		// install date nor the LM changed, the backend will preserve the
+		// existing allocation as-is ($use_existing_allocation = true), so no
+		// capacity dialog is needed.
+		$existing_install_date = gform_get_meta( $entry_id, '_install_date' );
+		$existing_lm          = gform_get_meta( $entry_id, '_prod_lm_required' );
+		$existing_allocation  = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+
+		if ( $existing_allocation && $existing_install_date === $install_date && (int) $existing_lm === (int) $lm_required ) {
+			wp_send_json_success( [ 'has_overbooking' => false ] );
+		}
+
 		// Check available capacity on the target date FIRST
 		// This determines if the order fits entirely on the target date or needs spill/over-capacity
 		$capacity_check = $this->check_date_capacity( $install_date, $entry_id );
