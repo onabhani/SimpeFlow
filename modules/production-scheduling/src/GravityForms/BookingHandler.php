@@ -372,8 +372,11 @@ class BookingHandler {
 		$existing_prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
 		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
 
-		// Determine if LM changed (use epsilon comparison to avoid floating-point precision issues)
-		$lm_changed = $existing_lm && ( abs( (float) $existing_lm - (float) $lm_required ) > 1e-6 );
+		// Determine if LM changed (use epsilon comparison to avoid floating-point precision issues).
+		// Guard with !== null instead of truthy check so that a stored "0" (e.g. date-only booking)
+		// changing to a non-zero value is correctly detected as a change.
+		$lm_changed = ( $existing_lm !== null && $existing_lm !== '' )
+			&& ( abs( (float) $existing_lm - (float) $lm_required ) > 1e-6 );
 
 		// Check if installation date changed (from ANY context - admin, frontend, or workflow)
 		$date_changed = $existing_install_date && $submitted_installation_date && ( $submitted_installation_date !== $existing_install_date );
