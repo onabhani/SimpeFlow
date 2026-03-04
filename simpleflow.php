@@ -585,4 +585,6 @@ function simpleflow_entries_action_frontend_link( $actions, $filter, $entry, $fo
 /**
  * BOOT: Load modules immediately
  */
+
 simpleflow_load_modules();
+
