@@ -1459,7 +1459,7 @@ class BookingHandler {
 		$existing_lm          = gform_get_meta( $entry_id, '_prod_lm_required' );
 		$existing_allocation  = gform_get_meta( $entry_id, '_prod_slots_allocation' );
 
-		if ( $existing_allocation && $existing_install_date === $install_date && (int) $existing_lm === (int) $lm_required ) {
+		if ( $existing_allocation && $existing_install_date === $install_date && abs( (float) $existing_lm - (float) $lm_required ) < 1e-6 ) {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
 
