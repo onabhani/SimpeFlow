@@ -522,11 +522,26 @@ class BookingHandler {
 			// Otherwise: AUTOMATIC booking (no manual_start_date, uses queue)
 			// This includes new entries where the date was auto-filled by the preview
 
+			// Read admin capacity choice BEFORE the blocking check so over_capacity
+			// can bypass the "date fully booked" block.
+			// First check transient (set by AJAX before form submission), then fall back to POST.
+			$transient_key = 'sfa_capacity_choice_' . $entry_id;
+			$capacity_choice = get_transient( $transient_key );
+
+			if ( $capacity_choice ) {
+				// Clear the transient after reading (one-time use)
+				delete_transient( $transient_key );
+			} else {
+				// Fall back to POST (legacy support)
+				$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
+			}
+
 			// For MANUAL bookings: check if chosen date has available capacity
 			// - For NEW submissions: block if date is fully booked (user should choose different date)
 			// - For EDITS or reprocessing: allow even if fully booked - scheduler will spill to next day
+			// - Skip this check entirely if admin explicitly chose over_capacity via the dialog
 			$is_new_submission = ! $existing_install_date && $submitted_installation_date;
-			if ( $is_manual_booking && $manual_start_date && $is_new_submission ) {
+			if ( $capacity_choice !== 'over_capacity' && $is_manual_booking && $manual_start_date && $is_new_submission ) {
 				$capacity_check = $this->check_date_capacity( $manual_start_date, $entry_id );
 				if ( $capacity_check['available'] <= 0 ) {
 					// Date is fully booked - block NEW submissions only
@@ -559,32 +574,26 @@ class BookingHandler {
 				}
 			}
 
-			// Check admin capacity choice (over_capacity vs fill_spill)
-			// First check transient (set by AJAX before form submission), then fall back to POST
-			$transient_key = 'sfa_capacity_choice_' . $entry_id;
-			$capacity_choice = get_transient( $transient_key );
+			// Resolve the target date for over-capacity: use manual_start_date if set,
+			// otherwise fall back to submitted date or existing install date (handles
+			// LM-only changes where the date didn't change but capacity was exceeded).
+			$over_capacity_date = $manual_start_date
+				? $manual_start_date
+				: ( $submitted_installation_date ? $submitted_installation_date : $existing_install_date );
 
-			if ( $capacity_choice ) {
-				// Clear the transient after reading (one-time use)
-				delete_transient( $transient_key );
-			} else {
-				// Fall back to POST (legacy support)
-				$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
-			}
-
-			self::debug_log( sprintf( 'SFA_PROD SCHEDULE entry=%d capacity_choice=%s manual_start_date=%s lm_required=%s', $entry_id, var_export( $capacity_choice, true ), var_export( $manual_start_date, true ), var_export( $lm_required, true ) ) );
+			self::debug_log( sprintf( 'SFA_PROD SCHEDULE entry=%d capacity_choice=%s manual_start_date=%s over_capacity_date=%s lm_required=%s', $entry_id, var_export( $capacity_choice, true ), var_export( $manual_start_date, true ), var_export( $over_capacity_date, true ), var_export( $lm_required, true ) ) );
 
 			// Calculate schedule based on capacity choice or default behavior
 			try {
-				if ( $capacity_choice === 'over_capacity' && $manual_start_date ) {
+				if ( $capacity_choice === 'over_capacity' && $over_capacity_date ) {
 					// OVER-CAPACITY MODE: Force ALL LM onto the selected date
 					// Bypass scheduler entirely - admin explicitly chose to exceed capacity
 					$schedule = [
-						'production_start'     => $manual_start_date,
-						'production_end'       => $manual_start_date,
-						'installation_minimum' => $manual_start_date,
+						'production_start'     => $over_capacity_date,
+						'production_end'       => $over_capacity_date,
+						'installation_minimum' => $over_capacity_date,
 						'total_days'           => 1,
-						'allocation'           => [ $manual_start_date => $lm_required ],
+						'allocation'           => [ $over_capacity_date => $lm_required ],
 					];
 
 					// Store booking mode for audit trail
@@ -878,6 +887,14 @@ class BookingHandler {
 			return;
 		}
 
+		// Check if workflow has been cancelled — cancel booking instead of re-processing
+		$workflow_status = gform_get_meta( $entry_id, 'workflow_final_status' );
+		if ( in_array( $workflow_status, [ 'cancelled', 'canceled' ], true ) ) {
+			self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_post_process_workflow] entry=%d workflow_final_status=%s — cancelling booking', $entry_id, $workflow_status ) );
+			$this->cancel_production_booking( $entry_id );
+			return;
+		}
+
 		// Check if entry has an existing booking
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 		if ( ! $existing_booking ) {
@@ -965,11 +982,8 @@ class BookingHandler {
 			return;
 		}
 
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [check_cancel_workflow_request] entry=%d — deferring to gravityflow_workflow_cancelled / gravityflow_status_updated hooks', $entry_id ) );
-		// Cancellation is handled by the authoritative GravityFlow hooks
-		// (gravityflow_workflow_cancelled and gravityflow_status_updated) which fire
-		// after GravityFlow confirms the status change. Performing the destructive
-		// operation here would race ahead of GravityFlow's own processing.
+		self::debug_log( sprintf( 'SFA_PROD CANCEL [check_cancel_workflow_request] entry=%d — cancelling booking', $entry_id ) );
+		$this->cancel_production_booking( $entry_id );
 	}
 
 	/**
@@ -1000,11 +1014,8 @@ class BookingHandler {
 			return;
 		}
 
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [handle_cancel_workflow_ajax] entry=%d — deferring to gravityflow_workflow_cancelled / gravityflow_status_updated hooks', $entry_id ) );
-		// Cancellation is handled by the authoritative GravityFlow hooks
-		// (gravityflow_workflow_cancelled and gravityflow_status_updated) which fire
-		// after GravityFlow confirms the status change. Performing the destructive
-		// operation here would race ahead of GravityFlow's own processing.
+		self::debug_log( sprintf( 'SFA_PROD CANCEL [handle_cancel_workflow_ajax] entry=%d — cancelling booking', $entry_id ) );
+		$this->cancel_production_booking( $entry_id );
 	}
 
 	/**
@@ -1015,8 +1026,10 @@ class BookingHandler {
 	 * Only runs on production schedule admin page to avoid unnecessary queries.
 	 */
 	public function sync_cancelled_workflow_bookings() {
-		// Only run on the production schedule page
-		if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'sfa-production-schedule' ) {
+		// Run on the production schedule page OR GF entry detail pages
+		$is_prod_schedule = isset( $_GET['page'] ) && $_GET['page'] === 'sfa-production-schedule';
+		$is_gf_entry = ( isset( $_GET['page'] ) && $_GET['page'] === 'gf_entries' && isset( $_GET['view'] ) && $_GET['view'] === 'entry' );
+		if ( ! $is_prod_schedule && ! $is_gf_entry ) {
 			return;
 		}
 
