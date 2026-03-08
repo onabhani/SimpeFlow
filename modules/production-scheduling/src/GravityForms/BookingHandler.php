@@ -90,6 +90,7 @@ class BookingHandler {
 	 * @param array $original_entry The original entry before update
 	 */
 	public function handle_entry_update( $form, $entry_id, $original_entry ) {
+		error_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d', $entry_id ) );
 		// Get updated entry
 		$entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $entry ) || ! $entry ) {
@@ -348,8 +349,8 @@ class BookingHandler {
 			// Store field breakdown in entry meta
 			gform_update_meta( $entry_id, '_prod_field_breakdown', wp_json_encode( $field_breakdown ) );
 			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
-			// IMPORTANT: Save _prod_lm_required for date preservation logic to work
-			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
+			// NOTE: _prod_lm_required is saved AFTER change detection (below) to avoid
+			// overwriting the old value before comparing it.
 		} else {
 			// Legacy mode (single LM field)
 			$lm_required = isset( $entry[ $lm_field_id ] ) ? absint( $entry[ $lm_field_id ] ) : 0;
@@ -360,18 +361,21 @@ class BookingHandler {
 
 			$total_slots = $lm_required;
 
-			// Store LM in entry meta for backwards compatibility
-			gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
-			gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
+			// NOTE: _prod_lm_required is saved AFTER change detection (below) to avoid
+			// overwriting the old value before comparing it.
 		}
 
 		// Check if this is a re-booking (existing booking meta)
-		// NOTE: This check is moved BEFORE schedule calculation to determine manual vs automatic booking
+		// CRITICAL: Read existing meta BEFORE writing new values so change detection works.
 		$existing_install_date = gform_get_meta( $entry_id, '_install_date' );
 		$existing_lm = gform_get_meta( $entry_id, '_prod_lm_required' );
 		$existing_prod_start = gform_get_meta( $entry_id, '_prod_start_date' );
 		$existing_prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
 		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+
+		// Now safe to write the new LM value
+		gform_update_meta( $entry_id, '_prod_lm_required', $lm_required );
+		gform_update_meta( $entry_id, '_prod_total_slots', $total_slots );
 
 		// Determine if LM changed (use epsilon comparison to avoid floating-point precision issues).
 		// Guard with !== null instead of truthy check so that a stored "0" (e.g. date-only booking)
@@ -411,6 +415,18 @@ class BookingHandler {
 		$is_manual_booking = false;
 
 		// FORCE RECALCULATION if installation date changed OR LM changed OR dates are inconsistent
+		error_log( sprintf(
+			'SFA_PROD CHANGE_DETECT entry=%d lm_changed=%s date_changed=%s dates_inconsistent=%s existing_lm=%s new_lm=%s existing_date=%s submitted_date=%s has_allocation=%s',
+			$entry_id,
+			$lm_changed ? 'YES' : 'NO',
+			$date_changed ? 'YES' : 'NO',
+			$dates_inconsistent ? 'YES' : 'NO',
+			var_export( $existing_lm, true ),
+			var_export( $lm_required, true ),
+			var_export( $existing_install_date, true ),
+			var_export( $submitted_installation_date, true ),
+			$existing_allocation ? 'YES' : 'NO'
+		) );
 		if ( $existing_install_date && $existing_allocation && ! $lm_changed && ! $date_changed && ! $dates_inconsistent ) {
 			// Re-booking with unchanged LM: Keep ALL existing booking data
 			// IGNORE the submitted installation_date entirely - JavaScript may have changed it
@@ -546,6 +562,8 @@ class BookingHandler {
 				// Fall back to POST (legacy support)
 				$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
 			}
+
+			error_log( sprintf( 'SFA_PROD SCHEDULE entry=%d capacity_choice=%s manual_start_date=%s lm_required=%s', $entry_id, var_export( $capacity_choice, true ), var_export( $manual_start_date, true ), var_export( $lm_required, true ) ) );
 
 			// Calculate schedule based on capacity choice or default behavior
 			try {
@@ -711,6 +729,7 @@ class BookingHandler {
 		$wpdb->query( 'START TRANSACTION' );
 
 		try {
+			error_log( sprintf( 'SFA_PROD SAVE entry=%d install_date=%s start=%s end=%s allocation=%s', $entry_id, $installation_date, $prod_start_date, $prod_end_date, $allocation_to_save ) );
 			gform_update_meta( $entry_id, '_prod_slots_allocation', $allocation_to_save );
 			gform_update_meta( $entry_id, '_prod_start_date', $prod_start_date );
 			gform_update_meta( $entry_id, '_prod_end_date', $prod_end_date );
@@ -899,6 +918,7 @@ class BookingHandler {
 	 * @param object $step The current step
 	 */
 	public function handle_workflow_status_change( $entry_id, $new_status, $old_status, $step ) {
+		error_log( sprintf( 'SFA_PROD CANCEL [gravityflow_status_updated] entry=%d new=%s old=%s', $entry_id, $new_status, $old_status ) );
 		// If workflow is cancelled, fully cancel the production booking
 		if ( 'cancelled' === $new_status || 'canceled' === $new_status ) {
 			$this->cancel_production_booking( $entry_id );
@@ -913,7 +933,7 @@ class BookingHandler {
 	public function check_cancel_workflow_request() {
 		// Check if this is a cancel workflow request
 		if ( ! isset( $_GET['gf_cancel_workflow'] ) && ! isset( $_POST['gf_cancel_workflow'] ) ) {
-			return;
+			return; // Not a cancel request — silent return (no log to avoid spam on every admin_init)
 		}
 
 		// Get entry ID from request
@@ -923,6 +943,7 @@ class BookingHandler {
 			return;
 		}
 
+		error_log( sprintf( 'SFA_PROD CANCEL [check_cancel_workflow_request] entry=%d', $entry_id ) );
 		$this->cancel_production_booking( $entry_id );
 	}
 
@@ -943,6 +964,7 @@ class BookingHandler {
 			return;
 		}
 
+		error_log( sprintf( 'SFA_PROD CANCEL [handle_cancel_workflow_ajax] entry=%d', $entry_id ) );
 		$this->cancel_production_booking( $entry_id );
 	}
 
@@ -1103,6 +1125,7 @@ class BookingHandler {
 	 * @param object $step     The current step object
 	 */
 	public function handle_workflow_cancellation( $entry_id, $form, $step ) {
+		error_log( sprintf( 'SFA_PROD CANCEL [gravityflow_workflow_cancelled] entry=%d', $entry_id ) );
 		$this->cancel_production_booking( $entry_id );
 	}
 
@@ -1117,8 +1140,11 @@ class BookingHandler {
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 
 		if ( ! $existing_booking ) {
-			return; // No booking to cancel
+			error_log( sprintf( 'SFA_PROD CANCEL cancel_production_booking entry=%d — no _install_date meta, nothing to cancel', $entry_id ) );
+			return;
 		}
+
+		error_log( sprintf( 'SFA_PROD CANCEL cancel_production_booking entry=%d — clearing all booking meta (install_date=%s)', $entry_id, $existing_booking ) );
 
 		// Clear cache for allocated dates before removing meta
 		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
