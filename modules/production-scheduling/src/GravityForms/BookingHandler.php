@@ -1148,6 +1148,7 @@ class BookingHandler {
 		gform_delete_meta( $entry_id, '_prod_daily_capacity_at_booking' );
 		gform_delete_meta( $entry_id, '_prod_field_breakdown' );
 		gform_delete_meta( $entry_id, '_prod_booking_type' );
+		gform_delete_meta( $entry_id, '_prod_capacity_mode' );
 
 		// Clear general availability cache
 		wp_cache_delete( 'sfa_prod_availability_next_30_days' );
@@ -1224,15 +1225,10 @@ class BookingHandler {
 	 * @param int $entry_id The entry ID whose booking should be cancelled.
 	 */
 	private function cancel_production_booking( $entry_id ) {
-		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
-
-		if ( ! $existing_booking ) {
-			self::debug_log( sprintf( 'SFA_PROD CANCEL cancel_production_booking entry=%d — no _install_date meta, nothing to cancel', $entry_id ) );
-			return;
-		}
-
 		// Acquire the same named lock used by process_production_booking to
 		// serialize all booking mutations and prevent race conditions.
+		// The _install_date check is performed AFTER acquiring the lock to
+		// avoid a TOCTOU race with process_production_booking.
 		global $wpdb;
 		$lock_name = 'sfa_prod_booking';
 		$lock_timeout = 15;
@@ -1247,10 +1243,10 @@ class BookingHandler {
 		}
 
 		try {
-			// Re-check inside the lock — another request may have already cancelled
+			// Check inside the lock — ensures consistent read after serialization
 			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 			if ( ! $existing_booking ) {
-				self::debug_log( sprintf( 'SFA_PROD CANCEL cancel_production_booking entry=%d — already cancelled (no _install_date after lock)', $entry_id ) );
+				self::debug_log( sprintf( 'SFA_PROD CANCEL cancel_production_booking entry=%d — no _install_date meta, nothing to cancel', $entry_id ) );
 				return;
 			}
 
