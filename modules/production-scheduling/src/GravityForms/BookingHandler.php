@@ -254,8 +254,9 @@ class BookingHandler {
 		$installation_date = isset( $entry[ $install_field_id ] ) ? $entry[ $install_field_id ] : '';
 
 		// Normalize installation date format (convert DD/MM/YYYY to YYYY-MM-DD if needed)
+		$gf_date_format = FormSettings::get_install_field_date_format( $form );
 		if ( $installation_date ) {
-			$installation_date = $this->normalize_date( $installation_date );
+			$installation_date = $this->normalize_date( $installation_date, $gf_date_format );
 		}
 
 		// Store the submitted installation date for later comparison (before any modifications)
@@ -898,12 +899,9 @@ class BookingHandler {
 	 * @param object $step The current step
 	 */
 	public function handle_workflow_status_change( $entry_id, $new_status, $old_status, $step ) {
-		// If workflow is cancelled, mark booking as canceled
+		// If workflow is cancelled, fully cancel the production booking
 		if ( 'cancelled' === $new_status || 'canceled' === $new_status ) {
-			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
-			if ( $existing_booking ) {
-				gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
-			}
+			$this->cancel_production_booking( $entry_id );
 		}
 	}
 
@@ -925,11 +923,7 @@ class BookingHandler {
 			return;
 		}
 
-		// Mark booking as canceled
-		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
-		if ( $existing_booking ) {
-			gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
-		}
+		$this->cancel_production_booking( $entry_id );
 	}
 
 	/**
@@ -949,11 +943,7 @@ class BookingHandler {
 			return;
 		}
 
-		// Mark booking as canceled immediately
-		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
-		if ( $existing_booking ) {
-			gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
-		}
+		$this->cancel_production_booking( $entry_id );
 	}
 
 	/**
@@ -985,7 +975,7 @@ class BookingHandler {
 		);
 
 		foreach ( $entries as $row ) {
-			gform_update_meta( (int) $row['entry_id'], '_prod_booking_status', 'canceled' );
+			$this->cancel_production_booking( (int) $row['entry_id'] );
 		}
 	}
 
@@ -1113,18 +1103,57 @@ class BookingHandler {
 	 * @param object $step     The current step object
 	 */
 	public function handle_workflow_cancellation( $entry_id, $form, $step ) {
-		// Check if entry has a production booking
+		$this->cancel_production_booking( $entry_id );
+	}
+
+	/**
+	 * Cancel a production booking: clear allocation, free capacity, and invalidate cache.
+	 *
+	 * Shared by all cancellation paths (workflow hook, status change, AJAX, admin_init).
+	 *
+	 * @param int $entry_id The entry ID whose booking should be cancelled.
+	 */
+	private function cancel_production_booking( $entry_id ) {
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 
 		if ( ! $existing_booking ) {
 			return; // No booking to cancel
 		}
 
-		// Mark booking as canceled (keep the allocation, just change status)
-		gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
+		// Clear cache for allocated dates before removing meta
+		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+		if ( $existing_allocation ) {
+			$allocation = json_decode( $existing_allocation, true );
+			if ( is_array( $allocation ) ) {
+				foreach ( array_keys( $allocation ) as $date ) {
+					$year_month = substr( $date, 0, 7 );
+					wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+				}
+			}
+		}
 
-		// Note: We keep the slots allocated (don't clear cache) so they remain reserved
-		// This prevents overbooking in case the workflow is reactivated
+		// Delete all production booking meta to fully free capacity
+		gform_delete_meta( $entry_id, '_prod_lm_required' );
+		gform_delete_meta( $entry_id, '_prod_total_slots' );
+		gform_delete_meta( $entry_id, '_prod_slots_allocation' );
+		gform_delete_meta( $entry_id, '_prod_start_date' );
+		gform_delete_meta( $entry_id, '_prod_end_date' );
+		gform_delete_meta( $entry_id, '_install_date' );
+		gform_delete_meta( $entry_id, '_prod_booking_status' );
+		gform_delete_meta( $entry_id, '_prod_booked_at' );
+		gform_delete_meta( $entry_id, '_prod_booked_by' );
+		gform_delete_meta( $entry_id, '_prod_daily_capacity_at_booking' );
+		gform_delete_meta( $entry_id, '_prod_field_breakdown' );
+		gform_delete_meta( $entry_id, '_prod_booking_type' );
+		gform_delete_meta( $entry_id, '_prod_capacity_mode' );
+
+		// Clear general availability cache
+		wp_cache_delete( 'sfa_prod_availability_next_30_days' );
+
+		// Audit log
+		$this->log_booking_audit( $entry_id, 'booking_canceled', [
+			'allocation' => $existing_allocation,
+		] );
 
 		// Allow other plugins to react
 		do_action( 'sfa_production_booking_canceled', $entry_id );
@@ -1140,9 +1169,10 @@ class BookingHandler {
 	 * - M/D/YYYY (single digit month/day)
 	 *
 	 * @param string $date_str
+	 * @param string $gf_date_format Optional GF field dateFormat ('dmy', 'mdy', etc.) to disambiguate.
 	 * @return string
 	 */
-	private function normalize_date( $date_str ) {
+	private function normalize_date( $date_str, $gf_date_format = '' ) {
 		$date_str = trim( $date_str );
 
 		// Check if already in YYYY-MM-DD format
@@ -1150,25 +1180,35 @@ class BookingHandler {
 			return $date_str;
 		}
 
-		// Handle M/D/YYYY or MM/DD/YYYY format (1 or 2 digits for month/day)
+		// Handle M/D/YYYY or MM/DD/YYYY or DD/MM/YYYY format (1 or 2 digits for month/day)
 		if ( preg_match( '/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $date_str, $matches ) ) {
 			$part1 = (int) $matches[1];
 			$part2 = (int) $matches[2];
 			$year = $matches[3];
 
-			// Determine if MM/DD/YYYY or DD/MM/YYYY based on values
-			if ( $part1 > 12 ) {
-				// Must be DD/MM/YYYY (day is > 12)
+			// Use the GF field format setting when available to disambiguate
+			$is_dmy = ( strpos( $gf_date_format, 'dmy' ) === 0 );
+
+			if ( $is_dmy ) {
+				// Field is DD/MM/YYYY — part1 is day, part2 is month
+				$day   = str_pad( $part1, 2, '0', STR_PAD_LEFT );
 				$month = str_pad( $part2, 2, '0', STR_PAD_LEFT );
-				$day = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+			} elseif ( $gf_date_format && ! $is_dmy ) {
+				// Field is MM/DD/YYYY (mdy or any other explicit format)
+				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+				$day   = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+			} elseif ( $part1 > 12 ) {
+				// No format hint but part1 > 12, must be DD/MM/YYYY
+				$day   = str_pad( $part1, 2, '0', STR_PAD_LEFT );
+				$month = str_pad( $part2, 2, '0', STR_PAD_LEFT );
 			} elseif ( $part2 > 12 ) {
-				// Must be MM/DD/YYYY (day is > 12)
+				// No format hint but part2 > 12, must be MM/DD/YYYY
 				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
-				$day = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+				$day   = str_pad( $part2, 2, '0', STR_PAD_LEFT );
 			} else {
-				// Ambiguous - default to MM/DD/YYYY (US format - Gravity Forms default)
+				// Ambiguous with no format hint - default to MM/DD/YYYY (US format)
 				$month = str_pad( $part1, 2, '0', STR_PAD_LEFT );
-				$day = str_pad( $part2, 2, '0', STR_PAD_LEFT );
+				$day   = str_pad( $part2, 2, '0', STR_PAD_LEFT );
 			}
 
 			$normalized = $year . '-' . $month . '-' . $day;
@@ -1429,30 +1469,44 @@ class BookingHandler {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
 
-		// Get the Linear Meter field value OR calculate from production fields
+		// Get the Linear Meter field value OR calculate from production fields.
+		// Prefer values POSTed from the admin form (current unsaved edits) over DB values.
 		$lm_field_id = FormSettings::get_lm_field_id( $form );
 		$production_fields = FormSettings::get_production_fields( $form );
 		$lm_required = 0;
 		$field_values = [];
 
+		// Check if JS sent current field values from the DOM
+		$posted_field_values = isset( $_POST['current_field_values'] ) && is_array( $_POST['current_field_values'] ) ? $_POST['current_field_values'] : null;
+		$posted_legacy_lm = isset( $_POST['current_lm'] ) ? sanitize_text_field( $_POST['current_lm'] ) : null;
+
 		if ( ! empty( $production_fields ) ) {
-			// Multi-field mode: calculate total from production fields
+			// Multi-field mode: prefer POSTed values, fall back to DB entry
 			foreach ( $production_fields as $pf ) {
 				$fid = $pf['field_id'];
-				$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
+				if ( $posted_field_values && isset( $posted_field_values[ $fid ] ) ) {
+					$field_values[ $fid ] = floatval( sanitize_text_field( $posted_field_values[ $fid ] ) );
+				} else {
+					$field_values[ $fid ] = isset( $entry[ $fid ] ) ? floatval( $entry[ $fid ] ) : 0;
+				}
 			}
 			$lm_required = FormSettings::calculate_total_slots( $field_values, $production_fields );
 		} elseif ( $lm_field_id ) {
-			// Legacy mode: single LM field
-			$lm_required = isset( $entry[ $lm_field_id ] ) ? floatval( $entry[ $lm_field_id ] ) : 0;
+			// Legacy mode: prefer POSTed LM value, fall back to DB entry
+			if ( $posted_legacy_lm !== null ) {
+				$lm_required = floatval( $posted_legacy_lm );
+			} else {
+				$lm_required = isset( $entry[ $lm_field_id ] ) ? floatval( $entry[ $lm_field_id ] ) : 0;
+			}
 		}
 
 		if ( $lm_required <= 0 ) {
 			wp_send_json_success( [ 'has_overbooking' => false ] );
 		}
 
-		// Normalize installation date
-		$install_date = $this->normalize_date( $install_date );
+		// Normalize installation date using the field's configured format
+		$gf_date_format = FormSettings::get_install_field_date_format( $form );
+		$install_date = $this->normalize_date( $install_date, $gf_date_format );
 
 		// Short-circuit: if the entry already has a booking and neither the
 		// install date nor the LM changed, the backend will preserve the

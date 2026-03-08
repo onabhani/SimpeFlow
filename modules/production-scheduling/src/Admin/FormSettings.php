@@ -564,6 +564,27 @@ class FormSettings {
 	}
 
 	/**
+	 * Get the date format configured on the installation date field.
+	 *
+	 * @param array $form The Gravity Forms form array.
+	 * @return string 'dmy', 'mdy', 'dmy_dash', 'dmy_dot', 'ymd_slash', 'ymd_dash', 'ymd_dot', or '' if unknown.
+	 */
+	public static function get_install_field_date_format( $form ) {
+		$field_id = self::get_install_field_id( $form );
+		if ( ! $field_id || empty( $form['fields'] ) ) {
+			return '';
+		}
+		foreach ( $form['fields'] as $field ) {
+			if ( (int) $field->id === $field_id && 'date' === $field->type ) {
+				// GF stores format as 'mdy' (MM/DD/YYYY), 'dmy' (DD/MM/YYYY),
+				// 'dmy_dash', 'dmy_dot', 'ymd_slash', 'ymd_dash', 'ymd_dot'
+				return isset( $field->dateFormat ) ? $field->dateFormat : '';
+			}
+		}
+		return '';
+	}
+
+	/**
 	 * Get production start date field ID for a form
 	 */
 	public static function get_prod_start_field_id( $form ) {

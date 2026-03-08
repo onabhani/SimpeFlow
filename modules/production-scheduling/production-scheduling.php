@@ -163,6 +163,19 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
 	// Enqueue the script
 	wp_enqueue_script( 'sfa-prod-admin-entry-edit' );
 
+	// Get production field IDs so JS can read current values from the DOM
+	$production_fields = SFA\ProductionScheduling\Admin\FormSettings::get_production_fields( $form );
+	$prod_field_configs = [];
+	if ( ! empty( $production_fields ) ) {
+		foreach ( $production_fields as $pf ) {
+			$prod_field_configs[] = [
+				'field_id'   => $pf['field_id'],
+				'field_type' => $pf['field_type'],
+			];
+		}
+	}
+	$lm_field_id = SFA\ProductionScheduling\Admin\FormSettings::get_lm_field_id( $form );
+
 	// Localize script with config
 	wp_localize_script( 'sfa-prod-admin-entry-edit', 'sfaProdAdmin', [
 		'nonce' => wp_create_nonce( 'sfa_prod_admin_capacity_check' ),
@@ -170,5 +183,7 @@ add_action( 'admin_enqueue_scripts', function( $hook ) {
 		'formId' => $form_id,
 		'installFieldId' => $install_field_id,
 		'entryId' => absint( $_GET['lid'] ),
+		'productionFields' => $prod_field_configs,
+		'lmFieldId' => $lm_field_id,
 	] );
 } );
