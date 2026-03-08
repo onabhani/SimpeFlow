@@ -1050,6 +1050,8 @@ class BookingHandler {
 			return;
 		}
 
+		self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] running on %s', $is_prod_schedule ? 'production_schedule' : 'gf_entry' ) );
+
 		global $wpdb;
 
 		if ( $is_gf_entry ) {
@@ -1089,7 +1091,10 @@ class BookingHandler {
 			);
 		}
 
+		self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] found %d entries to cancel: %s', count( $entries ), wp_json_encode( wp_list_pluck( $entries, 'entry_id' ) ) ) );
+
 		foreach ( $entries as $row ) {
+			self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] cancelling entry=%d', (int) $row['entry_id'] ) );
 			$this->cancel_production_booking( (int) $row['entry_id'] );
 		}
 	}
