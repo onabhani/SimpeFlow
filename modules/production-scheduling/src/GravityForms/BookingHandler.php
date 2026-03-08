@@ -34,9 +34,12 @@ class BookingHandler {
 		// Hook into entry deletion to remove bookings
 		add_action( 'gform_delete_entry', [ $this, 'handle_entry_deletion' ], 10, 1 );
 
-		// Hook into workflow cancellation — gravityflow_pre_cancel_workflow is the
-		// only cancel-related action GravityFlow fires (there is no post-cancel hook).
-		// It fires with ($entry, $form, $step) just before meta is updated.
+		// Hook into workflow cancellation. GravityFlow has no post-cancel hook;
+		// gravityflow_pre_cancel_workflow is the only cancel action it fires
+		// (class-api.php:123). We schedule a deferred cancel on shutdown so our
+		// booking release runs AFTER GravityFlow writes workflow_final_status,
+		// making the meta authoritative. The sync safety net remains as a
+		// secondary catch-all for any edge cases.
 		add_action( 'gravityflow_pre_cancel_workflow', [ $this, 'handle_workflow_cancellation' ], 10, 3 );
 
 		// Hook into workflow step processing to update bookings when entries are edited in workflow inbox
@@ -1209,10 +1212,13 @@ class BookingHandler {
 	}
 
 	/**
-	 * Handle workflow cancellation - mark booking as canceled.
+	 * Handle workflow cancellation — schedule deferred cancel.
 	 *
-	 * Hooked to gravityflow_pre_cancel_workflow which fires with the full
-	 * entry array just before GravityFlow sets workflow_final_status.
+	 * GravityFlow fires gravityflow_pre_cancel_workflow BEFORE writing
+	 * workflow_final_status = 'cancelled' (class-api.php:123-127).
+	 * Rather than cancelling optimistically before the status is committed,
+	 * we defer to a shutdown callback so we can verify the meta was written
+	 * before releasing capacity.
 	 *
 	 * @param array              $entry The entry array.
 	 * @param array              $form  The form object.
@@ -1220,8 +1226,17 @@ class BookingHandler {
 	 */
 	public function handle_workflow_cancellation( $entry, $form, $step ) {
 		$entry_id = absint( $entry['id'] );
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_pre_cancel_workflow] entry=%d', $entry_id ) );
-		$this->cancel_production_booking( $entry_id );
+		self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_pre_cancel_workflow] entry=%d — deferring to shutdown', $entry_id ) );
+
+		add_action( 'shutdown', function () use ( $entry_id ) {
+			$status = gform_get_meta( $entry_id, 'workflow_final_status' );
+			if ( in_array( $status, [ 'cancelled', 'canceled' ], true ) ) {
+				self::debug_log( sprintf( 'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — cancelling booking', $entry_id, $status ) );
+				$this->cancel_production_booking( $entry_id );
+			} else {
+				self::debug_log( sprintf( 'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — cancel not confirmed, skipping', $entry_id, $status ?: '(empty)' ) );
+			}
+		} );
 	}
 
 	/**
