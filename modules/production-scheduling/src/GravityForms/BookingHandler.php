@@ -139,12 +139,18 @@ class BookingHandler {
 				// GravityFlow stores step status as 'workflow_step_status_{step_id}' in entry meta
 				$step_status = gform_get_meta( $entry_id, 'workflow_step_status_' . $booking_step_id );
 				if ( $step_status !== 'complete' ) {
-					self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) not yet completed (status=%s)', $entry_id, $booking_step_id, var_export( $step_status, true ) ) );
+					self::debug_log( sprintf(
+					'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) not yet completed (status=%s)',
+					$entry_id, $booking_step_id, var_export( $step_status, true )
+				) );
 					return; // Booking step hasn't completed yet, skip
 				}
 				// Step completed but _install_date is missing — allow process_production_booking
 				// to create the booking (handles cases where initial booking failed or was lost)
-				self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d step=%d completed but _install_date missing — will create booking', $entry_id, $booking_step_id ) );
+				self::debug_log( sprintf(
+				'SFA_PROD [gform_after_update_entry] entry=%d step=%d completed but _install_date missing — will create booking',
+				$entry_id, $booking_step_id
+			) );
 			}
 		}
 
@@ -1085,11 +1091,17 @@ class BookingHandler {
 		}
 
 		if ( count( $entries ) > 0 ) {
-			self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] found %d entries to cancel: %s', count( $entries ), wp_json_encode( wp_list_pluck( $entries, 'entry_id' ) ) ) );
+			self::debug_log( sprintf(
+				'SFA_PROD SYNC [sync_cancelled_workflow_bookings] found %d entries to cancel: %s',
+				count( $entries ), wp_json_encode( wp_list_pluck( $entries, 'entry_id' ) )
+			) );
 		}
 
 		foreach ( $entries as $row ) {
-			self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] cancelling entry=%d', (int) $row['entry_id'] ) );
+			self::debug_log( sprintf(
+				'SFA_PROD SYNC [sync_cancelled_workflow_bookings] cancelling entry=%d',
+				(int) $row['entry_id']
+			) );
 			$this->cancel_production_booking( (int) $row['entry_id'] );
 		}
 	}
@@ -1226,15 +1238,24 @@ class BookingHandler {
 	 */
 	public function handle_workflow_cancellation( $entry, $form, $step ) {
 		$entry_id = absint( $entry['id'] );
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_pre_cancel_workflow] entry=%d — deferring to shutdown', $entry_id ) );
+		self::debug_log( sprintf(
+			'SFA_PROD CANCEL [gravityflow_pre_cancel_workflow] entry=%d — deferring to shutdown',
+			$entry_id
+		) );
 
 		add_action( 'shutdown', function () use ( $entry_id ) {
 			$status = gform_get_meta( $entry_id, 'workflow_final_status' );
 			if ( in_array( $status, [ 'cancelled', 'canceled' ], true ) ) {
-				self::debug_log( sprintf( 'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — cancelling booking', $entry_id, $status ) );
+				self::debug_log( sprintf(
+					'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — cancelling booking',
+					$entry_id, $status
+				) );
 				$this->cancel_production_booking( $entry_id );
 			} else {
-				self::debug_log( sprintf( 'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — cancel not confirmed, skipping', $entry_id, $status ?: '(empty)' ) );
+				self::debug_log( sprintf(
+					'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — cancel not confirmed, skipping',
+					$entry_id, $status ?: '(empty)'
+				) );
 			}
 		} );
 	}
