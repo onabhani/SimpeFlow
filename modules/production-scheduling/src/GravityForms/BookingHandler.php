@@ -1101,6 +1101,19 @@ class BookingHandler {
 
 		self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] found %d entries to cancel: %s', count( $entries ), wp_json_encode( wp_list_pluck( $entries, 'entry_id' ) ) ) );
 
+		// DIAGNOSTIC: Log all confirmed booking entries and their workflow_final_status
+		$all_confirmed = $wpdb->get_results(
+			"SELECT bs.entry_id,
+				(SELECT wf.meta_value FROM {$wpdb->prefix}gf_entry_meta wf WHERE wf.entry_id = bs.entry_id AND wf.meta_key = 'workflow_final_status' LIMIT 1) as workflow_status
+			FROM {$wpdb->prefix}gf_entry_meta bs
+			WHERE bs.meta_key = '_prod_booking_status'
+			AND bs.meta_value = 'confirmed'
+			ORDER BY bs.entry_id DESC
+			LIMIT 20",
+			ARRAY_A
+		);
+		self::debug_log( sprintf( 'SFA_PROD SYNC [DIAGNOSTIC] confirmed bookings (last 20): %s', wp_json_encode( $all_confirmed ) ) );
+
 		foreach ( $entries as $row ) {
 			self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] cancelling entry=%d', (int) $row['entry_id'] ) );
 			$this->cancel_production_booking( (int) $row['entry_id'] );
