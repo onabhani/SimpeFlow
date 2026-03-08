@@ -86,8 +86,9 @@ class BookingHandler {
 			wp_send_json_error( [ 'message' => 'Invalid parameters' ] );
 		}
 
-		// Store in transient (expires in 5 minutes)
-		$transient_key = 'sfa_capacity_choice_' . $entry_id;
+		// Store in transient (expires in 5 minutes), scoped to current user
+		// to prevent concurrent admins from overwriting each other's choice
+		$transient_key = 'sfa_capacity_choice_' . $entry_id . '_' . get_current_user_id();
 		set_transient( $transient_key, $choice, 5 * MINUTE_IN_SECONDS );
 
 		wp_send_json_success( [ 'stored' => true ] );
@@ -525,7 +526,7 @@ class BookingHandler {
 			// Read admin capacity choice BEFORE the blocking check so over_capacity
 			// can bypass the "date fully booked" block.
 			// First check transient (set by AJAX before form submission), then fall back to POST.
-			$transient_key = 'sfa_capacity_choice_' . $entry_id;
+			$transient_key = 'sfa_capacity_choice_' . $entry_id . '_' . get_current_user_id();
 			$capacity_choice = get_transient( $transient_key );
 
 			if ( $capacity_choice ) {
@@ -537,26 +538,34 @@ class BookingHandler {
 			}
 
 			// For MANUAL bookings: check if chosen date has available capacity
-			// - For NEW submissions: block if date is fully booked (user should choose different date)
+			// - Always reject invalid/past dates, non-working days, and holidays (even for over_capacity)
+			// - For NEW submissions without over_capacity: also block if date is fully booked
 			// - For EDITS or reprocessing: allow even if fully booked - scheduler will spill to next day
-			// - Skip this check entirely if admin explicitly chose over_capacity via the dialog
 			$is_new_submission = ! $existing_install_date && $submitted_installation_date;
-			if ( $capacity_choice !== 'over_capacity' && $is_manual_booking && $manual_start_date && $is_new_submission ) {
+			if ( $is_manual_booking && $manual_start_date && $is_new_submission ) {
 				$capacity_check = $this->check_date_capacity( $manual_start_date, $entry_id );
-				if ( $capacity_check['available'] <= 0 ) {
-					// Date is fully booked - block NEW submissions only
+				$reject_reason = isset( $capacity_check['reason'] ) ? $capacity_check['reason'] : '';
+
+				// Always block invalid/past dates, non-working days, and holidays
+				// Over-capacity can only bypass the "fully booked" case
+				if ( $capacity_check['available'] <= 0 && ( $reject_reason || $capacity_choice !== 'over_capacity' ) ) {
 					$formatted_date = date( 'F j, Y', strtotime( $manual_start_date ) );
+					$reason_label = $reject_reason === 'invalid_or_past_date' ? 'invalid or past date'
+						: ( $reject_reason === 'non_working_day' ? 'non-working day'
+						: ( $reject_reason === 'holiday' ? 'holiday'
+						: 'fully booked (0/' . $capacity_check['capacity'] . ' slots available)' ) );
+
 					self::debug_log( sprintf(
-						'Production Booking BLOCKED for entry %d: %s is fully booked (0/%d capacity)',
-						$entry_id, $manual_start_date, $capacity_check['capacity']
+						'Production Booking BLOCKED for entry %d: %s — %s',
+						$entry_id, $manual_start_date, $reason_label
 					) );
 
 					// Show error to admin
 					if ( is_admin() && ! wp_doing_ajax() ) {
-						add_action( 'admin_notices', function() use ( $formatted_date, $entry_id, $capacity_check ) {
+						add_action( 'admin_notices', function() use ( $formatted_date, $entry_id, $reason_label ) {
 							echo '<div class="notice notice-error is-dismissible">';
 							echo '<p><strong>Production Scheduling Error (Entry #' . esc_html( $entry_id ) . '):</strong></p>';
-							echo '<p>' . esc_html( $formatted_date ) . ' is fully booked (0/' . esc_html( $capacity_check['capacity'] ) . ' slots available).</p>';
+							echo '<p>' . esc_html( $formatted_date ) . ' — ' . esc_html( $reason_label ) . '.</p>';
 							echo '<p>Please choose a different date with available capacity.</p>';
 							echo '</div>';
 						} );
@@ -564,7 +573,7 @@ class BookingHandler {
 
 					// Log audit
 					$this->log_booking_audit( $entry_id, 'booking_blocked', [
-						'reason' => 'Date fully booked',
+						'reason' => $reason_label,
 						'date' => $manual_start_date,
 						'capacity' => $capacity_check['capacity'],
 						'booked' => $capacity_check['booked'],
@@ -608,9 +617,11 @@ class BookingHandler {
 						$schedule = BillingStepPreview::calculate_schedule( $lm_required, null, $entry_id, $manual_start_date );
 					}
 
-					// Store booking mode for audit trail (only if explicitly chosen)
+					// Clear any prior over_capacity mode and store current mode
 					if ( $capacity_choice === 'fill_spill' ) {
 						gform_update_meta( $entry_id, '_prod_capacity_mode', 'fill_spill' );
+					} else {
+						gform_delete_meta( $entry_id, '_prod_capacity_mode' );
 					}
 				}
 			} catch ( \Throwable $e ) {
@@ -1035,18 +1046,42 @@ class BookingHandler {
 
 		global $wpdb;
 
-		// Find entries where workflow is cancelled but booking is still confirmed
-		$entries = $wpdb->get_results(
-			"SELECT bs.entry_id
-			FROM {$wpdb->prefix}gf_entry_meta bs
-			INNER JOIN {$wpdb->prefix}gf_entry_meta wf
-				ON bs.entry_id = wf.entry_id
-				AND wf.meta_key = 'workflow_final_status'
-				AND wf.meta_value IN ('cancelled', 'canceled')
-			WHERE bs.meta_key = '_prod_booking_status'
-			AND bs.meta_value = 'confirmed'",
-			ARRAY_A
-		);
+		if ( $is_gf_entry ) {
+			// On entry detail page: only check the current entry (avoid full table scan)
+			$current_entry_id = isset( $_GET['lid'] ) ? absint( $_GET['lid'] ) : 0;
+			if ( ! $current_entry_id ) {
+				return;
+			}
+
+			$entries = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT bs.entry_id
+					FROM {$wpdb->prefix}gf_entry_meta bs
+					INNER JOIN {$wpdb->prefix}gf_entry_meta wf
+						ON bs.entry_id = wf.entry_id
+						AND wf.meta_key = 'workflow_final_status'
+						AND wf.meta_value IN ('cancelled', 'canceled')
+					WHERE bs.meta_key = '_prod_booking_status'
+					AND bs.meta_value = 'confirmed'
+					AND bs.entry_id = %d",
+					$current_entry_id
+				),
+				ARRAY_A
+			);
+		} else {
+			// On production schedule page: scan all entries
+			$entries = $wpdb->get_results(
+				"SELECT bs.entry_id
+				FROM {$wpdb->prefix}gf_entry_meta bs
+				INNER JOIN {$wpdb->prefix}gf_entry_meta wf
+					ON bs.entry_id = wf.entry_id
+					AND wf.meta_key = 'workflow_final_status'
+					AND wf.meta_value IN ('cancelled', 'canceled')
+				WHERE bs.meta_key = '_prod_booking_status'
+				AND bs.meta_value = 'confirmed'",
+				ARRAY_A
+			);
+		}
 
 		foreach ( $entries as $row ) {
 			$this->cancel_production_booking( (int) $row['entry_id'] );

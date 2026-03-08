@@ -42,7 +42,7 @@ Core loader (`simpleflow.php`) scans `modules/` at `plugins_loaded` priority 20,
 * **Custom DB tables** (`wp_sfa_prod_capacity_overrides`, `wp_simple_notes`) are accessed only through their Repository classes — don't write raw SQL elsewhere.
 * **`simpleflow.php` intentionally bypasses GF validation in admin/workflow contexts** (lines ~530-590). Do not "fix" this — it lets admins move entries through workflows without field-level blocking.
 * **Simple Notes has two independent implementations** (backend `notes.js` + frontend `AutoPositioning.php`). Any feature change must be applied to both — see `modules/simple-notes/ARCHITECTURE.md`.
-* **GravityFlow hooks are the authoritative source for workflow state changes.** Cancel/status operations should come from `gravityflow_workflow_cancelled` and `gravityflow_status_updated`, not from request-path handlers.
+* **GravityFlow hooks are the authoritative source for workflow state changes.** Cancellation is handled by multiple paths: the GravityFlow hooks `gravityflow_workflow_cancelled` and `gravityflow_status_updated` (when they fire), the `gravityflow_post_process_workflow` hook (checks `workflow_final_status` for cancelled entries), and the request-path handlers `check_cancel_workflow_request` and `handle_cancel_workflow_ajax` (which directly cancel bookings). The `sync_cancelled_workflow_bookings` safety net runs on both the production schedule page and Gravity Forms entry detail pages to catch any missed cancellations.
 
 ## Domain Terminology
 
