@@ -1,16 +1,19 @@
-# Simple HR Suite (SimpeFlow)
+# SimpleFlow
 
 Modular WordPress plugin suite built on Gravity Forms + GravityFlow for production scheduling, quality gates, update requests, notes, and customer info management; used internally by factory/operations teams.
 
 ## Commands
 
 * **Dev:** No build step — edit PHP/JS/CSS directly, changes are live on page reload
-* **Build:** None (no bundler, no Composer, no npm)
-* **Test:** Manual only — no automated test framework
 * **Lint:** `php -l <file>` for syntax checks (no phpcs/eslint configured)
 * **Deploy:** Manual — do not automate
 * **Cache clear:** `wp cache flush` (WP-CLI) or flush from WP admin; module code also calls `wp_cache_delete()` per affected key
-* **Maintenance:** `wp eval-file scripts/cleanup-invalid-production-bookings.php` to purge orphaned 0-LM booking meta
+* **Purge orphaned bookings:** `wp eval-file scripts/cleanup-invalid-production-bookings.php` — removes orphaned 0-LM booking meta
+
+## Dependencies
+
+* **Required:** Gravity Forms (active + licensed), Gravity Flow (active + licensed)
+* **No dependency on:** Simple HR Suite, DOFS (separate plugin ecosystems, no shared tables)
 
 ## Architecture
 
@@ -20,6 +23,18 @@ Core loader (`simpleflow.php`) scans `modules/` at `plugins_loaded` priority 20,
 * **Custom modules:** `modules/<module-slug>/<module-slug>.php` (entry point per module)
 * **Config:** WordPress options table — all settings keyed `sfa_prod_*`, `sfa_qg_*`, `simple_notes_*`, `sfa_cv_*`, `simpleflow_modules`
 * **DB migrations:** `src/Database/Installer.php` per module — uses `dbDelta()`, version-gated by `sfa_<mod>_db_version` option
+
+### Modules
+
+| Directory | Purpose | Status |
+|-----------|---------|--------|
+| `production-scheduling` | LM capacity booking, fill+spill, calendar views | Active — most frequently changed |
+| `quality-gate` | Pass/fail checklists evaluated against GF entry fields | Stable |
+| `update-requests` | Post-approval entry amendments with diff tracking | Stable |
+| `simple-notes` | Sticky notes on entries — dual backend/frontend implementations | Stable |
+| `simple-customer-info` | Customer data card panel in GF and GravityFlow | Stable |
+| `simple-flow-attachment` | Grouped file attachments with collapsible UI, ZIP download | Stable |
+| `code-validation` | Validate confirmation codes against existing entries | Stub — minimal logic |
 
 ## Boundaries
 
