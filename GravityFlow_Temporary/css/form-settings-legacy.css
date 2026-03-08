@@ -1,0 +1,242 @@
+.repeater-buttons{
+    display:inline-block;
+}
+.gform-routing-users,
+.gform-routing-field{
+    width:100%;
+	min-width:150px;
+}
+.gform-routing-operator{
+    width:120px;
+}
+.gform-routing-value{
+    width:190px;
+}
+
+.mt-_gaddon_setting_workflow_notification_message,
+.gravityflow-tab-field span[class^="mt-_gaddon_setting_"] {
+    float: right;
+    position: relative;
+    right: 15px;
+    top: 90px;
+}
+
+.rtl .mt-_gaddon_setting_workflow_notification_message,
+.rtl .gravityflow-tab-field span[class^="mt-_gaddon_setting_"] {
+    float: left;
+    left: 15px;
+}
+
+#wp-_gaddon_setting_workflow_notification_message-wrap,
+.gravityflow-tab-field div.wp-editor-wrap {
+    margin-right: 15px;
+}
+
+.rtl #wp-_gaddon_setting_workflow_notification_message-wrap,
+.rtl .gravityflow-tab-field div.wp-editor-wrap {
+    margin-left: 15px;
+    margin-right: 0;
+}
+
+.gform-routing-row{
+    vertical-align: top;
+}
+
+#assignees,
+#editable_fields{
+    position: absolute;
+    left: -9999px;
+}
+
+.rtl #assignees,
+.rtl #editable_fields{
+    right: -9999px;
+    left: auto;
+}
+
+table.gforms_form_settings th{
+    border-left: 0;
+    padding-left: 0!important;
+}
+
+table.gforms_form_settings tr.gravityflow_sub_setting th{
+    border-left: 1px dashed #dfdfdf;
+    padding-left: 10px!important;
+}
+
+table.gforms_form_settings tr.gravityflow_sub_setting td{
+    padding-left: 10px;
+}
+
+.rtl table.gforms_form_settings th{
+    border-right: 0;
+    padding-right: 0!important;
+}
+
+.rtl table.gforms_form_settings tr.gravityflow_sub_setting th{
+    border-right: 1px dashed #dfdfdf;
+    padding-right: 10px!important;
+    padding-left: 0 !important;
+}
+
+.rtl table.gforms_form_settings tr.gravityflow_sub_setting td{
+    padding-right: 10px;
+    padding-left: 0;
+}
+
+table.gform-routings thead th{
+    padding: 0;
+}
+
+table.gform-routings tr.gform-routing-row td{
+    vertical-align: top;
+}
+
+table.gform-routings tr.gform-routing-row td .repeater-buttons{
+    white-space: nowrap;
+}
+
+.ui-tabs-nav{
+    background-color:#f6fbfd !important;
+}
+
+.gravityflow-tab-checked{
+    color:green;
+}
+
+.gravityflow-tab-field{
+    margin-bottom: 20px;
+}
+
+.gravityflow-tab-field-label{
+    margin-bottom: 4px;
+    font-weight:bold;
+}
+
+.gravityflow-user-routing{
+    border:1px solid #EEE;
+    padding: 10px;
+}
+
+.ms-container{
+    width:550px!important;
+}
+
+.gform-routing-input-field{
+    width:100%;
+	min-width: 200px;
+}
+
+#gaddon-setting-row-step_type td label{
+	display:inline-block;
+    margin-bottom: 5px;
+    color:black;
+    height:85px;
+}
+
+.gravityflow-schedule-type-container{
+    margin:5px 0 5px 0;
+}
+
+tr#gaddon-setting-row-step_type input:checked + label > span{
+    -webkit-filter: none;
+    -moz-filter: none;
+    filter: none;
+}
+tr#gaddon-setting-row-step_type input:checked + label {
+    background-color:white;
+    border: 1px solid #CCCCCC;
+}
+tr#gaddon-setting-row-step_type label > span {
+    background-repeat:no-repeat;
+    display:inline-block;
+    -webkit-transition: all 100ms ease-in;
+    -moz-transition: all 100ms ease-in;
+    transition: all 100ms ease-in;
+    -webkit-filter: brightness(1.3) grayscale(1) opacity(.5);
+    -moz-filter: brightness(1.3) grayscale(1) opacity(.5);
+    filter: brightness(1.3) grayscale(1) opacity(.5);
+}
+
+.gravityflow-disabled label{
+    cursor:default!important;
+}
+
+tr#gaddon-setting-row-step_type input:not([disabled]):not([checked]) + label > span:hover{
+    -webkit-filter: brightness(1.2) grayscale(.5) opacity(.9);
+    -moz-filter: brightness(1.2) grayscale(.5) opacity(.9);
+    filter: brightness(1.2) grayscale(.5) opacity(.9);
+}
+
+tr#gaddon-setting-row-step_type input{
+    display:none;
+}
+tr#gaddon-setting-row-step_type label > span{
+    padding-top:5px;
+    width:130px;
+    height:65px;
+}
+
+tr#gaddon-setting-row-step_type label > span > img{
+    height:32px;
+    margin:5px;
+    vertical-align:middle;
+}
+
+tr#gaddon-setting-row-step_type label{
+    border:1px solid #EEEEEE;
+    background-color:#F9F9F9;
+}
+
+tr#gaddon-setting-row-step_type .gaddon-setting-radio{
+    text-align:center;
+}
+
+tr#gaddon-setting-row-step_type label > span > i {
+    height:32px;
+    display:inline-block;
+    font-size:2.5em;
+    margin:5px;
+    color:#0074a2;
+}
+
+.gravityflow-step-highlight-type-container,
+.gravityflow-step-highlight-color-container,
+.gravityflow-schedule-type-container,
+.gravityflow-schedule-delay-container,
+.gravityflow-schedule-date-container,
+.gravityflow-expiration-type-container,
+.gravityflow-expiration-delay-container,
+.gravityflow-expiration-date-container,
+.gravityflow-due-date-type-container,
+.gravityflow-due-date-delay-container,
+.gravityflow-due-date-date-container,
+.gravityflow-due-date-highlight-color-container{
+    margin: 10px 0 10px 0;
+}
+
+.gravityflow-step-highlight-type-container {
+    display: none;
+}
+
+.gravityflow_display_fields_selected_container{
+    margin-top:5px;
+}
+
+.gravityflow-step-highlight-color-container .wp-picker-container {
+    margin-top: 5px;
+}
+
+.gravityflow-sub-setting{
+    margin-bottom: 10px;
+}
+
+.gravityflow-instructions-setting-description{
+    margin: 10px 0 10px 0;
+    font-style: italic;
+    color: #AAA;
+}
+
+#instructionsContainer{
+    margin: 10px 0 10px 0;
+}
