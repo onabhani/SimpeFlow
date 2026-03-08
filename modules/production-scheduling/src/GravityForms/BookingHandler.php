@@ -906,6 +906,21 @@ class BookingHandler {
 			return;
 		}
 
+		// Register a deferred cancellation check — GravityFlow sets
+		// workflow_final_status AFTER this hook fires, so the check above
+		// may not see 'cancelled' yet. This shutdown handler re-checks
+		// once all processing is complete.
+		add_action( 'shutdown', function() use ( $entry_id ) {
+			$final_status = gform_get_meta( $entry_id, 'workflow_final_status' );
+			if ( in_array( $final_status, [ 'cancelled', 'canceled' ], true ) ) {
+				$booking_status = gform_get_meta( $entry_id, '_prod_booking_status' );
+				if ( $booking_status === 'confirmed' ) {
+					self::debug_log( sprintf( 'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — deferred cancellation', $entry_id, $final_status ) );
+					$this->cancel_production_booking( $entry_id );
+				}
+			}
+		} );
+
 		// Check if entry has an existing booking
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 		if ( ! $existing_booking ) {
