@@ -34,17 +34,16 @@ class BookingHandler {
 		// Hook into entry deletion to remove bookings
 		add_action( 'gform_delete_entry', [ $this, 'handle_entry_deletion' ], 10, 1 );
 
-		// Hook into workflow cancellation to mark bookings as canceled
-		add_action( 'gravityflow_workflow_cancelled', [ $this, 'handle_workflow_cancellation' ], 10, 3 );
+		// Hook into workflow cancellation — gravityflow_pre_cancel_workflow is the
+		// only cancel-related action GravityFlow fires (there is no post-cancel hook).
+		// It fires with ($entry, $form, $step) just before meta is updated.
+		add_action( 'gravityflow_pre_cancel_workflow', [ $this, 'handle_workflow_cancellation' ], 10, 3 );
 
 		// Hook into workflow step processing to update bookings when entries are edited in workflow inbox
 		add_action( 'gravityflow_post_process_workflow', [ $this, 'handle_workflow_processing' ], 10, 4 );
 
 		// Hook into entry status changes (for trash/spam/delete)
 		add_action( 'gform_update_status', [ $this, 'handle_entry_status_change' ], 10, 3 );
-
-		// Hook into workflow status changes
-		add_action( 'gravityflow_status_updated', [ $this, 'handle_workflow_status_change' ], 10, 4 );
 
 		// Hook directly into GravityFlow cancel workflow action (try multiple possible action names)
 		add_action( 'wp_ajax_gravityflow_cancel_workflow', [ $this, 'handle_cancel_workflow_ajax' ], 5 );
@@ -964,22 +963,6 @@ class BookingHandler {
 	}
 
 	/**
-	 * Handle workflow status changes (complete, cancelled, pending, etc)
-	 *
-	 * @param int    $entry_id The entry ID
-	 * @param string $new_status The new workflow status
-	 * @param string $old_status The old workflow status
-	 * @param object $step The current step
-	 */
-	public function handle_workflow_status_change( $entry_id, $new_status, $old_status, $step ) {
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_status_updated] entry=%d new=%s old=%s', $entry_id, $new_status, $old_status ) );
-		// If workflow is cancelled, fully cancel the production booking
-		if ( 'cancelled' === $new_status || 'canceled' === $new_status ) {
-			$this->cancel_production_booking( $entry_id );
-		}
-	}
-
-	/**
 	 * Check for cancel workflow request in admin_init
 	 *
 	 * This catches when user clicks "Cancel Workflow" link
@@ -1226,14 +1209,18 @@ class BookingHandler {
 	}
 
 	/**
-	 * Handle workflow cancellation - mark booking as canceled
+	 * Handle workflow cancellation - mark booking as canceled.
 	 *
-	 * @param int    $entry_id The entry ID
-	 * @param array  $form     The form object
-	 * @param object $step     The current step object
+	 * Hooked to gravityflow_pre_cancel_workflow which fires with the full
+	 * entry array just before GravityFlow sets workflow_final_status.
+	 *
+	 * @param array              $entry The entry array.
+	 * @param array              $form  The form object.
+	 * @param Gravity_Flow_Step  $step  The current step object.
 	 */
-	public function handle_workflow_cancellation( $entry_id, $form, $step ) {
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_workflow_cancelled] entry=%d', $entry_id ) );
+	public function handle_workflow_cancellation( $entry, $form, $step ) {
+		$entry_id = absint( $entry['id'] );
+		self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_pre_cancel_workflow] entry=%d', $entry_id ) );
 		$this->cancel_production_booking( $entry_id );
 	}
 
