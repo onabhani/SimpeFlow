@@ -106,6 +106,7 @@ class BookingHandler {
 		// Get updated entry
 		$entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $entry ) || ! $entry ) {
+			self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d EXIT: failed to load entry', $entry_id ) );
 			return;
 		}
 
@@ -120,6 +121,7 @@ class BookingHandler {
 
 		// Check if production scheduling is enabled
 		if ( ! FormSettings::is_enabled( $form ) ) {
+			self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d EXIT: production scheduling not enabled for form %d', $entry_id, $form_id ) );
 			return;
 		}
 
@@ -130,11 +132,13 @@ class BookingHandler {
 			// (don't create new booking on edit, only update existing ones)
 			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 			if ( ! $existing_booking ) {
+				self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) but no existing _install_date', $entry_id, $booking_step_id ) );
 				return; // No existing booking, skip
 			}
 		}
 
 		// Process the booking (will update if exists, or create if immediate mode)
+		self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d — calling process_production_booking', $entry_id ) );
 		$this->process_production_booking( $entry, $form );
 	}
 
@@ -256,10 +260,12 @@ class BookingHandler {
 
 		// Require installation field and either production fields or legacy LM field
 		if ( ! $install_field_id ) {
+			self::debug_log( sprintf( 'SFA_PROD PROCESS entry=%d EXIT: no install_field_id configured for form %d', $entry_id, $form['id'] ) );
 			return;
 		}
 
 		if ( empty( $production_fields ) && ! $lm_field_id ) {
+			self::debug_log( sprintf( 'SFA_PROD PROCESS entry=%d EXIT: no production_fields and no lm_field_id for form %d', $entry_id, $form['id'] ) );
 			return;
 		}
 
