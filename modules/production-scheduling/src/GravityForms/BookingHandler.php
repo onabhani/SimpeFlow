@@ -34,17 +34,19 @@ class BookingHandler {
 		// Hook into entry deletion to remove bookings
 		add_action( 'gform_delete_entry', [ $this, 'handle_entry_deletion' ], 10, 1 );
 
-		// Hook into workflow cancellation to mark bookings as canceled
-		add_action( 'gravityflow_workflow_cancelled', [ $this, 'handle_workflow_cancellation' ], 10, 3 );
+		// Hook into workflow cancellation. GravityFlow has no post-cancel hook;
+		// gravityflow_pre_cancel_workflow is the only cancel action it fires
+		// (class-api.php:123). We schedule a deferred cancel on shutdown so our
+		// booking release runs AFTER GravityFlow writes workflow_final_status,
+		// making the meta authoritative. The sync safety net remains as a
+		// secondary catch-all for any edge cases.
+		add_action( 'gravityflow_pre_cancel_workflow', [ $this, 'handle_workflow_cancellation' ], 10, 3 );
 
 		// Hook into workflow step processing to update bookings when entries are edited in workflow inbox
 		add_action( 'gravityflow_post_process_workflow', [ $this, 'handle_workflow_processing' ], 10, 4 );
 
 		// Hook into entry status changes (for trash/spam/delete)
 		add_action( 'gform_update_status', [ $this, 'handle_entry_status_change' ], 10, 3 );
-
-		// Hook into workflow status changes
-		add_action( 'gravityflow_status_updated', [ $this, 'handle_workflow_status_change' ], 10, 4 );
 
 		// Hook directly into GravityFlow cancel workflow action (try multiple possible action names)
 		add_action( 'wp_ajax_gravityflow_cancel_workflow', [ $this, 'handle_cancel_workflow_ajax' ], 5 );
@@ -59,6 +61,7 @@ class BookingHandler {
 
 		// AJAX hook to store capacity choice
 		add_action( 'wp_ajax_sfa_prod_store_capacity_choice', [ $this, 'ajax_store_capacity_choice' ] );
+
 
 	}
 
@@ -128,12 +131,40 @@ class BookingHandler {
 		// Check if booking should happen at a specific workflow step
 		$booking_step_id = FormSettings::get_booking_step_id( $form );
 		if ( $booking_step_id > 0 ) {
-			// Step-based booking: only update if entry has existing booking
-			// (don't create new booking on edit, only update existing ones)
+			// Step-based booking: only process if the booking step has already been completed
+			// or if an existing booking exists (for re-processing/updates)
 			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 			if ( ! $existing_booking ) {
-				self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) but no existing _install_date', $entry_id, $booking_step_id ) );
-				return; // No existing booking, skip
+				// No existing booking meta — check if the booking step has already been completed
+				// GravityFlow stores step status as 'workflow_step_status_{step_id}' in entry meta
+				$step_status = gform_get_meta( $entry_id, 'workflow_step_status_' . $booking_step_id );
+				if ( $step_status !== 'complete' ) {
+					self::debug_log( sprintf(
+						'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) not yet completed (status=%s)',
+						$entry_id, $booking_step_id, var_export( $step_status, true )
+					) );
+					return; // Booking step hasn't completed yet, skip
+				}
+
+				// Guard: do not recreate a booking if the workflow was cancelled
+				// (cancel_production_booking clears _install_date, and a subsequent
+				// entry re-save would otherwise see step=complete + no booking and
+				// recreate the booking that was just freed).
+				$workflow_final = gform_get_meta( $entry_id, 'workflow_final_status' );
+				if ( in_array( $workflow_final, [ 'cancelled', 'canceled' ], true ) ) {
+					self::debug_log( sprintf(
+						'SFA_PROD [gform_after_update_entry] entry=%d EXIT: workflow_final_status=%s — not recreating cancelled booking',
+						$entry_id, $workflow_final
+					) );
+					return;
+				}
+
+				// Step completed but _install_date is missing — allow process_production_booking
+				// to create the booking (handles cases where initial booking failed or was lost)
+				self::debug_log( sprintf(
+					'SFA_PROD [gform_after_update_entry] entry=%d step=%d completed but _install_date missing — will create booking',
+					$entry_id, $booking_step_id
+				) );
 			}
 		}
 
@@ -955,22 +986,6 @@ class BookingHandler {
 	}
 
 	/**
-	 * Handle workflow status changes (complete, cancelled, pending, etc)
-	 *
-	 * @param int    $entry_id The entry ID
-	 * @param string $new_status The new workflow status
-	 * @param string $old_status The old workflow status
-	 * @param object $step The current step
-	 */
-	public function handle_workflow_status_change( $entry_id, $new_status, $old_status, $step ) {
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_status_updated] entry=%d new=%s old=%s', $entry_id, $new_status, $old_status ) );
-		// If workflow is cancelled, fully cancel the production booking
-		if ( 'cancelled' === $new_status || 'canceled' === $new_status ) {
-			$this->cancel_production_booking( $entry_id );
-		}
-	}
-
-	/**
 	 * Check for cancel workflow request in admin_init
 	 *
 	 * This catches when user clicks "Cancel Workflow" link
@@ -1073,7 +1088,7 @@ class BookingHandler {
 					$current_entry_id
 				),
 				ARRAY_A
-			);
+			) ?? [];
 		} else {
 			// On production schedule page: scan all entries
 			$entries = $wpdb->get_results(
@@ -1086,10 +1101,21 @@ class BookingHandler {
 				WHERE bs.meta_key = '_prod_booking_status'
 				AND bs.meta_value = 'confirmed'",
 				ARRAY_A
-			);
+			) ?? [];
+		}
+
+		if ( count( $entries ) > 0 ) {
+			self::debug_log( sprintf(
+				'SFA_PROD SYNC [sync_cancelled_workflow_bookings] found %d entries to cancel: %s',
+				count( $entries ), wp_json_encode( wp_list_pluck( $entries, 'entry_id' ) )
+			) );
 		}
 
 		foreach ( $entries as $row ) {
+			self::debug_log( sprintf(
+				'SFA_PROD SYNC [sync_cancelled_workflow_bookings] cancelling entry=%d',
+				(int) $row['entry_id']
+			) );
 			$this->cancel_production_booking( (int) $row['entry_id'] );
 		}
 	}
@@ -1212,15 +1238,40 @@ class BookingHandler {
 	}
 
 	/**
-	 * Handle workflow cancellation - mark booking as canceled
+	 * Handle workflow cancellation — schedule deferred cancel.
 	 *
-	 * @param int    $entry_id The entry ID
-	 * @param array  $form     The form object
-	 * @param object $step     The current step object
+	 * GravityFlow fires gravityflow_pre_cancel_workflow BEFORE writing
+	 * workflow_final_status = 'cancelled' (class-api.php:123-127).
+	 * Rather than cancelling optimistically before the status is committed,
+	 * we defer to a shutdown callback so we can verify the meta was written
+	 * before releasing capacity.
+	 *
+	 * @param array              $entry The entry array.
+	 * @param array              $form  The form object.
+	 * @param Gravity_Flow_Step  $step  The current step object.
 	 */
-	public function handle_workflow_cancellation( $entry_id, $form, $step ) {
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [gravityflow_workflow_cancelled] entry=%d', $entry_id ) );
-		$this->cancel_production_booking( $entry_id );
+	public function handle_workflow_cancellation( $entry, $form, $step ) {
+		$entry_id = absint( $entry['id'] );
+		self::debug_log( sprintf(
+			'SFA_PROD CANCEL [gravityflow_pre_cancel_workflow] entry=%d — deferring to shutdown',
+			$entry_id
+		) );
+
+		add_action( 'shutdown', function () use ( $entry_id ) {
+			$status = gform_get_meta( $entry_id, 'workflow_final_status' );
+			if ( in_array( $status, [ 'cancelled', 'canceled' ], true ) ) {
+				self::debug_log( sprintf(
+					'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — cancelling booking',
+					$entry_id, $status
+				) );
+				$this->cancel_production_booking( $entry_id );
+			} else {
+				self::debug_log( sprintf(
+					'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — cancel not confirmed, skipping',
+					$entry_id, $status ?: '(empty)'
+				) );
+			}
+		} );
 	}
 
 	/**
