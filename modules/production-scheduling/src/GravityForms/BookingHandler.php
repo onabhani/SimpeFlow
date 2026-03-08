@@ -140,17 +140,31 @@ class BookingHandler {
 				$step_status = gform_get_meta( $entry_id, 'workflow_step_status_' . $booking_step_id );
 				if ( $step_status !== 'complete' ) {
 					self::debug_log( sprintf(
-					'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) not yet completed (status=%s)',
-					$entry_id, $booking_step_id, var_export( $step_status, true )
-				) );
+						'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) not yet completed (status=%s)',
+						$entry_id, $booking_step_id, var_export( $step_status, true )
+					) );
 					return; // Booking step hasn't completed yet, skip
 				}
+
+				// Guard: do not recreate a booking if the workflow was cancelled
+				// (cancel_production_booking clears _install_date, and a subsequent
+				// entry re-save would otherwise see step=complete + no booking and
+				// recreate the booking that was just freed).
+				$workflow_final = gform_get_meta( $entry_id, 'workflow_final_status' );
+				if ( in_array( $workflow_final, [ 'cancelled', 'canceled' ], true ) ) {
+					self::debug_log( sprintf(
+						'SFA_PROD [gform_after_update_entry] entry=%d EXIT: workflow_final_status=%s — not recreating cancelled booking',
+						$entry_id, $workflow_final
+					) );
+					return;
+				}
+
 				// Step completed but _install_date is missing — allow process_production_booking
 				// to create the booking (handles cases where initial booking failed or was lost)
 				self::debug_log( sprintf(
-				'SFA_PROD [gform_after_update_entry] entry=%d step=%d completed but _install_date missing — will create booking',
-				$entry_id, $booking_step_id
-			) );
+					'SFA_PROD [gform_after_update_entry] entry=%d step=%d completed but _install_date missing — will create booking',
+					$entry_id, $booking_step_id
+				) );
 			}
 		}
 
@@ -1074,7 +1088,7 @@ class BookingHandler {
 					$current_entry_id
 				),
 				ARRAY_A
-			);
+			) ?? [];
 		} else {
 			// On production schedule page: scan all entries
 			$entries = $wpdb->get_results(
@@ -1087,7 +1101,7 @@ class BookingHandler {
 				WHERE bs.meta_key = '_prod_booking_status'
 				AND bs.meta_value = 'confirmed'",
 				ARRAY_A
-			);
+			) ?? [];
 		}
 
 		if ( count( $entries ) > 0 ) {
