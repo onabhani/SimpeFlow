@@ -1,0 +1,35 @@
+
+thead tr {background: #FFF}
+tr:nth-child(even) {background: #f9f9f9}
+tr:nth-child(odd) {background: #FFF}
+
+
+
+#gravityflow-no-activity-container{
+
+    -webkit-transform-style: preserve-3d;
+    -moz-transform-style: preserve-3d;
+    transform-style: preserve-3d;
+
+    height:400px;
+    text-align:center;
+}
+
+#gravityflow-no-activity-content{
+    color: silver;
+    font-size: 2em;
+    position: relative;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+
+
+table#gravityflow-activity th[data-label="ID"],
+table#gravityflow-activity td[data-label="ID"] {
+    width:70px!important;
+}
+
+table#gravityflow-activity{
+    margin-top:10px;
+}

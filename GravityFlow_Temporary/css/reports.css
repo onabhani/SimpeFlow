@@ -1,0 +1,3 @@
+html[dir="rtl"] body #gravityflow-reports svg g text {
+    direction: ltr !important;
+}

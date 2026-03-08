@@ -1,0 +1,22 @@
+.gv-table-view .flow_approval_links {
+    padding-right: 1em;
+}
+
+.gv-table-view .fa {
+    display: inline-block;
+    font: normal normal normal 14px/1 GFFontAwesome;
+    font-size: inherit;
+    text-rendering: auto;
+    -webkit-font-smoothing: antialiased;
+}
+
+.gv-table-view .fa-check:before {
+    content: "\f00c";
+    color: green;
+}
+
+.gv-table-view .fa-times:before {
+    content: "\f00d";
+    color: red;
+}
+

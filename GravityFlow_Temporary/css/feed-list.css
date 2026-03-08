@@ -1,0 +1,63 @@
+table { border-collapse: collapse; }
+.ui-sortable-helper {
+    background-color: white!important;
+
+    -webkit-box-shadow: 6px 6px 28px -9px rgba(0,0,0,0.75);
+    -moz-box-shadow: 6px 6px 28px -9px rgba(0,0,0,0.75);
+    box-shadow: 6px 6px 28px -9px rgba(0,0,0,0.75);
+
+    transform: rotate(1deg);
+    -moz-transform: rotate(1deg);
+    -webkit-transform: rotate(1deg);
+}
+
+.rtl .ui-sortable-helper {
+    -webkit-box-shadow: -6px 6px 28px -9px rgba(0,0,0,0.75);
+    -moz-box-shadow: -6px 6px 28px -9px rgba(0,0,0,0.75);
+    box-shadow: -6px 6px 28px -9px rgba(0,0,0,0.75);
+
+    transform: rotate(-1deg);
+    -moz-transform: rotate(-1deg);
+    -webkit-transform: rotate(-1deg);
+}
+
+.step-drop-zone {
+    border: 1px dashed #bbb;
+    background-color: #FFF !important;
+    margin: 0 auto 10px;
+    height: 75px;
+    width: 100%;
+    -webkit-box-sizing: border-box;
+    -moz-box-sizing: border-box;
+    box-sizing: border-box;
+}
+
+.widefat .sort-column {
+    vertical-align: top;
+    width: 2.2em;
+}
+
+.feed-sort-handle{
+    cursor: move;
+    padding: 10px;
+}
+
+
+td.column-step_highlight .step_highlight_color {
+    width: 0.25em;
+    height: 100%;
+}
+
+th.column-step_highlight, td.column-step_highlight {
+    display: none;
+}
+
+.row-actions .step_id { color: #ccc; }
+
+.gravityflow-routing {
+    text-align: left;
+}
+
+html[dir="rtl"] .gravityflow-routing {
+	text-align: initial;
+}
