@@ -16,18 +16,59 @@
     let capacityCheckPassed = false;
 
     /**
+     * Read the current values of production fields from the DOM.
+     * Returns an object like { "12": "3.5", "14": "6" } keyed by field ID,
+     * or null if no production fields are configured.
+     */
+    function getCurrentFieldValues() {
+        var fields = sfaProdAdmin.productionFields;
+        if (!fields || !fields.length) {
+            // Legacy mode: try single LM field
+            if (sfaProdAdmin.lmFieldId) {
+                var $lm = $('input[name="input_' + sfaProdAdmin.lmFieldId + '"]');
+                if ($lm.length) {
+                    return { _legacy_lm: $lm.val() };
+                }
+            }
+            return null;
+        }
+
+        var values = {};
+        for (var i = 0; i < fields.length; i++) {
+            var fid = fields[i].field_id;
+            var $input = $('input[name="input_' + fid + '"]');
+            if ($input.length) {
+                values[fid] = $input.val();
+            }
+        }
+        return values;
+    }
+
+    /**
      * Check if the new installation date causes overbooking
      */
     function checkCapacityBeforeSave(installDate, entryId) {
+        var data = {
+            action: 'sfa_prod_check_capacity_before_save',
+            entry_id: entryId,
+            install_date: installDate,
+            nonce: sfaProdAdmin.nonce
+        };
+
+        // Include current production field values from the DOM
+        var fieldValues = getCurrentFieldValues();
+        if (fieldValues) {
+            if (fieldValues._legacy_lm !== undefined) {
+                data.current_lm = fieldValues._legacy_lm;
+            } else {
+                data.current_field_values = fieldValues;
+            }
+        }
+
         return $.ajax({
             url: ajaxurl,
             type: 'POST',
-            data: {
-                action: 'sfa_prod_check_capacity_before_save',
-                entry_id: entryId,
-                install_date: installDate,
-                nonce: sfaProdAdmin.nonce
-            }
+            data: data
         });
     }
 

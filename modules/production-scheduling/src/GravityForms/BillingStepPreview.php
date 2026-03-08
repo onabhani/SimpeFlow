@@ -417,8 +417,19 @@ class BillingStepPreview {
 				continue;
 			}
 			if ( in_array( $workflow_status, [ 'cancelled', 'canceled' ], true ) ) {
-				// Sync the booking status so future queries skip faster
-				gform_update_meta( $row['entry_id'], '_prod_booking_status', 'canceled' );
+				// Fully clear booking meta so capacity is freed and future queries skip this entry
+				gform_delete_meta( $row['entry_id'], '_prod_lm_required' );
+				gform_delete_meta( $row['entry_id'], '_prod_total_slots' );
+				gform_delete_meta( $row['entry_id'], '_prod_slots_allocation' );
+				gform_delete_meta( $row['entry_id'], '_prod_start_date' );
+				gform_delete_meta( $row['entry_id'], '_prod_end_date' );
+				gform_delete_meta( $row['entry_id'], '_install_date' );
+				gform_delete_meta( $row['entry_id'], '_prod_booking_status' );
+				gform_delete_meta( $row['entry_id'], '_prod_booked_at' );
+				gform_delete_meta( $row['entry_id'], '_prod_booked_by' );
+				gform_delete_meta( $row['entry_id'], '_prod_daily_capacity_at_booking' );
+				gform_delete_meta( $row['entry_id'], '_prod_field_breakdown' );
+				gform_delete_meta( $row['entry_id'], '_prod_booking_type' );
 				continue;
 			}
 
