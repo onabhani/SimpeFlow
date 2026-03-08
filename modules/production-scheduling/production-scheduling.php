@@ -2,14 +2,14 @@
 /**
  * SFA Production Scheduling
  * Schedule factory production capacity and calculate installation dates
- * Version: 1.1.8
+ * Version: 1.1.9
  * Author: Omar Alnabhani (hdqah.com)
  */
 
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
 // Module constants
-if ( ! defined( 'SFA_PROD_VER' ) ) define( 'SFA_PROD_VER', '1.1.8' );
+if ( ! defined( 'SFA_PROD_VER' ) ) define( 'SFA_PROD_VER', '1.1.9' );
 if ( ! defined( 'SFA_PROD_DIR' ) ) define( 'SFA_PROD_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_PROD_URL' ) ) define( 'SFA_PROD_URL', plugin_dir_url( __FILE__ ) );
 

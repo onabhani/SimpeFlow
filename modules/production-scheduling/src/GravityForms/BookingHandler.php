@@ -128,12 +128,20 @@ class BookingHandler {
 		// Check if booking should happen at a specific workflow step
 		$booking_step_id = FormSettings::get_booking_step_id( $form );
 		if ( $booking_step_id > 0 ) {
-			// Step-based booking: only update if entry has existing booking
-			// (don't create new booking on edit, only update existing ones)
+			// Step-based booking: only process if the booking step has already been completed
+			// or if an existing booking exists (for re-processing/updates)
 			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 			if ( ! $existing_booking ) {
-				self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) but no existing _install_date', $entry_id, $booking_step_id ) );
-				return; // No existing booking, skip
+				// No existing booking meta — check if the booking step has already been completed
+				// GravityFlow stores step status as 'workflow_step_status_{step_id}' in entry meta
+				$step_status = gform_get_meta( $entry_id, 'workflow_step_status_' . $booking_step_id );
+				if ( $step_status !== 'complete' ) {
+					self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d EXIT: step-based booking (step=%d) not yet completed (status=%s)', $entry_id, $booking_step_id, var_export( $step_status, true ) ) );
+					return; // Booking step hasn't completed yet, skip
+				}
+				// Step completed but _install_date is missing — allow process_production_booking
+				// to create the booking (handles cases where initial booking failed or was lost)
+				self::debug_log( sprintf( 'SFA_PROD [gform_after_update_entry] entry=%d step=%d completed but _install_date missing — will create booking', $entry_id, $booking_step_id ) );
 			}
 		}
 
