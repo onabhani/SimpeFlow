@@ -906,21 +906,6 @@ class BookingHandler {
 			return;
 		}
 
-		// Register a deferred cancellation check — GravityFlow sets
-		// workflow_final_status AFTER this hook fires, so the check above
-		// may not see 'cancelled' yet. This shutdown handler re-checks
-		// once all processing is complete.
-		add_action( 'shutdown', function() use ( $entry_id ) {
-			$final_status = gform_get_meta( $entry_id, 'workflow_final_status' );
-			if ( in_array( $final_status, [ 'cancelled', 'canceled' ], true ) ) {
-				$booking_status = gform_get_meta( $entry_id, '_prod_booking_status' );
-				if ( $booking_status === 'confirmed' ) {
-					self::debug_log( sprintf( 'SFA_PROD CANCEL [shutdown] entry=%d workflow_final_status=%s — deferred cancellation', $entry_id, $final_status ) );
-					$this->cancel_production_booking( $entry_id );
-				}
-			}
-		} );
-
 		// Check if entry has an existing booking
 		$existing_booking = gform_get_meta( $entry_id, '_install_date' );
 		if ( ! $existing_booking ) {
@@ -1246,45 +1231,71 @@ class BookingHandler {
 			return;
 		}
 
-		self::debug_log( sprintf( 'SFA_PROD CANCEL cancel_production_booking entry=%d — clearing all booking meta (install_date=%s)', $entry_id, $existing_booking ) );
+		// Acquire the same named lock used by process_production_booking to
+		// serialize all booking mutations and prevent race conditions.
+		global $wpdb;
+		$lock_name = 'sfa_prod_booking';
+		$lock_timeout = 15;
+		$lock_acquired = (bool) $wpdb->get_var( $wpdb->prepare(
+			"SELECT GET_LOCK(%s, %d)",
+			$lock_name, $lock_timeout
+		) );
 
-		// Clear cache for allocated dates before removing meta
-		$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
-		if ( $existing_allocation ) {
-			$allocation = json_decode( $existing_allocation, true );
-			if ( is_array( $allocation ) ) {
-				foreach ( array_keys( $allocation ) as $date ) {
-					$year_month = substr( $date, 0, 7 );
-					wp_cache_delete( 'sfa_prod_availability_' . $year_month );
-				}
-			}
+		if ( ! $lock_acquired ) {
+			error_log( sprintf( 'Production Booking CANCEL: FAILED to acquire lock for entry %d after %ds', $entry_id, $lock_timeout ) );
+			return;
 		}
 
-		// Delete all production booking meta to fully free capacity
-		gform_delete_meta( $entry_id, '_prod_lm_required' );
-		gform_delete_meta( $entry_id, '_prod_total_slots' );
-		gform_delete_meta( $entry_id, '_prod_slots_allocation' );
-		gform_delete_meta( $entry_id, '_prod_start_date' );
-		gform_delete_meta( $entry_id, '_prod_end_date' );
-		gform_delete_meta( $entry_id, '_install_date' );
-		gform_delete_meta( $entry_id, '_prod_booking_status' );
-		gform_delete_meta( $entry_id, '_prod_booked_at' );
-		gform_delete_meta( $entry_id, '_prod_booked_by' );
-		gform_delete_meta( $entry_id, '_prod_daily_capacity_at_booking' );
-		gform_delete_meta( $entry_id, '_prod_field_breakdown' );
-		gform_delete_meta( $entry_id, '_prod_booking_type' );
-		gform_delete_meta( $entry_id, '_prod_capacity_mode' );
+		try {
+			// Re-check inside the lock — another request may have already cancelled
+			$existing_booking = gform_get_meta( $entry_id, '_install_date' );
+			if ( ! $existing_booking ) {
+				self::debug_log( sprintf( 'SFA_PROD CANCEL cancel_production_booking entry=%d — already cancelled (no _install_date after lock)', $entry_id ) );
+				return;
+			}
 
-		// Clear general availability cache
-		wp_cache_delete( 'sfa_prod_availability_next_30_days' );
+			self::debug_log( sprintf( 'SFA_PROD CANCEL cancel_production_booking entry=%d — clearing all booking meta (install_date=%s)', $entry_id, $existing_booking ) );
 
-		// Audit log
-		$this->log_booking_audit( $entry_id, 'booking_canceled', [
-			'allocation' => $existing_allocation,
-		] );
+			// Clear cache for allocated dates before removing meta
+			$existing_allocation = gform_get_meta( $entry_id, '_prod_slots_allocation' );
+			if ( $existing_allocation ) {
+				$allocation = json_decode( $existing_allocation, true );
+				if ( is_array( $allocation ) ) {
+					foreach ( array_keys( $allocation ) as $date ) {
+						$year_month = substr( $date, 0, 7 );
+						wp_cache_delete( 'sfa_prod_availability_' . $year_month );
+					}
+				}
+			}
 
-		// Allow other plugins to react
-		do_action( 'sfa_production_booking_canceled', $entry_id );
+			// Delete all production booking meta to fully free capacity
+			gform_delete_meta( $entry_id, '_prod_lm_required' );
+			gform_delete_meta( $entry_id, '_prod_total_slots' );
+			gform_delete_meta( $entry_id, '_prod_slots_allocation' );
+			gform_delete_meta( $entry_id, '_prod_start_date' );
+			gform_delete_meta( $entry_id, '_prod_end_date' );
+			gform_delete_meta( $entry_id, '_install_date' );
+			gform_delete_meta( $entry_id, '_prod_booking_status' );
+			gform_delete_meta( $entry_id, '_prod_booked_at' );
+			gform_delete_meta( $entry_id, '_prod_booked_by' );
+			gform_delete_meta( $entry_id, '_prod_daily_capacity_at_booking' );
+			gform_delete_meta( $entry_id, '_prod_field_breakdown' );
+			gform_delete_meta( $entry_id, '_prod_booking_type' );
+			gform_delete_meta( $entry_id, '_prod_capacity_mode' );
+
+			// Clear general availability cache
+			wp_cache_delete( 'sfa_prod_availability_next_30_days' );
+
+			// Audit log
+			$this->log_booking_audit( $entry_id, 'booking_canceled', [
+				'allocation' => $existing_allocation,
+			] );
+
+			// Allow other plugins to react
+			do_action( 'sfa_production_booking_canceled', $entry_id );
+		} finally {
+			$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
+		}
 	}
 
 	/**
