@@ -778,7 +778,7 @@ class BookingHandler {
 				'booking_type' => $booking_type,
 			] );
 
-		} catch ( Exception $e ) {
+		} catch ( \Throwable $e ) {
 			// Transaction failed - rollback all changes
 			$wpdb->query( 'ROLLBACK' );
 			error_log( sprintf(
@@ -965,8 +965,11 @@ class BookingHandler {
 			return;
 		}
 
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [check_cancel_workflow_request] entry=%d', $entry_id ) );
-		$this->cancel_production_booking( $entry_id );
+		self::debug_log( sprintf( 'SFA_PROD CANCEL [check_cancel_workflow_request] entry=%d — deferring to gravityflow_workflow_cancelled / gravityflow_status_updated hooks', $entry_id ) );
+		// Cancellation is handled by the authoritative GravityFlow hooks
+		// (gravityflow_workflow_cancelled and gravityflow_status_updated) which fire
+		// after GravityFlow confirms the status change. Performing the destructive
+		// operation here would race ahead of GravityFlow's own processing.
 	}
 
 	/**
@@ -997,8 +1000,11 @@ class BookingHandler {
 			return;
 		}
 
-		self::debug_log( sprintf( 'SFA_PROD CANCEL [handle_cancel_workflow_ajax] entry=%d', $entry_id ) );
-		$this->cancel_production_booking( $entry_id );
+		self::debug_log( sprintf( 'SFA_PROD CANCEL [handle_cancel_workflow_ajax] entry=%d — deferring to gravityflow_workflow_cancelled / gravityflow_status_updated hooks', $entry_id ) );
+		// Cancellation is handled by the authoritative GravityFlow hooks
+		// (gravityflow_workflow_cancelled and gravityflow_status_updated) which fire
+		// after GravityFlow confirms the status change. Performing the destructive
+		// operation here would race ahead of GravityFlow's own processing.
 	}
 
 	/**
