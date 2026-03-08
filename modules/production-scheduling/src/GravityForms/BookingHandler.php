@@ -60,23 +60,7 @@ class BookingHandler {
 		// AJAX hook to store capacity choice
 		add_action( 'wp_ajax_sfa_prod_store_capacity_choice', [ $this, 'ajax_store_capacity_choice' ] );
 
-		// TEMPORARY DIAGNOSTIC: Log ALL GravityFlow actions that fire
-		add_action( 'all', [ $this, 'debug_log_gravityflow_actions' ] );
 
-	}
-
-	/**
-	 * TEMPORARY DIAGNOSTIC: Log any action/filter containing 'gravityflow' or 'workflow'
-	 */
-	public function debug_log_gravityflow_actions() {
-		$current = current_filter();
-		if ( strpos( $current, 'gravityflow' ) !== false || strpos( $current, 'workflow' ) !== false ) {
-			// Skip noisy hooks
-			if ( strpos( $current, 'style' ) !== false || strpos( $current, 'script' ) !== false ) {
-				return;
-			}
-			self::debug_log( sprintf( 'SFA_PROD [HOOK_TRACE] %s', $current ) );
-		}
 	}
 
 	/**
@@ -1075,8 +1059,6 @@ class BookingHandler {
 			return;
 		}
 
-		self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] running on %s', $is_prod_schedule ? 'production_schedule' : 'gf_entry' ) );
-
 		global $wpdb;
 
 		if ( $is_gf_entry ) {
@@ -1085,20 +1067,6 @@ class BookingHandler {
 			if ( ! $current_entry_id ) {
 				return;
 			}
-
-			// DIAGNOSTIC: Log ALL workflow-related meta for the current entry
-			$workflow_meta = $wpdb->get_results(
-				$wpdb->prepare(
-					"SELECT meta_key, meta_value
-					FROM {$wpdb->prefix}gf_entry_meta
-					WHERE entry_id = %d
-					AND (meta_key LIKE 'workflow%%' OR meta_key LIKE '_prod_booking%%' OR meta_key = '_prod_booking_status' OR meta_key = '_install_date')
-					ORDER BY meta_key",
-					$current_entry_id
-				),
-				ARRAY_A
-			);
-			self::debug_log( sprintf( 'SFA_PROD SYNC [DIAGNOSTIC] entry=%d workflow/booking meta: %s', $current_entry_id, wp_json_encode( $workflow_meta ) ) );
 
 			$entries = $wpdb->get_results(
 				$wpdb->prepare(
@@ -1130,20 +1098,9 @@ class BookingHandler {
 			);
 		}
 
-		self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] found %d entries to cancel: %s', count( $entries ), wp_json_encode( wp_list_pluck( $entries, 'entry_id' ) ) ) );
-
-		// DIAGNOSTIC: Log all confirmed booking entries and their workflow_final_status
-		$all_confirmed = $wpdb->get_results(
-			"SELECT bs.entry_id,
-				(SELECT wf.meta_value FROM {$wpdb->prefix}gf_entry_meta wf WHERE wf.entry_id = bs.entry_id AND wf.meta_key = 'workflow_final_status' LIMIT 1) as workflow_status
-			FROM {$wpdb->prefix}gf_entry_meta bs
-			WHERE bs.meta_key = '_prod_booking_status'
-			AND bs.meta_value = 'confirmed'
-			ORDER BY bs.entry_id DESC
-			LIMIT 20",
-			ARRAY_A
-		);
-		self::debug_log( sprintf( 'SFA_PROD SYNC [DIAGNOSTIC] confirmed bookings (last 20): %s', wp_json_encode( $all_confirmed ) ) );
+		if ( count( $entries ) > 0 ) {
+			self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] found %d entries to cancel: %s', count( $entries ), wp_json_encode( wp_list_pluck( $entries, 'entry_id' ) ) ) );
+		}
 
 		foreach ( $entries as $row ) {
 			self::debug_log( sprintf( 'SFA_PROD SYNC [sync_cancelled_workflow_bookings] cancelling entry=%d', (int) $row['entry_id'] ) );
