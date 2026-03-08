@@ -60,6 +60,23 @@ class BookingHandler {
 		// AJAX hook to store capacity choice
 		add_action( 'wp_ajax_sfa_prod_store_capacity_choice', [ $this, 'ajax_store_capacity_choice' ] );
 
+		// TEMPORARY DIAGNOSTIC: Log ALL GravityFlow actions that fire
+		add_action( 'all', [ $this, 'debug_log_gravityflow_actions' ] );
+
+	}
+
+	/**
+	 * TEMPORARY DIAGNOSTIC: Log any action/filter containing 'gravityflow' or 'workflow'
+	 */
+	public function debug_log_gravityflow_actions() {
+		$current = current_filter();
+		if ( strpos( $current, 'gravityflow' ) !== false || strpos( $current, 'workflow' ) !== false ) {
+			// Skip noisy hooks
+			if ( strpos( $current, 'style' ) !== false || strpos( $current, 'script' ) !== false ) {
+				return;
+			}
+			self::debug_log( sprintf( 'SFA_PROD [HOOK_TRACE] %s', $current ) );
+		}
 	}
 
 	/**
@@ -1068,6 +1085,20 @@ class BookingHandler {
 			if ( ! $current_entry_id ) {
 				return;
 			}
+
+			// DIAGNOSTIC: Log ALL workflow-related meta for the current entry
+			$workflow_meta = $wpdb->get_results(
+				$wpdb->prepare(
+					"SELECT meta_key, meta_value
+					FROM {$wpdb->prefix}gf_entry_meta
+					WHERE entry_id = %d
+					AND (meta_key LIKE 'workflow%%' OR meta_key LIKE '_prod_booking%%' OR meta_key = '_prod_booking_status' OR meta_key = '_install_date')
+					ORDER BY meta_key",
+					$current_entry_id
+				),
+				ARRAY_A
+			);
+			self::debug_log( sprintf( 'SFA_PROD SYNC [DIAGNOSTIC] entry=%d workflow/booking meta: %s', $current_entry_id, wp_json_encode( $workflow_meta ) ) );
 
 			$entries = $wpdb->get_results(
 				$wpdb->prepare(
