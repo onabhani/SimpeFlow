@@ -4,13 +4,7 @@ namespace SFA\QualityGate;
 if ( ! class_exists( 'GFForms' ) ) { return; }
 if ( ! class_exists( '\Gravity_Flow_Step' ) ) { return; }
 
-if ( ! function_exists( 'sfa_qg_log' ) ) {
-	function sfa_qg_log( $msg, $ctx = array() ) {
-		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
-			error_log( '[SFA QG] ' . $msg . ( $ctx ? ' | ' . wp_json_encode( $ctx ) : '' ) );
-		}
-	}
-}
+// sfa_qg_log() is defined in quality-gate.php (the module entry point).
 
 class Step_Quality_Gate extends \Gravity_Flow_Step {
 

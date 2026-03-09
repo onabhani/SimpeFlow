@@ -43,7 +43,12 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 		// =========================
 		// Filter / Search bar (UI)
 		// =========================
-		$forms = class_exists( 'GFAPI' ) ? \GFAPI::get_forms() : array();
+		// Cache forms list for 5 minutes to avoid loading all forms on every report page view.
+		$forms = get_transient( 'sfa_qg_forms_list' );
+		if ( false === $forms ) {
+			$forms = class_exists( 'GFAPI' ) ? \GFAPI::get_forms() : array();
+			set_transient( 'sfa_qg_forms_list', $forms, 5 * MINUTE_IN_SECONDS );
+		}
 		?>
 		<form method="get" class="sfa-qg-filter" style="position:sticky;top:32px;z-index:100;background:#fff;padding:10px 12px;margin:-6px -12px 12px;border-bottom:1px solid #e5e5e5;">
 			<input type="hidden" name="page" value="sfa-qg-report">

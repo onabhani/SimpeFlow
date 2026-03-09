@@ -112,24 +112,10 @@ $cfg['failedItems'] = $failed_from_meta;
 	}
 	$cfg['context'] = $context;
 
-// --- QG-204: Persist “Fixed” names into the QC config so JS can render badges on reload
-$entry_id = (int) ( $cfg['entryId'] ?: ( function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0 ) );
-$cfg['fixedItems'] = array();
-if ( $entry_id ) {
-    $fixed_meta = json_decode( (string) gform_get_meta( $entry_id, '_qc_recheck_items' ), true );
-    if ( is_array( $fixed_meta ) ) {
-        $cfg['fixedItems'] = array_values( array_unique( array_filter( array_map( 'strval', $fixed_meta ) ) ) );
-    }
-}
-
-
-	// --- QG-104: limit interactive items to coordinator-marked list (recheck targets) ---
-	// Load once and ONLY set recheckOnly; do NOT overwrite fixedItems.
-	$eid = ! empty( $cfg['entryId'] ) ? (int) $cfg['entryId'] : ( function_exists( 'sfa_qg_current_entry_id' ) ? (int) sfa_qg_current_entry_id() : 0 );
-	$re  = $eid ? json_decode( (string) gform_get_meta( $eid, '_qc_recheck_items' ), true ) : array();
-	if ( is_array( $re ) && ! empty( $re ) ) {
-		$re                 = array_values( array_unique( array_map( 'strval', $re ) ) );
-		$cfg['recheckOnly'] = $re;
+	// QG-104 / QG-204: recheckOnly reuses the fixedItems already loaded above (line 77-88).
+	// No need to re-read _qc_recheck_items — $fixed_from_meta already has it.
+	if ( ! empty( $fixed_from_meta ) ) {
+		$cfg['recheckOnly'] = $fixed_from_meta;
 	}
 
 	// Parse metric labels from field setting (comma or newline). Max 10.

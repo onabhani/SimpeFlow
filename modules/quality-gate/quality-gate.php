@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.15
+ * Version: 2.3.16
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -40,6 +40,12 @@ if ( ! function_exists( 'sfa_qg_current_entry_id' ) ) {
 
 if ( ! function_exists( 'sfa_qg_report_collect' ) ) {
 	function sfa_qg_report_collect( $range = 'today', $form_id = 0, $ym = '' ) {
+		static $memo = array();
+		$memo_key = $range . '|' . (int) $form_id . '|' . $ym;
+		if ( isset( $memo[ $memo_key ] ) ) {
+			return $memo[ $memo_key ];
+		}
+
 		global $wpdb;
 
 list( $start_local, $end_local ) = sfa_qg_report_range_bounds( $range, $ym );
@@ -324,12 +330,27 @@ if ( (!empty($entry_ids)) && class_exists('GFAPI') &&
     $calc_total_metrics = 0;
     $calc_items_total = 0;
 
+    // Batch-fetch entries instead of N+1 individual GFAPI::get_entry() calls.
+    $batch_size    = 200;
+    $entry_chunks  = array_chunk( array_map( 'intval', (array) $entry_ids ), $batch_size );
+    $entries_batch = array();
+    foreach ( $entry_chunks as $chunk ) {
+        $search   = array( 'field_filters' => array( array( 'key' => 'id', 'operator' => 'in', 'value' => $chunk ) ) );
+        $fetched  = \GFAPI::get_entries( 0, $search, null, array( 'offset' => 0, 'page_size' => $batch_size ) );
+        if ( is_array( $fetched ) ) {
+            foreach ( $fetched as $fe ) {
+                if ( is_array( $fe ) && isset( $fe['id'] ) ) {
+                    $entries_batch[ (int) $fe['id'] ] = $fe;
+                }
+            }
+        }
+    }
+
     foreach ( (array) $entry_ids as $eid ) {
         $eid = (int) $eid;
+        if ( ! isset( $entries_batch[ $eid ] ) ) { continue; }
+        $entry = $entries_batch[ $eid ];
         $fid = isset( $entry_forms_map[$eid] ) ? (int) $entry_forms_map[$eid] : 0;
-
-        $entry = \GFAPI::get_entry( $eid );
-        if ( is_wp_error( $entry ) || ! is_array( $entry ) ) { continue; }
 
         // Resolve QC field id once per form
         $json = null;
@@ -415,6 +436,7 @@ if ( (!empty($entry_ids)) && class_exists('GFAPI') &&
 			empty( $top_failed_metrics );
 
 		if ( ! $no_failed_panels ) {
+			$memo[ $memo_key ] = $result;
 			return $result; // we have "failed" data already
 		}
 
@@ -442,6 +464,7 @@ if ( (!empty($entry_ids)) && class_exists('GFAPI') &&
 		);
 
 		if ( empty( $audit_rows ) ) {
+			$memo[ $memo_key ] = $result;
 			return $result; // still nothing to show
 		}
 
@@ -544,6 +567,7 @@ foreach ( $audit_rows as $r ) {
 		$result['latest_failed']      = $latest_failed_audit;
 		$result['failed_entries']     = $failed_entries_audit;
 
+		$memo[ $memo_key ] = $result;
 		return $result;
 	}
 }
@@ -552,7 +576,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.15');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.16');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -590,23 +614,26 @@ function sfa_qg_install_audit_table() {
 
 /**
  * Ensure the audit table exists at runtime (no need to re-activate the plugin).
- * Runs early on every request; if the table is missing, it will be created.
+ * Uses an option flag to avoid SHOW TABLES on every request.
  */
 add_action( 'init', 'sfa_qg_maybe_install_audit_table', 1 );
 function sfa_qg_maybe_install_audit_table() {
+	// Fast path: option flag already confirmed the table exists.
+	if ( get_option( 'sfa_qg_audit_table_ready' ) === '1' ) {
+		return;
+	}
+
 	global $wpdb;
 	$tbl = $wpdb->prefix . 'sfa_qg_audit';
 
-	$pattern = $wpdb->esc_like( $tbl ); // escape _ and %
+	$pattern = $wpdb->esc_like( $tbl );
 	$exists  = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $pattern ) );
 
 	if ( $exists !== $tbl ) {
 		sfa_qg_install_audit_table();
 		$exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $pattern ) );
-		update_option( 'sfa_qg_audit_table_ready', $exists === $tbl ? '1' : '0' );
-	} else {
-		update_option( 'sfa_qg_audit_table_ready', '1' );
 	}
+	update_option( 'sfa_qg_audit_table_ready', $exists === $tbl ? '1' : '0', true );
 }
 
 /** Check if a fail audit row exists for entry+metric_key (global scope). */
@@ -669,16 +696,19 @@ function sfa_qg_audit_log_fix( $form_id, $entry_id, $metric_key, $item_label = '
  *  Assets (registered once; enqueued where needed)
  * ----------------------------------------------------------------*/
 add_action( 'init', function () {
-	// Force cache bust with timestamp during development
-	$timestamp = time();
-	$version = SFA_QG_VER . '.' . $timestamp;
+	// Use filemtime for cache-busting only when WP_DEBUG is on; otherwise use stable version.
+	$version = SFA_QG_VER;
+	if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+		$js_file  = SFA_QG_DIR . 'assets/js/quality.js';
+		$css_file = SFA_QG_DIR . 'assets/css/quality.css';
+		$version  = SFA_QG_VER . '.' . max(
+			file_exists( $js_file ) ? (int) filemtime( $js_file ) : 0,
+			file_exists( $css_file ) ? (int) filemtime( $css_file ) : 0
+		);
+	}
 
-	// Deregister first to ensure fresh registration
-	wp_deregister_script( 'sfa-qg' );
-	wp_deregister_style( 'sfa-qg' );
-
-	wp_register_script( 'sfa-qg', SFA_QG_URL . 'assets/js/quality.js?v=' . $timestamp, array( 'jquery' ), $version, true );
-	wp_register_style( 'sfa-qg', SFA_QG_URL . 'assets/css/quality.css?v=' . $timestamp, array(), $version );
+	wp_register_script( 'sfa-qg', SFA_QG_URL . 'assets/js/quality.js', array( 'jquery' ), $version, true );
+	wp_register_style( 'sfa-qg', SFA_QG_URL . 'assets/css/quality.css', array(), $version );
 }, 5);
 
 /**
