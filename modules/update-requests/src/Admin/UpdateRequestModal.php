@@ -26,15 +26,16 @@ class UpdateRequestModal {
 	 * Used by admins when automatic application fails
 	 */
 	public function handle_manual_apply() {
-		// Get entry ID
-		$entry_id = isset( $_GET['entry_id'] ) ? absint( $_GET['entry_id'] ) : 0;
+		// Get entry ID from POST (preferred) or GET (fallback for backward compat)
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : ( isset( $_GET['entry_id'] ) ? absint( $_GET['entry_id'] ) : 0 );
 
 		if ( ! $entry_id ) {
 			wp_die( 'Missing entry ID', 'Error', [ 'response' => 400 ] );
 		}
 
-		// Verify nonce
-		if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sfa_ur_apply_' . $entry_id ) ) {
+		// Verify nonce from POST (preferred) or GET (fallback)
+		$nonce = $_POST['_wpnonce'] ?? $_GET['_wpnonce'] ?? '';
+		if ( ! wp_verify_nonce( $nonce, 'sfa_ur_apply_' . $entry_id ) ) {
 			wp_die( 'Invalid security token', 'Error', [ 'response' => 403 ] );
 		}
 
@@ -78,7 +79,7 @@ class UpdateRequestModal {
 			\GFAPI::add_note(
 				$entry_id,
 				get_current_user_id(),
-				wp_get_current_user()->display_name,
+				is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 				'<strong>Manual Approval:</strong> Update request was manually approved by admin during manual apply action.'
 			);
 		}
@@ -229,11 +230,11 @@ class UpdateRequestModal {
 		\GFAPI::add_note(
 			$child_entry_id,
 			get_current_user_id(),
-			wp_get_current_user()->display_name,
+			is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 			sprintf(
 				'Update request submitted for drawing: %s<br>Reason: %s<br>Parent entry: #%d (Form %d)',
-				$filename,
-				$reason,
+				esc_html( $filename ),
+				esc_html( $reason ),
 				$entry_id,
 				$form_id
 			)
@@ -343,10 +344,10 @@ class UpdateRequestModal {
 		\GFAPI::add_note(
 			$child_entry_id,
 			get_current_user_id(),
-			wp_get_current_user()->display_name,
+			is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 			sprintf(
 				'Following invoice submitted<br>Description: %s<br>Parent entry: #%d (Form %d)',
-				$reason,
+				esc_html( $reason ),
 				$entry_id,
 				$form_id
 			)
@@ -374,7 +375,7 @@ class UpdateRequestModal {
 	private function handle_file_upload( $file, $type ) {
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 
-		// Validate file type
+		// Validate file extension
 		$allowed_types = [
 			'drawing' => [ 'pdf', 'dwg', 'dxf', 'jpg', 'jpeg', 'png' ],
 			'invoice' => [ 'pdf' ],
@@ -386,6 +387,15 @@ class UpdateRequestModal {
 			return new \WP_Error(
 				'invalid_file_type',
 				sprintf( 'Invalid file type. Allowed types: %s', implode( ', ', $allowed_types[ $type ] ) )
+			);
+		}
+
+		// Validate MIME type matches extension
+		$filetype = wp_check_filetype( $file['name'] );
+		if ( ! $filetype['type'] ) {
+			return new \WP_Error(
+				'invalid_mime_type',
+				'File MIME type could not be determined. Upload rejected for security.'
 			);
 		}
 
@@ -408,6 +418,19 @@ class UpdateRequestModal {
 	 * @param string $request_type Request type
 	 */
 	private function link_to_parent( $parent_id, $child_id, $request_type ) {
+		// Acquire lock to prevent concurrent _ur_children modifications
+		global $wpdb;
+		$lock_name = 'sfa_ur_children_' . $parent_id;
+		$lock_acquired = $wpdb->get_var( $wpdb->prepare( "SELECT GET_LOCK(%s, 15)", $lock_name ) );
+
+		if ( ! $lock_acquired ) {
+			error_log( sprintf(
+				'Update Requests: Failed to acquire lock for parent entry %d during link_to_parent',
+				$parent_id
+			) );
+			return;
+		}
+
 		// Get existing children
 		$children_json = gform_get_meta( $parent_id, '_ur_children' );
 		$children = $children_json ? json_decode( $children_json, true ) : [];
@@ -427,6 +450,9 @@ class UpdateRequestModal {
 
 		// Update parent meta
 		gform_update_meta( $parent_id, '_ur_children', wp_json_encode( $children ) );
+
+		// Release lock
+		$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
 
 		// Fire action
 		do_action( 'sfa_update_request_linked', $child_id, $parent_id, $request_type );

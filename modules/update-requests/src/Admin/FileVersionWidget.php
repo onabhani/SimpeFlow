@@ -158,18 +158,18 @@ class FileVersionWidget {
 										<?php echo esc_html( $filename ); ?>
 									</a>
 								</td>
-								<td>v<?php echo $version_number; ?></td>
-								<td><?php echo $upload_date ? date( 'M j, Y', strtotime( $upload_date ) ) : '-'; ?></td>
+								<td>v<?php echo esc_html( $version_number ); ?></td>
+								<td><?php echo $upload_date ? esc_html( wp_date( 'M j, Y', strtotime( $upload_date ) ) ) : '-'; ?></td>
 								<?php if ( $is_creator ): ?>
 									<td>
 										<?php if ( $can_update ): ?>
 											<button
 												type="button"
 												class="button button-small sfa-ur-update-btn"
-												data-entry-id="<?php echo $entry_id; ?>"
-												data-form-id="<?php echo $form_id; ?>"
+												data-entry-id="<?php echo esc_attr( $entry_id ); ?>"
+												data-form-id="<?php echo esc_attr( $form_id ); ?>"
 												data-filename="<?php echo esc_attr( $filename ); ?>"
-												data-current-version="<?php echo $version_number; ?>"
+												data-current-version="<?php echo esc_attr( $version_number ); ?>"
 											>
 												Update
 											</button>
@@ -189,8 +189,8 @@ class FileVersionWidget {
 					<button
 						type="button"
 						class="button button-primary sfa-ur-following-btn"
-						data-entry-id="<?php echo $entry_id; ?>"
-						data-form-id="<?php echo $form_id; ?>"
+						data-entry-id="<?php echo esc_attr( $entry_id ); ?>"
+						data-form-id="<?php echo esc_attr( $form_id ); ?>"
 					>
 						+ Add Following Invoice
 					</button>
@@ -239,8 +239,8 @@ class FileVersionWidget {
 					<h2>Update Drawing</h2>
 					<form id="sfa-ur-update-form" enctype="multipart/form-data">
 						<input type="hidden" name="action" value="sfa_ur_submit_update">
-						<input type="hidden" name="entry_id" id="sfa-ur-entry-id" value="<?php echo $entry_id; ?>">
-						<input type="hidden" name="form_id" id="sfa-ur-form-id" value="<?php echo $form_id; ?>">
+						<input type="hidden" name="entry_id" id="sfa-ur-entry-id" value="<?php echo esc_attr( $entry_id ); ?>">
+						<input type="hidden" name="form_id" id="sfa-ur-form-id" value="<?php echo esc_attr( $form_id ); ?>">
 						<input type="hidden" name="filename" id="sfa-ur-filename">
 						<input type="hidden" name="nonce" value="<?php echo wp_create_nonce( 'sfa_ur_submit' ); ?>">
 
@@ -280,8 +280,8 @@ class FileVersionWidget {
 					<h2>Add Following Invoice</h2>
 					<form id="sfa-ur-following-form" enctype="multipart/form-data">
 						<input type="hidden" name="action" value="sfa_ur_submit_following">
-						<input type="hidden" name="entry_id" id="sfa-ur-following-entry-id" value="<?php echo $entry_id; ?>">
-						<input type="hidden" name="form_id" id="sfa-ur-following-form-id" value="<?php echo $form_id; ?>">
+						<input type="hidden" name="entry_id" id="sfa-ur-following-entry-id" value="<?php echo esc_attr( $entry_id ); ?>">
+						<input type="hidden" name="form_id" id="sfa-ur-following-form-id" value="<?php echo esc_attr( $form_id ); ?>">
 						<input type="hidden" name="nonce" value="<?php echo wp_create_nonce( 'sfa_ur_submit' ); ?>">
 
 						<div class="sfa-ur-form-field">

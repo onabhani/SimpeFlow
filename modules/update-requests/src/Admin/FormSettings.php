@@ -41,6 +41,10 @@ class FormSettings {
 	 * Render settings page
 	 */
 	public function render_settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( __( 'You do not have permission to access this page.' ) );
+		}
+
 		// Get form ID
 		$form_id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
 
@@ -78,14 +82,24 @@ class FormSettings {
 		// Get GravityFlow steps if available
 		$workflow_steps = [];
 		if ( class_exists( 'Gravity_Flow_API' ) ) {
-			$api = new \Gravity_Flow_API( $form_id );
-			$steps = $api->get_steps();
-			foreach ( $steps as $step ) {
-				$workflow_steps[] = [
-					'id'    => $step->get_id(),
-					'name'  => $step->get_name(),
-					'type'  => $step->get_type(),
-				];
+			try {
+				$api = new \Gravity_Flow_API( $form_id );
+				$steps = $api->get_steps();
+				if ( is_array( $steps ) ) {
+					foreach ( $steps as $step ) {
+						$workflow_steps[] = [
+							'id'    => $step->get_id(),
+							'name'  => $step->get_name(),
+							'type'  => $step->get_type(),
+						];
+					}
+				}
+			} catch ( \Exception $e ) {
+				error_log( sprintf(
+					'Update Requests: Failed to load GravityFlow steps for form %d: %s',
+					$form_id,
+					$e->getMessage()
+				) );
 			}
 		}
 
@@ -142,7 +156,7 @@ class FormSettings {
 
 			<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>">
 				<input type="hidden" name="action" value="sfa_ur_save_form_settings">
-				<input type="hidden" name="form_id" value="<?php echo $form_id; ?>">
+				<input type="hidden" name="form_id" value="<?php echo esc_attr( $form_id ); ?>">
 				<?php wp_nonce_field( 'sfa_ur_form_settings_' . $form_id ); ?>
 
 				<!-- Enable Update Requests -->
@@ -567,6 +581,10 @@ class FormSettings {
 
 	/**
 	 * Check if user is the entry creator
+	 *
+	 * Note: This relies on `created_by` being immutable in Gravity Forms.
+	 * GF does not expose a public API to change `created_by` after creation.
+	 * If it is ever modified via direct DB access, this check will be stale.
 	 *
 	 * @param array $entry Entry array
 	 * @param int   $user_id User ID to check (defaults to current user)

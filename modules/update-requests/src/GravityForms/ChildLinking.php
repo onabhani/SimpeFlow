@@ -12,6 +12,62 @@ class ChildLinking {
 	public function __construct() {
 		// Hook after form submission to link child to parent
 		add_action( 'gform_after_submission', [ $this, 'link_child_to_parent' ], 10, 2 );
+
+		// Clean up orphaned references when an entry is deleted
+		add_action( 'gform_delete_entry', [ $this, 'handle_entry_deletion' ], 10, 1 );
+	}
+
+	/**
+	 * Clean up parent-child references when an entry is deleted
+	 *
+	 * If a parent is deleted, marks orphaned children.
+	 * If a child is deleted, removes it from the parent's _ur_children array.
+	 *
+	 * @param int $entry_id Deleted entry ID
+	 */
+	public function handle_entry_deletion( $entry_id ) {
+		$entry_id = (int) $entry_id;
+
+		// Check if deleted entry is a child (has _ur_parent_id)
+		$parent_id = gform_get_meta( $entry_id, '_ur_parent_id' );
+
+		if ( $parent_id ) {
+			$parent_id = (int) $parent_id;
+
+			// Remove this child from parent's _ur_children array
+			global $wpdb;
+			$lock_name = 'sfa_ur_children_' . $parent_id;
+			$lock_acquired = $wpdb->get_var( $wpdb->prepare( "SELECT GET_LOCK(%s, 15)", $lock_name ) );
+
+			if ( $lock_acquired ) {
+				$children_json = gform_get_meta( $parent_id, '_ur_children' );
+				$children = $children_json ? json_decode( $children_json, true ) : [];
+
+				if ( is_array( $children ) ) {
+					$children = array_values( array_filter( $children, function ( $child ) use ( $entry_id ) {
+						return isset( $child['entry_id'] ) && (int) $child['entry_id'] !== $entry_id;
+					} ) );
+
+					gform_update_meta( $parent_id, '_ur_children', wp_json_encode( $children ) );
+				}
+
+				$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
+			}
+
+			return;
+		}
+
+		// Check if deleted entry is a parent (has _ur_children)
+		$children_json = gform_get_meta( $entry_id, '_ur_children' );
+		$children = $children_json ? json_decode( $children_json, true ) : [];
+
+		if ( is_array( $children ) && ! empty( $children ) ) {
+			foreach ( $children as $child ) {
+				if ( isset( $child['entry_id'] ) ) {
+					gform_update_meta( (int) $child['entry_id'], '_ur_parent_deleted', true );
+				}
+			}
+		}
 	}
 
 	/**
@@ -54,6 +110,19 @@ class ChildLinking {
 		gform_update_meta( $entry_id, '_ur_submitted_at', current_time( 'mysql' ) );
 		gform_update_meta( $entry_id, '_ur_submitted_by', get_current_user_id() );
 
+		// Acquire lock to prevent concurrent _ur_children modifications
+		global $wpdb;
+		$lock_name = 'sfa_ur_children_' . $parent_id;
+		$lock_acquired = $wpdb->get_var( $wpdb->prepare( "SELECT GET_LOCK(%s, 15)", $lock_name ) );
+
+		if ( ! $lock_acquired ) {
+			error_log( sprintf(
+				'Update Requests: Failed to acquire lock for parent entry %d',
+				$parent_id
+			) );
+			return;
+		}
+
 		// Get existing children array from parent
 		$children_json = gform_get_meta( $parent_id, '_ur_children' );
 		$children = $children_json ? json_decode( $children_json, true ) : [];
@@ -73,6 +142,9 @@ class ChildLinking {
 
 		// Update parent's children array
 		gform_update_meta( $parent_id, '_ur_children', wp_json_encode( $children ) );
+
+		// Release lock
+		$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
 
 		error_log( sprintf(
 			'Update Requests: Linked child entry %d to parent %d (type: %s)',

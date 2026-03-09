@@ -110,19 +110,19 @@ class ParentPanel {
 							<tr>
 								<td style="padding: 8px;">
 									<a href="<?php echo esc_url( $entry_url ); ?>" target="_blank">
-										#<?php echo $child_entry_id; ?>
+										#<?php echo esc_html( $child_entry_id ); ?>
 									</a>
 								</td>
 								<td style="padding: 8px;">
 									<?php echo esc_html( $type_label ); ?>
 								</td>
 								<td style="padding: 8px;">
-									<span style="display: inline-block; padding: 3px 8px; background: <?php echo $status_color; ?>; color: white; border-radius: 3px; font-size: 11px; font-weight: 500;">
+									<span style="display: inline-block; padding: 3px 8px; background: <?php echo esc_attr( $status_color ); ?>; color: white; border-radius: 3px; font-size: 11px; font-weight: 500;">
 										<?php echo esc_html( $status_label ); ?>
 									</span>
 								</td>
 								<td style="padding: 8px; font-size: 12px;">
-									<?php echo date( 'M j, Y g:i a', strtotime( $submitted_at ) ); ?>
+									<?php echo esc_html( wp_date( 'M j, Y g:i a', strtotime( $submitted_at ) ) ); ?>
 									<br>
 									<small style="color: #666;">by <?php echo esc_html( $submitter_name ); ?></small>
 								</td>
