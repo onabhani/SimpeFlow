@@ -9,7 +9,12 @@ function sfa_qg_handle_export() {
     // Permissions (same cap as the page)
     $cap = current_user_can( 'gravityflow_workflow' ) ? 'gravityflow_workflow' : 'gravityforms_view_entries';
     if ( ! current_user_can( $cap ) ) {
-        wp_die( esc_html__( 'You do not have permission to export this report.', 'sfa-quality-gate' ) );
+        wp_die( esc_html__( 'You do not have permission to export this report.', 'simpleflow' ) );
+    }
+
+    // CSRF protection
+    if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_export' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'simpleflow' ), 403 );
     }
 
     // Params

@@ -1,10 +1,25 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+/**
+ * INTENTIONAL DEVIATION: This file queries wp_gf_entry / wp_gf_entry_meta
+ * tables directly instead of using GFAPI. This is a deliberate performance
+ * trade-off for reporting — aggregate queries over large date ranges would
+ * be prohibitively slow through GFAPI::get_entries(). Any GF schema changes
+ * must be reflected here.
+ */
+
 require_once __DIR__ . '/utils.php';
 
 if ( ! function_exists( 'sfa_qg_report_collect' ) ) {
     function sfa_qg_report_collect( $range = 'today', $form_id = 0, $ym = '' ) {
+        // Memoize: return cached result for identical parameters within the same request.
+        static $memo = array();
+        $memo_key = $range . '|' . (int) $form_id . '|' . $ym;
+        if ( isset( $memo[ $memo_key ] ) ) {
+            return $memo[ $memo_key ];
+        }
+
         global $wpdb;
 
 // Local window for display
@@ -181,12 +196,28 @@ if ( (!empty($entry_ids)) && class_exists('GFAPI') &&
     $calc_total_metrics = 0;
     $calc_items_total = 0;
 
+    // Batch-fetch entries instead of N+1 individual GFAPI::get_entry() calls.
+    // Process in chunks to avoid excessive memory usage.
+    $batch_size    = 200;
+    $entry_chunks  = array_chunk( array_map( 'intval', (array) $entry_ids ), $batch_size );
+    $entries_batch = array();
+    foreach ( $entry_chunks as $chunk ) {
+        $search   = array( 'field_filters' => array( array( 'key' => 'id', 'operator' => 'in', 'value' => $chunk ) ) );
+        $fetched  = \GFAPI::get_entries( 0, $search, null, array( 'offset' => 0, 'page_size' => $batch_size ) );
+        if ( is_array( $fetched ) ) {
+            foreach ( $fetched as $fe ) {
+                if ( is_array( $fe ) && isset( $fe['id'] ) ) {
+                    $entries_batch[ (int) $fe['id'] ] = $fe;
+                }
+            }
+        }
+    }
+
     foreach ( (array) $entry_ids as $eid ) {
         $eid = (int) $eid;
+        if ( ! isset( $entries_batch[ $eid ] ) ) { continue; }
+        $entry = $entries_batch[ $eid ];
         $fid = isset( $entry_forms_map[$eid] ) ? (int) $entry_forms_map[$eid] : 0;
-
-        $entry = \GFAPI::get_entry( $eid );
-        if ( is_wp_error( $entry ) || ! is_array( $entry ) ) { continue; }
 
         // Resolve QC field id once per form
         $json = null;
@@ -294,7 +325,7 @@ if ( (int) $totals['metrics_failed'] === 0 ) {
             ? round( 100 * ( $totals['metrics_total'] - $totals['metrics_failed'] ) / $totals['metrics_total'], 1 )
             : 0;
 
-        return array(
+        $memo[ $memo_key ] = array(
     'range'              => $range,
     'start'              => $start_local,
     'end'                => $end_local,
@@ -307,11 +338,18 @@ if ( (int) $totals['metrics_failed'] === 0 ) {
             'failed_entries'     => $failed_entries,
             'ym'                 => (string) $ym,
         );
+        return $memo[ $memo_key ];
     }
 }
 
 if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
     function sfa_qg_fixed_report_collect( $range = 'today', $form_id = 0, $ym = '' ) {
+        static $memo = array();
+        $memo_key = 'fx|' . $range . '|' . (int) $form_id . '|' . $ym;
+        if ( isset( $memo[ $memo_key ] ) ) {
+            return $memo[ $memo_key ];
+        }
+
         global $wpdb;
 
         list( $start, $end ) = sfa_qg_report_range_bounds( $range, $ym );
@@ -373,14 +411,14 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
                 if ( ! $fx ) continue;
                 if ( $fx < $start_ts || $fx > $end_ts ) continue;
 
-                $ym = gmdate( 'Y-m', $fx );
-                $monthly[ $ym ] = ( $monthly[ $ym ] ?? 0 ) + 1;
+                $ym_key = gmdate( 'Y-m', $fx );
+                $monthly[ $ym_key ] = ( $monthly[ $ym_key ] ?? 0 ) + 1;
 
                 $dur = isset( $ev['duration_seconds'] ) ? (int) $ev['duration_seconds'] : null;
                 if ( $dur !== null ) {
-                    if ( ! isset( $avg_map[ $ym ] ) ) $avg_map[ $ym ] = array( 'sum' => 0, 'cnt' => 0 );
-                    $avg_map[ $ym ]['sum'] += $dur;
-                    $avg_map[ $ym ]['cnt'] += 1;
+                    if ( ! isset( $avg_map[ $ym_key ] ) ) $avg_map[ $ym_key ] = array( 'sum' => 0, 'cnt' => 0 );
+                    $avg_map[ $ym_key ]['sum'] += $dur;
+                    $avg_map[ $ym_key ]['cnt'] += 1;
                 }
 
                 $details[] = array(
@@ -397,11 +435,11 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
 
         ksort( $monthly );
         $avg = array();
-        foreach ( $avg_map as $ym => $v ) {
-            $avg[ $ym ] = (int) round( $v['sum'] / max( 1, $v['cnt'] ) );
+        foreach ( $avg_map as $ym_key => $v ) {
+            $avg[ $ym_key ] = (int) round( $v['sum'] / max( 1, $v['cnt'] ) );
         }
 
-        return array(
+        $memo[ $memo_key ] = array(
             'range'   => $range,
             'start'   => $start,
             'end'     => $end,
@@ -410,11 +448,18 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
             'avg'     => $avg,
             'details' => $details,
         );
+        return $memo[ $memo_key ];
     }}
     
     // === History collector (uses the audit table if present) ====================
 if ( ! function_exists( 'sfa_qg_report_collect_history' ) ) {
 	function sfa_qg_report_collect_history( $range = 'month', $form_id = 0, $ym = '' ) {
+		static $memo = array();
+		$memo_key = 'hist|' . $range . '|' . (int) $form_id . '|' . $ym;
+		if ( isset( $memo[ $memo_key ] ) ) {
+			return $memo[ $memo_key ];
+		}
+
 		global $wpdb;
 
 		$out = array(
@@ -429,6 +474,7 @@ if ( ! function_exists( 'sfa_qg_report_collect_history' ) ) {
 			"SHOW TABLES LIKE %s", $wpdb->esc_like( $tbl )
 		) );
 		if ( $has !== $tbl ) {
+			$memo[ $memo_key ] = $out;
 			return $out; // table not present (fresh install) — graceful no-op
 		}
 
@@ -475,6 +521,7 @@ if ( ! function_exists( 'sfa_qg_report_collect_history' ) ) {
 				break;
 		}
 		if ( ! $start || ! $end ) {
+			$memo[ $memo_key ] = $out;
 			return $out;
 		}
 
@@ -568,6 +615,7 @@ $sql3 = "SELECT form_id, entry_id, MAX(event_utc) AS last_ts,
 		// Calculate total metrics failed from the audit data
 		$out['totals_metrics_failed'] = array_sum( array_map( 'intval', array_values( $out['top_failed_metrics'] ) ) );
 
+		$memo[ $memo_key ] = $out;
 		return $out;
 	}
 }

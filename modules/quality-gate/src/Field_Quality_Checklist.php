@@ -8,7 +8,7 @@ class Field_Quality_Checklist extends \GF_Field {
 	public $type = 'quality_checklist';
 
 	public function get_form_editor_field_title() {
-		return esc_html__('Quality Checklist','sfa-quality-gate');
+		return esc_html__('Quality Checklist','simpleflow');
 	}
 
 	public function get_form_editor_field_settings() {
@@ -69,8 +69,15 @@ public function get_field_input( $form, $value = '', $entry = null ) {
 	
 
 
-// Before echoing HTML, extend $cfg with fixedItems and failedItems from meta
-$entry_id = function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0;
+// Before echoing HTML, extend $cfg with fixedItems and failedItems from meta.
+// Prefer the resolved $entry (passed by GF) over sfa_qg_current_entry_id() fallback.
+$entry_id = 0;
+if ( is_array( $entry ) && ! empty( $entry['id'] ) ) {
+    $entry_id = (int) $entry['id'];
+}
+if ( ! $entry_id ) {
+    $entry_id = function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0;
+}
 $fixed_from_meta = array();
 $failed_from_meta = array();
 if ( $entry_id ) {
@@ -112,24 +119,10 @@ $cfg['failedItems'] = $failed_from_meta;
 	}
 	$cfg['context'] = $context;
 
-// --- QG-204: Persist “Fixed” names into the QC config so JS can render badges on reload
-$entry_id = (int) ( $cfg['entryId'] ?: ( function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0 ) );
-$cfg['fixedItems'] = array();
-if ( $entry_id ) {
-    $fixed_meta = json_decode( (string) gform_get_meta( $entry_id, '_qc_recheck_items' ), true );
-    if ( is_array( $fixed_meta ) ) {
-        $cfg['fixedItems'] = array_values( array_unique( array_filter( array_map( 'strval', $fixed_meta ) ) ) );
-    }
-}
-
-
-	// --- QG-104: limit interactive items to coordinator-marked list (recheck targets) ---
-	// Load once and ONLY set recheckOnly; do NOT overwrite fixedItems.
-	$eid = ! empty( $cfg['entryId'] ) ? (int) $cfg['entryId'] : ( function_exists( 'sfa_qg_current_entry_id' ) ? (int) sfa_qg_current_entry_id() : 0 );
-	$re  = $eid ? json_decode( (string) gform_get_meta( $eid, '_qc_recheck_items' ), true ) : array();
-	if ( is_array( $re ) && ! empty( $re ) ) {
-		$re                 = array_values( array_unique( array_map( 'strval', $re ) ) );
-		$cfg['recheckOnly'] = $re;
+	// QG-104 / QG-204: recheckOnly reuses the fixedItems already loaded above (line 77-88).
+	// No need to re-read _qc_recheck_items — $fixed_from_meta already has it.
+	if ( ! empty( $fixed_from_meta ) ) {
+		$cfg['recheckOnly'] = $fixed_from_meta;
 	}
 
 	// Parse metric labels from field setting (comma or newline). Max 10.
@@ -152,99 +145,16 @@ if ( $entry_id ) {
 		$cfg['metricLabels'] = $metric_labels;
 	}
 
-	// Server-side embed of item names when we have entry + source
+	// Server-side embed of item names when we have entry + source.
+	// Uses sfa_qg_normalize_files() (defined in quality-gate.php) for parsing.
 	$items     = array();
 	$source_id = $cfg['sourceId'];
-	if ( $source_id && is_array( $entry ) ) {
+	if ( $source_id && is_array( $entry ) && function_exists( 'sfa_qg_normalize_files' ) ) {
 		$raw_upload = rgar( $entry, (string) $source_id );
 		if ( ! $raw_upload && isset( $entry[ $source_id ] ) ) {
 			$raw_upload = $entry[ $source_id ];
 		}
-
-		$push = function( $s ) use ( &$items ) {
-			if ( ! is_string( $s ) || $s === '' ) {
-				return;
-			}
-			$b = wp_basename( $s );
-			if ( $b === '' ) {
-				return;
-			}
-			$n = preg_replace( '/\.[^.]+$/', '', $b );
-			if ( $n !== '' ) {
-				$items[] = array( 'name' => $n );
-			}
-		};
-
-		if ( is_string( $raw_upload ) && $raw_upload !== '' ) {
-			$d = json_decode( $raw_upload, true );
-			if ( is_array( $d ) ) {
-				foreach ( $d as $f ) {
-					if ( is_string( $f ) ) {
-						$push( $f );
-					} elseif ( is_array( $f ) ) {
-						$u = '';
-						if ( isset( $f['uploaded_filename'] ) ) {
-							$u = $f['uploaded_filename'];
-						}
-						if ( ! $u && isset( $f['uploaded_file'] ) ) {
-							$u = $f['uploaded_file'];
-						}
-						if ( ! $u && isset( $f['url'] ) ) {
-							$u = $f['url'];
-						}
-						if ( ! $u && isset( $f['temp_filename'] ) ) {
-							$u = $f['temp_filename'];
-						}
-						if ( ! $u && isset( $f['file'] ) ) {
-							$u = $f['file'];
-						}
-						if ( ! $u && isset( $f['name'] ) ) {
-							$u = $f['name'];
-						}
-						if ( ! $u && isset( $f['filename'] ) ) {
-							$u = $f['filename'];
-						}
-						if ( $u ) {
-							$push( $u );
-						}
-					}
-				}
-			} else {
-				$push( $raw_upload );
-			}
-		} elseif ( is_array( $raw_upload ) ) {
-			foreach ( $raw_upload as $f ) {
-				if ( is_string( $f ) ) {
-					$push( $f );
-				} elseif ( is_array( $f ) ) {
-					$u = '';
-					if ( isset( $f['uploaded_filename'] ) ) {
-						$u = $f['uploaded_filename'];
-					}
-					if ( ! $u && isset( $f['uploaded_file'] ) ) {
-						$u = $f['uploaded_file'];
-					}
-					if ( ! $u && isset( $f['url'] ) ) {
-						$u = $f['url'];
-					}
-					if ( ! $u && isset( $f['temp_filename'] ) ) {
-						$u = $f['temp_filename'];
-					}
-					if ( ! $u && isset( $f['file'] ) ) {
-						$u = $f['file'];
-					}
-					if ( ! $u && isset( $f['name'] ) ) {
-						$u = $f['name'];
-					}
-					if ( ! $u && isset( $f['filename'] ) ) {
-						$u = $f['filename'];
-					}
-					if ( $u ) {
-						$push( $u );
-					}
-				}
-			}
-		}
+		$items = sfa_qg_normalize_files( $raw_upload );
 	}
 
 	if ( function_exists( 'sfa_qg_log' ) ) {
@@ -339,7 +249,7 @@ if ( $entry_id ) {
 		$form_id,
 		$field_id,
 		$data_config,
-		esc_html__( 'Quality checklist UI will render here.', 'sfa-quality-gate' ),
+		esc_html__( 'Quality checklist UI will render here.', 'simpleflow' ),
 		$field_id,
 		esc_attr( $input_id ),
 		esc_attr( $payload_val )
@@ -367,7 +277,7 @@ if ( $entry_id ) {
 		$decoded = json_decode($raw,true);
 		if ( ! is_array($decoded) || ! isset($decoded['items']) || ! is_array($decoded['items']) ) {
 			$this->failed_validation = true;
-			$this->validation_message = esc_html__('Invalid quality data.','sfa-quality-gate');
+			$this->validation_message = esc_html__('Invalid quality data.','simpleflow');
 			return;
 		}
 
@@ -381,7 +291,7 @@ if ( $entry_id ) {
 				$note   = isset($m['note']) ? trim((string)$m['note']) : '';
 				if ( $result === 'fail' && $note === '' ) {
 					$this->failed_validation = true;
-					$this->validation_message = esc_html__('A note is required for failed checks.','sfa-quality-gate');
+					$this->validation_message = esc_html__('A note is required for failed checks.','simpleflow');
 					return;
 				}
 			}
@@ -431,7 +341,7 @@ if ( $entry_id ) {
 		$items = isset( $payload['items'] ) && is_array( $payload['items'] ) ? $payload['items'] : array();
 
 		if ( empty( $items ) ) {
-			return '<div class="sfa-qg-report"><div class="qg-summary">' . esc_html__( 'No checklist data.', 'sfa-quality-gate' ) . '</div></div>';
+			return '<div class="sfa-qg-report"><div class="qg-summary">' . esc_html__( 'No checklist data.', 'simpleflow' ) . '</div></div>';
 		}
 
 		ob_start();
@@ -481,9 +391,9 @@ foreach ( $items as $it ) {
 		$metrics_failed= isset( $summary['metrics_failed'] ) ? (int) $summary['metrics_failed'] : 0;
 
 		echo '<div class="qg-summary">' .
-		     esc_html__( 'Items', 'sfa-quality-gate' ) . ': ' . (int) $items_total . ' · ' .
-		     esc_html__( 'Checks', 'sfa-quality-gate' ) . ': ' . (int) $metrics_total . ' · ' .
-		     esc_html__( 'Failed', 'sfa-quality-gate' ) . ': ' . (int) $metrics_failed .
+		     esc_html__( 'Items', 'simpleflow' ) . ': ' . (int) $items_total . ' · ' .
+		     esc_html__( 'Checks', 'simpleflow' ) . ': ' . (int) $metrics_total . ' · ' .
+		     esc_html__( 'Failed', 'simpleflow' ) . ': ' . (int) $metrics_failed .
 		     '</div>';
 
 		echo '</div>';
