@@ -33,22 +33,21 @@ if ( ! function_exists( 'sfa_qg_report_range_bounds' ) ) {
                 $end   = date_i18n( 'Y-m-t 23:59:59', $ts );
                 break;
 
-            case 'today':
-            default:
-                $start = date_i18n( 'Y-m-d 00:00:00', $now );
-                $end   = date_i18n( 'Y-m-d 23:59:59', $now );
-                break;
-                
             case 'year_custom':
                 $yy = preg_replace('/[^0-9]/', '', (string) $ym );
                 if ( ! preg_match('/^\d{4}$/', $yy ) ) {
                     $yy = date_i18n( 'Y', $now );
-                    }
+                }
                 $ts    = strtotime( $yy . '-01-01 00:00:00' );
                 $start = date_i18n( 'Y-01-01 00:00:00', $ts );
                 $end   = date_i18n( 'Y-12-31 23:59:59', $ts );
                 break;
 
+            case 'today':
+            default:
+                $start = date_i18n( 'Y-m-d 00:00:00', $now );
+                $end   = date_i18n( 'Y-m-d 23:59:59', $now );
+                break;
         }
         return array( $start, $end );
     }

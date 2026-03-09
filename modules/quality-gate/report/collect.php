@@ -411,14 +411,14 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
                 if ( ! $fx ) continue;
                 if ( $fx < $start_ts || $fx > $end_ts ) continue;
 
-                $ym = gmdate( 'Y-m', $fx );
-                $monthly[ $ym ] = ( $monthly[ $ym ] ?? 0 ) + 1;
+                $ym_key = gmdate( 'Y-m', $fx );
+                $monthly[ $ym_key ] = ( $monthly[ $ym_key ] ?? 0 ) + 1;
 
                 $dur = isset( $ev['duration_seconds'] ) ? (int) $ev['duration_seconds'] : null;
                 if ( $dur !== null ) {
-                    if ( ! isset( $avg_map[ $ym ] ) ) $avg_map[ $ym ] = array( 'sum' => 0, 'cnt' => 0 );
-                    $avg_map[ $ym ]['sum'] += $dur;
-                    $avg_map[ $ym ]['cnt'] += 1;
+                    if ( ! isset( $avg_map[ $ym_key ] ) ) $avg_map[ $ym_key ] = array( 'sum' => 0, 'cnt' => 0 );
+                    $avg_map[ $ym_key ]['sum'] += $dur;
+                    $avg_map[ $ym_key ]['cnt'] += 1;
                 }
 
                 $details[] = array(
@@ -435,8 +435,8 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
 
         ksort( $monthly );
         $avg = array();
-        foreach ( $avg_map as $ym => $v ) {
-            $avg[ $ym ] = (int) round( $v['sum'] / max( 1, $v['cnt'] ) );
+        foreach ( $avg_map as $ym_key => $v ) {
+            $avg[ $ym_key ] = (int) round( $v['sum'] / max( 1, $v['cnt'] ) );
         }
 
         $memo[ $memo_key ] = array(

@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.17
+ * Version: 2.3.18
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -49,7 +49,7 @@ require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.17');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.18');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -1035,14 +1035,7 @@ foreach ( $form['fields'] as &$field ) {
 		$idx++;
 	}
 
-	/* Resolve entry for editability checks */
-	$entry = null;
-	if ( class_exists( 'GFAPI' ) ) {
-		$_entry = \GFAPI::get_entry( $entry_id );
-		if ( ! is_wp_error( $_entry ) ) {
-			$entry = $_entry;
-		}
-	}
+	/* $entry is already resolved above (line 958-964) — reuse it. */
 
 /* Determine per-field editability on the current User Input step (robust) */
 $editable_field = false;
@@ -1452,6 +1445,14 @@ function sfa_qg_entry_qc_summary_box( $form, $entry ) {
 }
 
 function sfa_qg_save_recheck_items_from_post( $form, $entry_id ) {
+	// Prevent double execution when multiple hooks fire for the same entry
+	// (e.g. gravityflow_post_update_user_input + gform_after_update_entry).
+	static $processed = array();
+	if ( isset( $processed[ (int) $entry_id ] ) ) {
+		return;
+	}
+	$processed[ (int) $entry_id ] = true;
+
 	// CRITICAL: Only run on forms that have a quality_checklist field
 	if ( ! sfa_qg_form_has_quality_checklist( $form ) ) {
 		// Also check the full form in case a trimmed array was passed
@@ -1548,46 +1549,14 @@ try {
 
 
 
-// Fires when a Gravity Flow User Input step is saved (rework screen)
+// Fires when a Gravity Flow User Input step is saved (rework screen).
+// Delegates to sfa_qg_save_recheck_items_from_post which handles meta
+// persistence, history logging, and fixed-log dedup in one place.
 add_action('gravityflow_post_update_user_input', function( $step, $entry_id, $form ) {
-	// CRITICAL: Only run on forms that have a quality_checklist field
 	if ( ! sfa_qg_form_has_quality_checklist( $form ) ) {
 		return;
 	}
-
-	// persist ticks
-	if ( function_exists('sfa_qg_collect_rework_values_from_post') ) {
-		$field_id = sfa_qg_find_fixed_checkbox_field_id($form);
-		$vals = sfa_qg_collect_rework_values_from_post($form, $field_id);
-		gform_update_meta( (int)$entry_id, '_qc_recheck_items', wp_json_encode(array_values(array_unique(array_filter(array_map('strval',$vals))))) );
-		
-		// === Fixed logging: add new events for items that weren't logged before ===
-try {
-	$form_id = isset( $form['id'] ) ? (int) $form['id'] : 0;
-	$field_id = sfa_qg_find_fixed_checkbox_field_id( $form );
-	$now_vals = sfa_qg_collect_rework_values_from_post( $form, $field_id );
-
-	// Dedup against already logged items
-	$already = array();
-	foreach ( sfa_qg_fixed_log_get( (int) $entry_id ) as $ev ) {
-		$already[ strtolower( (string) ( $ev['item'] ?? '' ) ) ] = true;
-	}
-	$new = array();
-	foreach ( (array) $now_vals as $v ) {
-		$v = trim( (string) $v );
-		if ( $v === '' ) continue;
-		if ( ! isset( $already[ strtolower( $v ) ] ) ) $new[] = $v;
-	}
-
-	if ( $new ) {
-		$step_id = method_exists( $step, 'get_id' ) ? (int) $step->get_id() : 0;
-		$added   = sfa_qg_fixed_log_append_items( $form_id, (int) $entry_id, $new, $step_id );
-	}
-} catch ( \Throwable $t ) {
-	// Error handling
-}
-
-	}
+	sfa_qg_save_recheck_items_from_post( $form, (int) $entry_id );
 }, 10, 3);
 
 // --- Persist failed items/metrics from the QC field JSON (robust) ---
@@ -1659,10 +1628,13 @@ if ( ! function_exists( 'sfa_qg_persist_fails_from_qc' ) ) {
 		}
 
 		// Optional: also log metric-level fail events for the "Top failing metrics" panel.
-		if ( function_exists( 'sfa_qg_audit_log_fail' ) ) {
+		if ( function_exists( 'sfa_qg_audit_log_fail' ) && function_exists( 'sfa_qg_audit_fail_exists' ) ) {
 			$form_id = isset( $form['id'] ) ? (int) $form['id'] : (int) rgar( $entry, 'form_id', 0 );
 			foreach ( $failed_metrics as $label ) {
-				sfa_qg_audit_log_fail( $form_id, (int) $entry_id, 'metric:' . sanitize_title( $label ), $label );
+				$metric_key = 'metric:' . sanitize_title( $label );
+				if ( ! sfa_qg_audit_fail_exists( (int) $entry_id, $metric_key ) ) {
+					sfa_qg_audit_log_fail( $form_id, (int) $entry_id, $metric_key, $label );
+				}
 			}
 		}
 
