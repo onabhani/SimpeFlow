@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.18
+ * Version: 2.3.19
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -20,24 +20,9 @@ if ( ! function_exists( 'sfa_qg_log' ) ) {
 	}
 }
 
-// Robust entry-id detection for GF / Gravity Flow screens.
-if ( ! function_exists( 'sfa_qg_current_entry_id' ) ) {
-	function sfa_qg_current_entry_id() {
-		$keys = array('lid','entry_id','entryId','eid');
-		foreach ( $keys as $k ) {
-			if ( isset($_GET[$k]) && $_GET[$k] !== '' )  return absint($_GET[$k]);
-			if ( isset($_POST[$k]) && $_POST[$k] !== '' ) return absint($_POST[$k]);
-		}
-		// GF helper if available
-		if ( function_exists('rgget') ) {
-			$lid = rgget('lid');
-			if ( $lid ) return absint($lid);
-		}
-		return 0;
-	}
-}
-
-
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.19');
+if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
+if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
 // Load report utilities and collectors early — canonical implementations
 // live in report/ files. See report/collect.php for sfa_qg_report_collect(),
@@ -48,121 +33,18 @@ require_once __DIR__ . '/report/collect.php';
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
+// Load extracted function groups — audit, helpers, rendering, admin tools.
+require_once __DIR__ . '/src/audit-functions.php';
+require_once __DIR__ . '/src/helper-functions.php';
+require_once __DIR__ . '/src/render-functions.php';
+require_once __DIR__ . '/src/admin-tools.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.18');
-if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
-if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
-
-
-
-// === QG Audit Log (persist failures & fixes) ===============================
+/** ----------------------------------------------------------------
+ *  Audit table hooks
+ * ----------------------------------------------------------------*/
 register_activation_hook( __FILE__, 'sfa_qg_install_audit_table' );
-function sfa_qg_install_audit_table() {
-	global $wpdb;
-	$tbl  = $wpdb->prefix . 'sfa_qg_audit';
-	$charset = $wpdb->get_charset_collate();
-	$sql = "CREATE TABLE IF NOT EXISTS `$tbl` (
-		id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-		event_type VARCHAR(8) NOT NULL,           -- 'fail' | 'fix'
-		form_id BIGINT UNSIGNED NOT NULL,
-		entry_id BIGINT UNSIGNED NOT NULL,
-		item_label VARCHAR(255) NULL,             -- human label (e.g., file name or QC metric label)
-		metric_key VARCHAR(190) NULL,             -- stable key for grouping
-		user_id BIGINT UNSIGNED NULL,
-		note TEXT NULL,
-		extra LONGTEXT NULL,                       -- JSON snapshot if you want
-		event_utc DATETIME NOT NULL,               -- stored in UTC
-		PRIMARY KEY (id),
-		KEY k_time (event_utc),
-		KEY k_form (form_id),
-		KEY k_entry (entry_id),
-		KEY k_type (event_type),
-		KEY k_metric (metric_key),
-		KEY k_exist (event_type, entry_id, metric_key)
-	) $charset;";
-	require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-	dbDelta( $sql );
-}
-
-/**
- * Ensure the audit table exists at runtime (no need to re-activate the plugin).
- * Uses an option flag to avoid SHOW TABLES on every request.
- */
 add_action( 'init', 'sfa_qg_maybe_install_audit_table', 1 );
-function sfa_qg_maybe_install_audit_table() {
-	// Fast path: option flag already confirmed the table exists.
-	if ( get_option( 'sfa_qg_audit_table_ready' ) === '1' ) {
-		return;
-	}
-
-	global $wpdb;
-	$tbl = $wpdb->prefix . 'sfa_qg_audit';
-
-	$pattern = $wpdb->esc_like( $tbl );
-	$exists  = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $pattern ) );
-
-	if ( $exists !== $tbl ) {
-		sfa_qg_install_audit_table();
-		$exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $pattern ) );
-	}
-	update_option( 'sfa_qg_audit_table_ready', $exists === $tbl ? '1' : '0', true );
-}
-
-/** Check if a fail audit row exists for entry+metric_key (global scope). */
-if ( ! function_exists( 'sfa_qg_audit_fail_exists' ) ) {
-	function sfa_qg_audit_fail_exists( $entry_id, $metric_key ) {
-		global $wpdb;
-		$tbl = $wpdb->prefix . 'sfa_qg_audit';
-		return (bool) $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT id FROM $tbl WHERE event_type = 'fail' AND entry_id = %d AND metric_key = %s LIMIT 1",
-				(int) $entry_id,
-				(string) $metric_key
-			)
-		);
-	}
-}
-
-
-function sfa_qg_audit_log( $type, $args ) {
-	global $wpdb;
-	$tbl = $wpdb->prefix . 'sfa_qg_audit';
-	if ( ! in_array( $type, array( 'fail','fix' ), true ) ) {
-		return false;
-	}
-
-	$now_utc = gmdate( 'Y-m-d H:i:s' );
-	$ins = array(
-		'event_type' => $type,
-		'form_id'    => (int) ( $args['form_id'] ?? 0 ),
-		'entry_id'   => (int) ( $args['entry_id'] ?? 0 ),
-		'item_label' => (string) ( $args['item_label'] ?? '' ),
-		'metric_key' => (string) ( $args['metric_key'] ?? '' ),
-		'user_id'    => (int) ( $args['user_id'] ?? get_current_user_id() ),
-		'note'       => (string) ( $args['note'] ?? '' ),
-		'extra'      => isset( $args['extra'] ) ? wp_json_encode( $args['extra'] ) : null,
-		'event_utc'  => (string) ( $args['event_utc'] ?? $now_utc ),
-	);
-	$fmt = array( '%s','%d','%d','%s','%s','%d','%s','%s','%s' );
-
-	$ok = $wpdb->insert( $tbl, $ins, $fmt );
-
-	if ( false === $ok ) {
-		// Surface the actual DB error in debug.log
-		return false;
-	}
-
-	return true;
-}
-
-
-function sfa_qg_audit_log_fail( $form_id, $entry_id, $metric_key, $item_label = '', $note = '', $extra = array() ) {
-	return sfa_qg_audit_log( 'fail', compact( 'form_id','entry_id','metric_key','item_label','note','extra' ) );
-}
-function sfa_qg_audit_log_fix( $form_id, $entry_id, $metric_key, $item_label = '', $note = '', $extra = array() ) {
-	return sfa_qg_audit_log( 'fix', compact( 'form_id','entry_id','metric_key','item_label','note','extra' ) );
-}
 
 
 /** ----------------------------------------------------------------
@@ -238,12 +120,12 @@ add_action( 'admin_enqueue_scripts', function () {
  * ----------------------------------------------------------------*/
 
 add_action( 'gform_loaded', function () {
-	// Bail early if GF core classes aren’t ready.
+	// Bail early if GF core classes aren't ready.
 	if ( ! class_exists( '\GF_Fields' ) ) {
 		return;
 	}
 
-	// If the type is already registered, don’t register again.
+	// If the type is already registered, don't register again.
 	if ( method_exists( '\GF_Fields', 'get' ) ) {
 		$existing = \GF_Fields::get( 'quality_checklist' );
 		if ( $existing ) {
@@ -282,7 +164,7 @@ add_action( 'gravityflow_loaded', function () {
  *  Editor: Add field button + settings UI
  * ----------------------------------------------------------------*/
 
-// QG-206 — show ONE “Quality Checklist” button, under Advanced
+// QG-206 — show ONE "Quality Checklist" button, under Advanced
 add_filter( 'gform_add_field_buttons', function ( $groups ) {
 	// Ensure Advanced exists
 	$adv_i = null;
@@ -294,7 +176,7 @@ add_filter( 'gform_add_field_buttons', function ( $groups ) {
 		$adv_i = count( $groups ) - 1;
 	}
 
-	// Remove any existing “quality_checklist” buttons from ALL groups
+	// Remove any existing "quality_checklist" buttons from ALL groups
 	foreach ( $groups as $i => $g ) {
 		if ( empty( $g['fields'] ) || ! is_array( $g['fields'] ) ) continue;
 		$kept = array();
@@ -342,7 +224,7 @@ add_action( 'gform_field_advanced_settings', function ( $position, $form_id ) {
 	<textarea id="sfa_qg_metric_labels" class="fieldwidth-3" rows="6"
 	          oninput="SetFieldProperty('sfa_qg_metric_labels', this.value);"
 	          placeholder="<?php echo esc_attr__( 'e.g.'."\n".'Dimensions'."\n".'Finish'."\n".'Holes'."\n"."Packaging", 'sfa-quality-gate' ); ?>"></textarea>
-	<p class="description"><?php esc_html_e( 'Up to 10 metrics. Leave blank to use a single “Overall” check.', 'sfa-quality-gate' ); ?></p>
+	<p class="description"><?php esc_html_e( 'Up to 10 metrics. Leave blank to use a single "Overall" check.', 'sfa-quality-gate' ); ?></p>
 </li>
 <?php }, 10, 2 );
 
@@ -399,54 +281,6 @@ add_action( 'gform_editor_js', function () { ?>
 /** ----------------------------------------------------------------
  *  AJAX: item discovery from an entry's Upload field
  * ----------------------------------------------------------------*/
-function sfa_qg_normalize_files( $raw ) {
-	if ( empty( $raw ) ) return array();
-
-	$push = function( $src, &$out ) {
-		if ( ! is_string( $src ) || $src === '' ) return;
-		$out[] = $src;
-	};
-
-	$urls = array();
-
-	if ( is_string( $raw ) ) {
-		$decoded = json_decode( $raw, true );
-		if ( json_last_error() === JSON_ERROR_NONE ) {
-			foreach ( (array) $decoded as $item ) {
-				if ( is_string( $item ) )           $push( $item, $urls );
-				elseif ( is_array( $item ) ) {
-					foreach ( array( 'uploaded_filename','uploaded_file','url','temp_filename','file','name','filename' ) as $k ) {
-						if ( ! empty( $item[ $k ] ) ) { $push( (string) $item[ $k ], $urls ); break; }
-					}
-				}
-			}
-		} else {
-			$raw = str_replace( '|', ',', $raw );
-			foreach ( array_map( 'trim', explode( ',', $raw ) ) as $p ) {
-				if ( $p !== '' ) $push( $p, $urls );
-			}
-		}
-	} elseif ( is_array( $raw ) ) {
-		foreach ( $raw as $item ) {
-			if ( is_string( $item ) ) $push( $item, $urls );
-			elseif ( is_array( $item ) ) {
-				foreach ( array( 'uploaded_filename','uploaded_file','url','temp_filename','file','name','filename' ) as $k ) {
-					if ( ! empty( $item[ $k ] ) ) { $push( (string) $item[ $k ], $urls ); break; }
-				}
-			}
-		}
-	}
-
-	$items = array();
-	foreach ( $urls as $s ) {
-		$b = wp_basename( $s );
-		if ( $b === '' ) continue;
-		$n = preg_replace( '/\.[^.]+$/', '', $b );
-		if ( $n !== '' ) $items[] = array( 'name' => $n );
-	}
-	return $items;
-}
-
 function sfa_qg_ajax_items() {
 	check_ajax_referer( 'sfa_qg', 'nonce' );
 
@@ -512,8 +346,6 @@ if ( ! function_exists( 'sfa_qg_report_admin_menu' ) ) {
 
 
 
-
-
 // QG-203 — hide the raw checkbox bullets for the Recheck field in read-only renders.
 // Works in Gravity Flow entry detail and GF admin/front-end renders.
 add_filter( 'gform_entry_field_value', function ( $value, $field, $entry, $form ) {
@@ -563,390 +395,15 @@ add_filter( 'gform_entry_field_value', function ( $value, $field, $entry, $form 
  * QG-102 & QG-103 — Portable rework UX (no hard-coded IDs)
  * ====================================================================== */
 
-/** Find the Quality Gate step for this form (future use / filters can rely on it). */
-function sfa_qg_find_quality_gate_step_id( $form ) {
-	$step_id = 0;
-	if ( function_exists( 'gravity_flow' ) && ! empty( $form['id'] ) ) {
-		$steps = gravity_flow()->get_steps( (int) $form['id'] );
-		foreach ( (array) $steps as $step ) {
-			$matches_type  = ( property_exists( $step, '_step_type' ) && $step->_step_type === 'quality_gate' );
-			$matches_class = ( $step instanceof \SFA\QualityGate\Step_Quality_Gate );
-			if ( $matches_type || $matches_class ) {
-				$step_id = (int) ( method_exists( $step, 'get_id' ) ? $step->get_id() : $step->id );
-				break;
-			}
-		}
-	}
-	return (int) apply_filters( 'sfa_qg/quality_gate_step_id', $step_id, $form );
-}
-
-/**
- * Check if a form has a quality_checklist field.
- * This is the core validation to prevent QG features from running on non-QG forms.
- */
-if ( ! function_exists( 'sfa_qg_form_has_quality_checklist' ) ) {
-	function sfa_qg_form_has_quality_checklist( $form ) {
-		if ( empty( $form ) || ! is_array( $form ) ) {
-			return false;
-		}
-		foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
-			if ( rgar( (array) $f, 'type' ) === 'quality_checklist' ) {
-				return true;
-			}
-		}
-		return false;
-	}
-}
-
-// Locate the "Fixed items" checkbox/radio reliably (no hard-coded IDs).
-if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
-	function sfa_qg_find_fixed_checkbox_field_id( $form ) {
-		$single_fix = 0;   // a checkbox/radio that has exactly one choice called "Fix"
-		$empty      = 0;   // a checkbox/radio with no choices yet
-		$first      = 0;   // first checkbox/radio id (for the 1-field legacy case)
-		$count      = 0;   // number of checkbox/radio fields
-
-		foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
-			$fa = (array) $f;
-			$field_type = rgar( $fa, 'type' );
-			if ( $field_type !== 'checkbox' && $field_type !== 'radio' ) {
-				continue;
-			}
-			$count++;
-			$first = $first ?: (int) rgar( $fa, 'id' );
-
-			$adm = strtolower( (string) rgar( $fa, 'adminLabel' ) );
-			$lbl = strtolower( (string) rgar( $fa, 'label' ) );
-			$css = strtolower( (string) rgar( $fa, 'cssClass' ) );
-
-			// 1) Explicit markers (preferred).
-			if (
-				$adm === 'qg_fixed' || $adm === 'qc_fixed' ||
-				strpos( $css, 'qg-fixed' ) !== false ||
-				strpos( $lbl, 'fixed' ) !== false || strpos( $lbl, 'rework' ) !== false || strpos( $lbl, 'fix' ) !== false ||
-				strpos( $lbl, 'إصلاح' ) !== false || strpos( $lbl, 'تصحيح' ) !== false
-			) {
-				return (int) rgar( $fa, 'id' );
-			}
-
-			// 2) Heuristic: exactly one choice named "Fix".
-			$choices = (array) rgar( $fa, 'choices', array() );
-			if ( count( $choices ) === 1 ) {
-				$txt = strtolower( trim( (string) rgar( $choices[0], 'text' ) ) );
-				if ( $txt === 'fix' ) {
-					$single_fix = (int) rgar( $fa, 'id' );
-				}
-			}
-
-			// 3) Heuristic: empty checkbox/radio (no choices yet).
-			if ( empty( $choices ) && ! $empty ) {
-				$empty = (int) rgar( $fa, 'id' );
-			}
-		}
-
-		// 4) Back-compat: if there is exactly one checkbox/radio in the form, use it.
-		if ( $count === 1 && $first ) {
-			return $first;
-		}
-
-		// 5) Prefer our heuristics; do NOT pick a random checkbox/radio.
-		if ( $single_fix ) return $single_fix;
-		if ( $empty )      return $empty;
-
-		// Ambiguous → do nothing; avoids touching the wrong field.
-		return 0;
-	}
-}
-
-/**
- * Collect ONLY the selected values from the rework checkbox field (supports input_X_Y and input_X[]).
- *
- * SECURITY NOTE: This function accesses $_POST data but is designed to be called only within
- * Gravity Forms hooks (gform_pre_render, gform_validation, etc.) which already perform
- * nonce verification. Do not call this function outside of validated GF contexts.
- */
-if ( ! function_exists( 'sfa_qg_collect_rework_values_from_post' ) ) {
-	function sfa_qg_collect_rework_values_from_post( $form, $field_id ) {
-		// Defensive check: ensure we're in a Gravity Forms context
-		if ( ! is_array( $form ) || ! isset( $form['fields'] ) ) {
-			return array();
-		}
-
-		$selected = array();
-
-		// Standard GF style: input_5_1, input_5_2, ...
-		foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
-			if ( (int) rgar( (array) $f, 'id' ) !== (int) $field_id || $f->type !== 'checkbox' || empty( $f->inputs ) ) {
-				continue;
-			}
-			foreach ( $f->inputs as $inp ) {
-				$key = 'input_' . str_replace( '.', '_', $inp['id'] );
-				$val = isset( $_POST[ $key ] ) ? (string) wp_unslash( $_POST[ $key ] ) : '';
-				if ( $val !== '' ) {
-					$selected[] = $val;
-				}
-			}
-			break;
-		}
-
-		// Array style: input_5[]
-		if ( empty( $selected ) ) {
-			$key = 'input_' . $field_id;
-			if ( isset( $_POST[ $key ] ) ) {
-				$vals = (array) wp_unslash( $_POST[ $key ] );
-				foreach ( $vals as $v ) {
-					$v = (string) $v;
-					if ( $v !== '' ) {
-						$selected[] = $v;
-					}
-				}
-			}
-		}
-		return array_values( array_unique( $selected ) );
-	}
-}
-
-
-// Detect if we are on a Gravity Flow **User Input** step (i.e., the rework step).
-if ( ! function_exists( 'sfa_qg_is_rework_context' ) ) {
-	function sfa_qg_is_rework_context( $form ) {
-		if ( ! function_exists( 'gravity_flow' ) ) {
-			return false;
-		}
-
-		// --- Try 1: explicit step id from the request ---
-		$step_id = sfa_qg_current_step_id();
-		if ( $step_id ) {
-			$step = gravity_flow()->get_step( $step_id );
-			if ( $step ) {
-				// Not the Quality Gate itself
-				if (
-					( property_exists( $step, '_step_type' ) && $step->_step_type === 'quality_gate' ) ||
-					( class_exists( '\SFA\QualityGate\Step_Quality_Gate' ) && $step instanceof \SFA\QualityGate\Step_Quality_Gate )
-				) {
-					return false;
-				}
-				// User Input => editable
-				if (
-					( property_exists( $step, '_step_type' ) && $step->_step_type === 'user_input' ) ||
-					( class_exists( '\Gravity_Flow_Step_User_Input' ) && $step instanceof \Gravity_Flow_Step_User_Input )
-				) {
-					return true;
-				}
-			}
-		}
-
-		// --- Try 2: resolve the entry's *current* step (works when no step param is present) ---
-		$entry_id = sfa_qg_current_entry_id();
-		if ( $entry_id && class_exists( 'GFAPI' ) ) {
-			$entry = \GFAPI::get_entry( $entry_id );
-			if ( ! is_wp_error( $entry ) ) {
-				$curr = gravity_flow()->get_current_step( $form, $entry );
-				if ( $curr ) {
-					if (
-						( property_exists( $curr, '_step_type' ) && $curr->_step_type === 'user_input' ) ||
-						( class_exists( '\Gravity_Flow_Step_User_Input' ) && $curr instanceof \Gravity_Flow_Step_User_Input )
-					) {
-						return true;
-					}
-				}
-			}
-		}
-
-		return false;
-	}
-}
-
-
-
-
-if ( ! function_exists( 'sfa_qg_is_field_editable_on_user_input' ) ) {
-	function sfa_qg_is_field_editable_on_user_input( $form, $entry, $field ) {
-		if ( ! function_exists( 'gravity_flow' ) ) {
-			return false;
-		}
-
-		// Resolve the step: explicit ?step=… first, else entry’s current step
-		$step_id = function_exists( 'sfa_qg_current_step_id' ) ? sfa_qg_current_step_id() : 0;
-		$step    = $step_id ? gravity_flow()->get_step( $step_id ) : gravity_flow()->get_current_step( $form, $entry );
-		if ( ! $step ) {
-			return false;
-		}
-
-		// Must be a User Input step
-		$is_user_input = (
-			( property_exists( $step, '_step_type' ) && $step->_step_type === 'user_input' ) ||
-			( class_exists( '\Gravity_Flow_Step_User_Input' ) && $step instanceof \Gravity_Flow_Step_User_Input )
-		);
-		if ( ! $is_user_input ) {
-			return false;
-		}
-
-		// Prefer the step API if available
-		if ( method_exists( $step, 'is_editable_field' ) ) {
-			return (bool) $step->is_editable_field( $field, $form, $entry );
-		}
-
-		// Fallback to editable fields array + documented filter
-		$editable_ids = method_exists( $step, 'get_editable_fields' ) ? (array) $step->get_editable_fields() : array();
-		// Allow site-level overrides (per docs: gravityflow_editable_fields)
-		$editable_ids = apply_filters( 'gravityflow_editable_fields', $editable_ids, $step, $form, $entry );
-
-		// Normalize to ints/strings, check membership
-		$field_id = (int) ( is_object( $field ) ? $field->id : rgar( (array) $field, 'id', 0 ) );
-		$norm = array();
-		foreach ( $editable_ids as $id ) { $norm[] = (int) $id; }
-
-		return in_array( $field_id, $norm, true );
-	}
-}
-
-
 /** Populate the checkbox with failed items in entry context. */
 add_filter( 'gform_pre_render',       'sfa_qg_populate_rework_choices', 9999 );
 add_filter( 'gform_pre_validation',   'sfa_qg_populate_rework_choices', 9999 );
 add_filter( 'gform_admin_pre_render', 'sfa_qg_populate_rework_choices', 9999 );
-// Helpers: build map Item => ['labels' => [...], 'photos' => [...]] from the saved QC JSON/meta
-if ( ! function_exists( 'sfa_qg_failed_metric_map' ) ) {
-	function sfa_qg_failed_metric_map( $entry_id, $form ) {
-		$map = array();
-
-		// 1) Try to compute from the QC field value (JSON)
-		$qc_field_id = 0;
-		foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
-			if ( rgar( (array) $f, 'type' ) === 'quality_checklist' ) { $qc_field_id = (int) rgar( (array) $f, 'id' ); break; }
-		}
-		if ( $qc_field_id && class_exists( 'GFAPI' ) ) {
-			$entry = \GFAPI::get_entry( $entry_id );
-			if ( ! is_wp_error( $entry ) ) {
-				$raw = rgar( $entry, (string) $qc_field_id );
-				$val = json_decode( (string) $raw, true );
-
-				if ( is_array( $val ) && ! empty( $val['items'] ) ) {
-					foreach ( (array) $val['items'] as $it ) {
-						$name  = (string) rgar( $it, 'name' );
-						if ( $name === '' ) { continue; }
-						$fails = array();
-						$photos = array();
-						foreach ( (array) rgar( $it, 'metrics' ) as $m ) {
-							$label = trim( (string) rgar( $m, 'label' ) );
-							$result = rgar( $m, 'result' );
-							$photo = rgar( $m, 'photo' );
-
-							if ( $result === 'fail' && $label !== '' ) {
-								$fails[] = $label;
-								// Collect photo if available
-								if ( $photo ) {
-									$photos[] = array(
-										'label' => $label,
-										'data' => $photo
-									);
-								}
-							}
-						}
-						if ( $fails ) {
-							$map[ $name ] = array(
-								'labels' => array_values( array_unique( $fails ) ),
-								'photos' => $photos
-							);
-						}
-					}
-				}
-			}
-		}
-
-		// 2) Ensure every failed item exists as a key (even if no labels)
-		$failed_items = json_decode( (string) gform_get_meta( $entry_id, '_qc_failed_items' ), true );
-		if ( is_array( $failed_items ) ) {
-			foreach ( $failed_items as $name ) {
-				$name = trim( (string) $name );
-				if ( $name !== '' && ! isset( $map[ $name ] ) ) {
-					$map[ $name ] = array('labels' => array(), 'photos' => array());
-				}
-			}
-		}
-
-		return $map;
-	}
-}
-
-if ( ! function_exists( 'sfa_qg_render_failed_table' ) ) {
-	function sfa_qg_render_failed_table( $map, $fixed_list = null, $entry_id = 0, $editable = false, $field_id = 0 ) {
-		if ( empty( $map ) ) { return ''; }
-
-		// Prefer an explicit list (live POST), otherwise read saved meta.
-		if ( ! is_array( $fixed_list ) ) {
-			$fixed_list = array();
-			if ( $entry_id ) {
-				$fixed_list = json_decode( (string) gform_get_meta( $entry_id, '_qc_recheck_items' ), true );
-				$fixed_list = is_array( $fixed_list ) ? array_map( 'strval', $fixed_list ) : array();
-			}
-		} else {
-			$fixed_list = array_map( 'strval', $fixed_list );
-		}
-
-$out  = '<table class="qg-rework-table widefat striped">';
-		$out .= '<thead><tr><th>' . esc_html__( 'Item', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Failed metrics', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Photos', 'sfa-quality-gate' ) . '</th></tr></thead><tbody>';
-
-		foreach ( $map as $name => $data ) {
-			// Support both old format (array of labels) and new format (array with 'labels' and 'photos')
-			$labels = is_array($data) && isset($data['labels']) ? $data['labels'] : (is_array($data) ? $data : array());
-			$photos = is_array($data) && isset($data['photos']) ? $data['photos'] : array();
-
-			$is_fixed = in_array( (string) $name, $fixed_list, true );
-			$badge = $is_fixed
-				? ' <span class="sfa-qg-badge is-fixed">' . esc_html__( 'Fixed', 'sfa-quality-gate' ) . '</span>'
-				: '';
-// in sfa_qg_render_failed_table()
-$chk = '';
-if ( $editable ) {
-    $chk = sprintf(
-        '<span class="qg-row-slot" data-field-id="%d" data-value="%s"></span> ',
-        (int) $field_id,
-        esc_attr( $name )
-    );
-}
-
-// Build photos HTML
-$photos_html = '';
-if ( ! empty( $photos ) ) {
-	$photos_html = '<div class="qg-fail-photos" style="display:flex;gap:8px;flex-wrap:wrap;">';
-	foreach ( $photos as $photo_data ) {
-		$label = isset($photo_data['label']) ? esc_html($photo_data['label']) : '';
-		$data_url = isset($photo_data['data']) ? $photo_data['data'] : '';
-		// Validate data URL: only allow data:image/* scheme to prevent javascript: injection
-		if ( $data_url && preg_match( '/^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+\/=\s]+$/', $data_url ) ) {
-			$photos_html .= sprintf(
-				'<div class="qg-photo-item" style="text-align:center;"><img src="%s" alt="%s" class="qg-photo-preview" style="max-width:100px;max-height:100px;border:2px solid #d1d5db;border-radius:8px;cursor:pointer;"><div style="font-size:11px;color:#6b7280;margin-top:4px;">%s</div></div>',
-				esc_attr( $data_url ),
-				esc_attr( $label ),
-				$label
-			);
-		}
-	}
-	$photos_html .= '</div>';
-} else {
-	$photos_html = '&ndash;';
-}
-
-$out .= '<tr><td>' . $chk . esc_html( $name ) . $badge . '</td><td>' . ( $labels ? esc_html( implode( ', ', $labels ) ) : '&ndash;' ) . '</td><td>' . $photos_html . '</td></tr>';
-
-		}
-
-		$out .= '</tbody></table>';
-		// Delegated click handler for photo previews (replaces inline onclick)
-		$out .= '<script>document.addEventListener("click",function(e){if(e.target.classList.contains("qg-photo-preview")){window.open(e.target.src);}});</script>';
-		return $out;
-	}
-}
-
-
 
 /**
  * Populate the Rework checkbox with failed items, show the mini table,
  * and render the "Mark all fixed" button. (QG-102 / QG-103)
  */
-// Run in front-end, during validation, and in admin entry screens.
 function sfa_qg_populate_rework_choices( $form ) {
 	// CRITICAL: Only run on forms that have a quality_checklist field
 	if ( ! sfa_qg_form_has_quality_checklist( $form ) ) {
@@ -974,7 +431,7 @@ if ( class_exists( 'GFAPI' ) ) {
 		return $form;
 	}
 
-	// ✅ Canonical list of failed item NAMES (works in all contexts)
+	// Canonical list of failed item NAMES (works in all contexts)
 	$failed = json_decode( (string) gform_get_meta( $entry_id, '_qc_failed_items' ), true );
 	$failed = is_array( $failed )
 		? array_values( array_filter( array_map( static function( $v ){ return trim( (string) $v ); }, $failed ) ) )
@@ -1035,7 +492,7 @@ foreach ( $form['fields'] as &$field ) {
 		$idx++;
 	}
 
-	/* $entry is already resolved above (line 958-964) — reuse it. */
+	/* $entry is already resolved above — reuse it. */
 
 /* Determine per-field editability on the current User Input step (robust) */
 $editable_field = false;
@@ -1183,18 +640,12 @@ if ( strpos( $classes, ' qg-rework ' ) === false ) {
 }
 $field->cssClass = trim( $existing_css );
 
-	
-	
-	
-
 	break;
 }
 
 return $form;
 
 }
-
-
 
 
 
@@ -1257,192 +708,9 @@ add_filter( 'gform_validation', function( $result ) {
 
 
 
-
-/**
- * Get current Gravity Flow step ID from request parameters.
- *
- * SECURITY NOTE: Uses absint() to sanitize all input. This is safe for reading
- * step IDs which are always integers. Gravity Flow performs its own authorization
- * checks to ensure users can only access steps they have permission for.
- */
-if ( ! function_exists( 'sfa_qg_current_step_id' ) ) {
-	function sfa_qg_current_step_id() {
-		// Gravity Flow sometimes uses different keys or none at all.
-		$keys = array( 'step', 'step_id', 'gflow_step', 'workflow_step', 'current_step' );
-		foreach ( $keys as $k ) {
-			// Using absint() ensures we only get positive integers, preventing injection
-			if ( isset( $_GET[ $k ] ) && $_GET[ $k ] !== '' ) return absint( $_GET[ $k ] );
-			if ( isset( $_POST[ $k ] ) && $_POST[ $k ] !== '' ) return absint( $_POST[ $k ] );
-		}
-		return 0;
-	}
-}
-
-
-
-
-
-/** Append an event to the QC history meta. */
-if ( ! function_exists( 'sfa_qg_history_push' ) ) {
-	function sfa_qg_history_push( $entry_id, $event, $data = array() ) {
-		$hist = json_decode( (string) gform_get_meta( $entry_id, '_qc_history' ), true );
-		if ( ! is_array( $hist ) ) { $hist = array(); }
-		$hist[] = array(
-			'ts'    => current_time( 'mysql' ),
-			'event' => (string) $event,
-			'data'  => is_array( $data ) ? $data : array(),
-		);
-		gform_update_meta( $entry_id, '_qc_history', wp_json_encode( $hist ) );
-	}
-}
-
-
-
-/** Key for per-item meta (safe, short) */
-function sfa_qg_item_hash( $name ) {
-	return substr( sha1( strtolower( remove_accents( (string) $name ) ) ), 0, 12 );
-}
-
-/** Stamp fail time once for every failed item AND guarantee an audit row exists. */
-function sfa_qg_stamp_fail_times_if_missing( $entry_id, array $failed_names ) {
-	$entry   = class_exists('GFAPI') ? \GFAPI::get_entry( (int) $entry_id ) : null;
-	$form_id = ( is_array($entry) && isset($entry['form_id']) ) ? (int) $entry['form_id'] : 0;
-
-	foreach ( $failed_names as $n ) {
-		$name = trim( (string) $n );
-		if ( $name === '' ) continue;
-
-		$key         = '_qg_fail_time_' . sfa_qg_item_hash( $name );
-		$when_local  = (string) gform_get_meta( (int) $entry_id, $key );
-		if ( ! $when_local ) {
-			$when_local = current_time( 'mysql', false );
-			gform_update_meta( (int) $entry_id, $key, $when_local );
-		}
-
-		// Ensure there is a corresponding audit "fail" event (idempotent).
-		$mk = 'item:' . sanitize_title( $name );
-		if ( ! sfa_qg_audit_fail_exists( (int) $entry_id, $mk ) ) {
-			sfa_qg_audit_log( 'fail', array(
-				'form_id'    => $form_id,
-				'entry_id'   => (int) $entry_id,
-				'metric_key' => $mk,
-				'item_label' => $name,
-				'event_utc'  => get_gmt_from_date( $when_local, 'Y-m-d H:i:s' ),
-				'extra'      => array( 'source' => 'ensure/migrate' ),
-			) );
-		}
-	}
-}
-
-
-/** Read / write the per-entry fixed log (array of events). */
-function sfa_qg_fixed_log_get( $entry_id ) {
-	$log = json_decode( (string) gform_get_meta( (int) $entry_id, '_qc_fixed_log' ), true );
-	return is_array( $log ) ? $log : array();
-}
-function sfa_qg_fixed_log_set( $entry_id, array $log ) {
-	gform_update_meta( (int) $entry_id, '_qc_fixed_log', wp_json_encode( array_values( $log ) ) );
-}
-
-/**
- * Append fixed events for NEW items (ignore items already logged).
- * Returns the events actually added.
- */
-function sfa_qg_fixed_log_append_items( $form_id, $entry_id, array $items, $step_id = 0 ) {
-	$now   = current_time( 'mysql', false );
-	$log   = sfa_qg_fixed_log_get( $entry_id );
-	$seen  = array();
-	foreach ( $log as $ev ) {
-		$seen[ strtolower( (string) ( $ev['item'] ?? '' ) ) ] = true;
-	}
-
-	$added = array();
-	foreach ( $items as $name ) {
-		$name = trim( (string) $name );
-		if ( $name === '' ) continue;
-
-		$norm = strtolower( $name );
-		if ( isset( $seen[ $norm ] ) ) continue; // already logged for this item
-
-		$failed_at = gform_get_meta( (int) $entry_id, '_qg_fail_time_' . sfa_qg_item_hash( $name ) );
-		$duration  = null;
-		if ( $failed_at ) {
-			$duration = max( 0, strtotime( $now ) - strtotime( $failed_at ) );
-		}
-
-		$event = array(
-			'form_id'          => (int) $form_id,
-			'entry_id'         => (int) $entry_id,
-			'item'             => $name,
-			'failed_at'        => $failed_at ?: null,
-			'fixed_at'         => $now,
-			'fixed_by'         => get_current_user_id() ?: 0,
-			'step_id'          => (int) $step_id,
-			'duration_seconds' => $duration,
-		);
-		$log[]   = $event;
-		$added[] = $event;
-		
-		sfa_qg_audit_log_fix( $form_id, (int) $entry_id, 'item:' . sanitize_title( $name ), $name );
-
-		
-
-	}
-
-	if ( $added ) {
-		sfa_qg_fixed_log_set( $entry_id, $log );
-		sfa_qg_history_push( $entry_id, 'FIXED_LOGGED', array(
-			'count' => count( $added ),
-			'items' => wp_list_pluck( $added, 'item' ),
-		) );
-	}
-
-	return $added;
-}
-
-
-	// QG-010 — Entry Detail: compact read-only QC summary box
-add_action( 'gform_entry_detail_sidebar_middle', 'sfa_qg_entry_qc_summary_box', 10, 2 );
-function sfa_qg_entry_qc_summary_box( $form, $entry ) {
-	$sum = json_decode( (string) gform_get_meta( $entry['id'], '_qc_summary' ), true );
-	if ( ! is_array( $sum ) ) return;
-
-	$failed_items   = json_decode( (string) gform_get_meta( $entry['id'], '_qc_failed_items' ), true );
-	$failed_metrics = json_decode( (string) gform_get_meta( $entry['id'], '_qc_failed_metrics' ), true );
-	$failed_items   = is_array( $failed_items )   ? $failed_items   : array();
-	$failed_metrics = is_array( $failed_metrics ) ? $failed_metrics : array();
-
-	?>
-	<div class="sfa-qg-report" style="margin-top:10px;">
-		<h3 style="margin:0 0 6px;"><?php esc_html_e( 'Quality Gate', 'sfa-quality-gate' ); ?></h3>
-		<div class="qg-row">
-			<div class="qg-name"><?php esc_html_e('Totals','sfa-quality-gate'); ?></div>
-			<div class="qg-meta">
-				<?php
-				printf(
-					esc_html__( '%d metrics (%d failed) across %d items', 'sfa-quality-gate' ),
-					(int) ($sum['metrics_total'] ?? 0),
-					(int) ($sum['metrics_failed'] ?? 0),
-					(int) ($sum['items_total'] ?? 0)
-				);
-				?>
-			</div>
-		</div>
-		<?php if ( $failed_items ) : ?>
-			<div class="qg-row">
-				<div class="qg-name"><?php esc_html_e('Failed items','sfa-quality-gate'); ?></div>
-				<div class="qg-meta"><?php echo esc_html( implode( ', ', $failed_items ) ); ?></div>
-			</div>
-		<?php endif; ?>
-		<?php if ( $failed_metrics ) : ?>
-			<div class="qg-row">
-				<div class="qg-name"><?php esc_html_e('Failing metrics','sfa-quality-gate'); ?></div>
-				<div class="qg-meta"><?php echo esc_html( implode( ', ', $failed_metrics ) ); ?></div>
-			</div>
-		<?php endif; ?>
-	</div>
-	<?php
-}
+/** ----------------------------------------------------------------
+ *  Recheck items persistence
+ * ----------------------------------------------------------------*/
 
 function sfa_qg_save_recheck_items_from_post( $form, $entry_id ) {
 	// Prevent double execution when multiple hooks fire for the same entry
@@ -1513,13 +781,13 @@ if ( ! $field_id ) {
 	gform_update_meta( $entry_id, '_qc_recheck_items', wp_json_encode( $selected ) );
 
 	sfa_qg_history_push( $entry_id, 'REWORK_MARKED', ['items'=>$selected,'user'=>get_current_user_id()] );
-	
-	
+
+
 	// === Ensure fixed events are logged whenever we persist the selection ===
 try {
     $form_id = isset( $form['id'] ) ? (int) $form['id'] : 0;
 
-    // Already logged (case-insensitive) → avoid duplicates
+    // Already logged (case-insensitive) => avoid duplicates
     $already = array();
     foreach ( sfa_qg_fixed_log_get( (int) $entry_id ) as $ev ) {
         $already[ strtolower( (string) ( $ev['item'] ?? '' ) ) ] = true;
@@ -1546,8 +814,9 @@ try {
 }
 
 
-
-
+/** ----------------------------------------------------------------
+ *  Failed items persistence from QC field + hook registrations
+ * ----------------------------------------------------------------*/
 
 // Fires when a Gravity Flow User Input step is saved (rework screen).
 // Delegates to sfa_qg_save_recheck_items_from_post which handles meta
@@ -1664,182 +933,11 @@ add_action('gform_after_update_entry', function($form, $entry_id){
 }, 10, 2);
 
 
+/** ----------------------------------------------------------------
+ *  Entry detail sidebar + admin tools hook registrations
+ * ----------------------------------------------------------------*/
+add_action( 'gform_entry_detail_sidebar_middle', 'sfa_qg_entry_qc_summary_box', 10, 2 );
 
-
-
-// === Admin backfill v2: build/repair audit "fail" rows from existing entries ===
-add_action( 'admin_init', function () {
-	if ( empty( $_GET['sfa_qg_backfill'] ) ) return;
-	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
-	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_backfill' ) ) {
-		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
-	}
-
-	sfa_qg_install_audit_table();
-
-	global $wpdb;
-	$em    = $wpdb->prefix . 'gf_entry_meta';
-	$e     = $wpdb->prefix . 'gf_entry';
-	$limit = isset( $_GET['limit'] ) ? max( 1, min( 20000, (int) $_GET['limit'] ) ) : 2000;
-	$force = ! empty( $_GET['force'] );
-
-	// Pull entries that have saved failed items + join basic entry info.
-	$rows = $wpdb->get_results(
-		$wpdb->prepare(
-			"SELECT m.entry_id, m.meta_value, e.form_id, e.date_created
-			 FROM $em m
-			 INNER JOIN $e e ON e.id = m.entry_id
-			 WHERE m.meta_key = %s
-			 ORDER BY m.entry_id DESC
-			 LIMIT %d",
-			'_qc_failed_items',
-			$limit
-		),
-		ARRAY_A
-	);
-
-	$scanned = 0; $added = 0; $skipped = 0;
-	foreach ( (array) $rows as $r ) {
-		$scanned++;
-		$eid       = (int) $r['entry_id'];
-		$form_id   = (int) $r['form_id'];
-		$entry_when_local = (string) $r['date_created'];
-
-		$list  = json_decode( (string) $r['meta_value'], true );
-		$names = is_array( $list ) ? array_values( array_unique( array_filter( array_map( 'strval', $list ) ) ) ) : array();
-
-		foreach ( $names as $name ) {
-			$name = trim( (string) $name ); if ( $name === '' ) continue;
-
-			// Prefer item fail-time meta; else fall back to entry date.
-			$key         = '_qg_fail_time_' . sfa_qg_item_hash( $name );
-			$when_local  = (string) gform_get_meta( $eid, $key );
-			if ( ! $when_local ) $when_local = $entry_when_local ?: current_time( 'mysql', false );
-
-			$mk     = 'item:' . sanitize_title( $name );
-			$exists = sfa_qg_audit_fail_exists( $eid, $mk );
-
-			if ( $force || ! $exists ) {
-				sfa_qg_audit_log( 'fail', array(
-					'form_id'    => $form_id,
-					'entry_id'   => $eid,
-					'metric_key' => $mk,
-					'item_label' => $name,
-					'event_utc'  => get_gmt_from_date( $when_local, 'Y-m-d H:i:s' ),
-					'extra'      => array( 'source' => 'backfill', 'forced' => (int) $force ),
-				) );
-				$added++;
-			} else {
-				$skipped++;
-			}
-		}
-	}
-
-	wp_die(
-		'<p>Backfill done.</p>'
-		. '<p>Scanned entries: <code>' . esc_html( (string) $scanned ) . '</code><br>'
-		. 'New audit rows: <code>' . esc_html( (string) $added ) . '</code><br>'
-		. 'Skipped (already existed): <code>' . esc_html( (string) $skipped ) . '</code></p>'
-		. '<p>Tip: add <code>&force=1</code> to re-create missing rows if needed.</p>'
-	);
-}, 99 );
-
-
-
-// === Cleanup: remove QG meta from non-QG forms (admin only) ===
-// Usage: /wp-admin/?sfa_qg_cleanup=1&_wpnonce=<nonce> (add &confirm=1 to actually delete)
-add_action( 'admin_init', function () {
-	if ( empty( $_GET['sfa_qg_cleanup'] ) ) return;
-	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
-	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_cleanup' ) ) {
-		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
-	}
-
-	global $wpdb;
-	$em = $wpdb->prefix . 'gf_entry_meta';
-	$e  = $wpdb->prefix . 'gf_entry';
-	$confirm = ! empty( $_GET['confirm'] );
-
-	// Get all form IDs that have _qc_fixed_log or _qc_recheck_items meta
-	$meta_keys = array( '_qc_fixed_log', '_qc_recheck_items' );
-	$in_keys = "'" . implode( "','", $meta_keys ) . "'";
-	$forms_with_meta = $wpdb->get_col( "SELECT DISTINCT e.form_id FROM $e e INNER JOIN $em m ON m.entry_id = e.id WHERE m.meta_key IN ($in_keys)" );
-
-	// Check which forms have quality_checklist fields
-	$non_qc_forms = array();
-	if ( class_exists( 'GFAPI' ) ) {
-		foreach ( (array) $forms_with_meta as $fid ) {
-			$fid = (int) $fid;
-			$form = \GFAPI::get_form( $fid );
-			$has_qc = false;
-			if ( is_array( $form ) && ! empty( $form['fields'] ) ) {
-				foreach ( (array) $form['fields'] as $field ) {
-					if ( rgar( (array) $field, 'type' ) === 'quality_checklist' ) {
-						$has_qc = true;
-						break;
-					}
-				}
-			}
-			if ( ! $has_qc ) {
-				$non_qc_forms[] = $fid;
-			}
-		}
-	}
-
-	echo '<div class="wrap"><h1>QG Cleanup: Non-QC Form Meta</h1>';
-
-	if ( empty( $non_qc_forms ) ) {
-		echo '<p>No polluted data found. All forms with QG meta have quality_checklist fields.</p></div>';
-		exit;
-	}
-
-	// Count entries with polluted data
-	$in_forms = implode( ',', array_map( 'intval', $non_qc_forms ) );
-	$count = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT e.id) FROM $e e INNER JOIN $em m ON m.entry_id = e.id WHERE e.form_id IN ($in_forms) AND m.meta_key IN ($in_keys)" );
-
-	echo '<p>Found <strong>' . esc_html( $count ) . '</strong> entries in forms without quality_checklist fields that have QG meta data.</p>';
-	echo '<p>Non-QC Form IDs: <code>' . esc_html( implode( ', ', $non_qc_forms ) ) . '</code></p>';
-
-	if ( $confirm ) {
-		// Delete the polluted meta
-		$deleted = $wpdb->query( "DELETE m FROM $em m INNER JOIN $e e ON m.entry_id = e.id WHERE e.form_id IN ($in_forms) AND m.meta_key IN ($in_keys)" );
-		echo '<p style="color:green;"><strong>Cleaned up ' . esc_html( $deleted ) . ' meta rows.</strong></p>';
-	} else {
-		echo '<p><a class="button button-primary" href="' . esc_url( add_query_arg( 'confirm', '1' ) ) . '">Delete polluted meta</a></p>';
-		echo '<p><em>Add &amp;confirm=1 to the URL to actually delete the data.</em></p>';
-	}
-
-	echo '</div>';
-	exit;
-}, 99 );
-
-// === TEMP: Peek at last 20 audit rows (admin only) ===
-add_action( 'admin_init', function () {
-	if ( empty( $_GET['sfa_qg_auditpeek'] ) ) return;
-	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
-	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_auditpeek' ) ) {
-		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
-	}
-
-	global $wpdb;
-	$tbl = $wpdb->prefix . 'sfa_qg_audit';
-	$rows = $wpdb->get_results( "SELECT * FROM $tbl ORDER BY id DESC LIMIT 20", ARRAY_A );
-
-	echo '<div class="wrap"><h1>SFA QG Audit (latest)</h1><table class="widefat striped">';
-	echo '<thead><tr><th>ID</th><th>type</th><th>form</th><th>entry</th><th>item</th><th>metric_key</th><th>user</th><th>utc</th></tr></thead><tbody>';
-	foreach ( (array) $rows as $r ) {
-		printf(
-			'<tr><td>%d</td><td>%s</td><td>%d</td><td>%d</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td></tr>',
-			(int) $r['id'],
-			esc_html( $r['event_type'] ),
-			(int) $r['form_id'],
-			(int) $r['entry_id'],
-			esc_html( $r['item_label'] ),
-			esc_html( $r['metric_key'] ),
-			(int) $r['user_id'],
-			esc_html( $r['event_utc'] )
-		);
-	}
-	echo '</tbody></table></div>';
-	exit;
-}, 99 );
+add_action( 'admin_init', 'sfa_qg_admin_backfill', 99 );
+add_action( 'admin_init', 'sfa_qg_admin_cleanup', 99 );
+add_action( 'admin_init', 'sfa_qg_admin_auditpeek', 99 );
