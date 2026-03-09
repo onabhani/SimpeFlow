@@ -1,6 +1,14 @@
 <?php
 if ( ! defined( 'ABSPATH' ) ) { exit; }
 
+/**
+ * INTENTIONAL DEVIATION: This file queries wp_gf_entry / wp_gf_entry_meta
+ * tables directly instead of using GFAPI. This is a deliberate performance
+ * trade-off for reporting — aggregate queries over large date ranges would
+ * be prohibitively slow through GFAPI::get_entries(). Any GF schema changes
+ * must be reflected here.
+ */
+
 require_once __DIR__ . '/utils.php';
 
 if ( ! function_exists( 'sfa_qg_report_collect' ) ) {

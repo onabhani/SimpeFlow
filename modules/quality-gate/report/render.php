@@ -5,6 +5,12 @@ require_once __DIR__ . '/collect.php';
 
 if ( ! function_exists( 'sfa_qg_report_render_html' ) ) {
     function sfa_qg_report_render_html( $range = 'today', $form_id = 0, $ym = '', $ym2 = '' ) {
+        // Sanitized query args — whitelist known report parameters only
+        $sfa_qg_allowed_keys = array( 'page', 'range', 'form_id', 'ym', 'ym2', 'tables_ym', 'pfe', 'pfm', 'plf', 'pfxd' );
+        $sfa_qg_safe_args = array_intersect_key(
+            array_map( 'sanitize_text_field', wp_unslash( $_GET ) ),
+            array_flip( $sfa_qg_allowed_keys )
+        );
         $data  = sfa_qg_report_collect( $range, $form_id, $ym );
         $fx    = sfa_qg_fixed_report_collect( $range, $form_id, $ym );
 // Use audit history only for the tables; keep KPI cards and top_failed_metrics from live/meta data
@@ -357,7 +363,7 @@ if ( function_exists( 'sfa_qg_report_collect_history' ) ) {
        . esc_html__( 'Tables show period:', 'sfa-quality-gate' ) . ' '
        . esc_html( $tables_view === 'ym2' ? $labelB : $labelA )
        . '</strong> <a class="button button-small" style="margin-left:8px;" href="'
-       . esc_url( add_query_arg( array_merge( $_GET, array( 'tables_ym' => ( $tables_view === 'ym2' ? 'ym1' : 'ym2' ) ) ) ) )
+       . esc_url( add_query_arg( array_merge( $sfa_qg_safe_args, array( 'tables_ym' => ( $tables_view === 'ym2' ? 'ym1' : 'ym2' ) ) ) ) )
        . '">'. sprintf( esc_html__( 'Show tables for %s', 'sfa-quality-gate' ), esc_html( $tables_view === 'ym2' ? $labelA : $labelB ) ) .'</a></p>';
 }
 $qg_tables_ym = ( $has_compare && isset($_GET['tables_ym']) && $_GET['tables_ym'] === 'ym2' ) ? 'ym2' : 'ym1';
@@ -385,7 +391,7 @@ $qg_tables_ym = ( $has_compare && isset($_GET['tables_ym']) && $_GET['tables_ym'
     $all_fe = (array) ( $data['failed_entries'] ?? array() ); $total_fe = count( $all_fe );
     $pages_fe = max( 1, (int) ceil( $total_fe / $per_fe ) ); $pfe = min( $pfe, $pages_fe );
     $offset_fe = ( $pfe - 1 ) * $per_fe; $fe_page = array_slice( $all_fe, $offset_fe, $per_fe, false );
-    $page_url_fe = function( $n ){ $args = $_GET; $args['pfe']=max(1,(int)$n); return esc_url( add_query_arg( $args ) ); };
+    $page_url_fe = function( $n ) use ( $sfa_qg_safe_args ){ $args = $sfa_qg_safe_args; $args['pfe']=max(1,(int)$n); return esc_url( add_query_arg( $args ) ); };
   ?>
   <div class="qg-tools">
     <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-fe"></div>
@@ -550,7 +556,7 @@ endforeach; ?>
     $all_fm = (array)($data['top_failed_metrics'] ?? array()); $total_fm=count($all_fm);
     $pages_fm=max(1,(int)ceil($total_fm/$per_fm)); $pfm=min($pfm,$pages_fm);
     $offset_fm=($pfm-1)*$per_fm; $fm_page=array_slice($all_fm,$offset_fm,$per_fm,true);
-    $page_url=function($n){$args=$_GET;$args['pfm']=max(1,(int)$n);return esc_url(add_query_arg($args));};
+    $page_url=function($n) use ($sfa_qg_safe_args){$args=$sfa_qg_safe_args;$args['pfm']=max(1,(int)$n);return esc_url(add_query_arg($args));};
   ?>
   <div class="qg-tools">
     <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-fm"></div>
@@ -643,7 +649,7 @@ endforeach; ?>
     $all_lf=(array)($data['latest_failed'] ?? array()); $total_lf=count($all_lf);
     $pages_lf=max(1,(int)ceil($total_lf/$per_lf)); $plf=min($plf,$pages_lf);
     $offset_lf=($plf-1)*$per_lf; $lf_page=array_slice($all_lf,$offset_lf,$per_lf,false);
-    $page_url_lf=function($n){$args=$_GET;$args['plf']=max(1,(int)$n);return esc_url(add_query_arg($args));};
+    $page_url_lf=function($n) use ($sfa_qg_safe_args){$args=$sfa_qg_safe_args;$args['plf']=max(1,(int)$n);return esc_url(add_query_arg($args));};
   ?>
   <div class="qg-tools">
     <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-lf"></div>
@@ -750,7 +756,7 @@ endforeach; ?>
     $all_fxd=(array)($fx['details'] ?? array()); $total_fxd=count($all_fxd);
     $pages_fxd=max(1,(int)ceil($total_fxd/$per_fxd)); $pfxd=min($pfxd,$pages_fxd);
     $offset_fxd=($pfxd-1)*$per_fxd; $fxd_page=array_slice($all_fxd,$offset_fxd,$per_fxd,false);
-    $page_url_fxd=function($n){$args=$_GET;$args['pfxd']=max(1,(int)$n);return esc_url(add_query_arg($args));};
+    $page_url_fxd=function($n) use ($sfa_qg_safe_args){$args=$sfa_qg_safe_args;$args['pfxd']=max(1,(int)$n);return esc_url(add_query_arg($args));};
   ?>
   <div class="qg-tools">
     <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-fxd"></div>

@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.14
+ * Version: 2.3.15
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -552,7 +552,7 @@ foreach ( $audit_rows as $r ) {
 require_once __DIR__ . '/report/admin-page.php';
 require_once __DIR__ . '/report/export.php';
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.14');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.15');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -969,7 +969,6 @@ function sfa_qg_ajax_items() {
 	wp_send_json_success( array( 'items' => $items ) );
 }
 add_action( 'wp_ajax_sfa_qg_items',        'sfa_qg_ajax_items' );
-add_action( 'wp_ajax_nopriv_sfa_qg_items', 'sfa_qg_ajax_items' );
 
 /**
  * ----------------------------------------------------------------
@@ -1459,11 +1458,11 @@ if ( ! empty( $photos ) ) {
 	foreach ( $photos as $photo_data ) {
 		$label = isset($photo_data['label']) ? esc_html($photo_data['label']) : '';
 		$data_url = isset($photo_data['data']) ? $photo_data['data'] : '';
-		if ( $data_url ) {
-			// Don't escape data URLs - they need to remain as-is for the browser
+		// Validate data URL: only allow data:image/* scheme to prevent javascript: injection
+		if ( $data_url && preg_match( '/^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+\/=\s]+$/', $data_url ) ) {
 			$photos_html .= sprintf(
-				'<div class="qg-photo-item" style="text-align:center;"><img src="%s" alt="%s" style="max-width:100px;max-height:100px;border:2px solid #d1d5db;border-radius:8px;cursor:pointer;" onclick="window.open(this.src)"><div style="font-size:11px;color:#6b7280;margin-top:4px;">%s</div></div>',
-				$data_url,
+				'<div class="qg-photo-item" style="text-align:center;"><img src="%s" alt="%s" class="qg-photo-preview" style="max-width:100px;max-height:100px;border:2px solid #d1d5db;border-radius:8px;cursor:pointer;"><div style="font-size:11px;color:#6b7280;margin-top:4px;">%s</div></div>',
+				esc_attr( $data_url ),
 				esc_attr( $label ),
 				$label
 			);
@@ -1479,6 +1478,8 @@ $out .= '<tr><td>' . $chk . esc_html( $name ) . $badge . '</td><td>' . ( $labels
 		}
 
 		$out .= '</tbody></table>';
+		// Delegated click handler for photo previews (replaces inline onclick)
+		$out .= '<script>document.addEventListener("click",function(e){if(e.target.classList.contains("qg-photo-preview")){window.open(e.target.src);}});</script>';
 		return $out;
 	}
 }
@@ -2326,6 +2327,9 @@ add_action('gform_after_update_entry', function($form, $entry_id){
 add_action( 'admin_init', function () {
 	if ( empty( $_GET['sfa_qg_backfill'] ) ) return;
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
+	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_backfill' ) ) {
+		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
+	}
 
 	sfa_qg_install_audit_table();
 
@@ -2399,10 +2403,13 @@ add_action( 'admin_init', function () {
 
 
 // === Cleanup: remove QG meta from non-QG forms (admin only) ===
-// Usage: /wp-admin/?sfa_qg_cleanup=1 (add &confirm=1 to actually delete)
+// Usage: /wp-admin/?sfa_qg_cleanup=1&_wpnonce=<nonce> (add &confirm=1 to actually delete)
 add_action( 'admin_init', function () {
 	if ( empty( $_GET['sfa_qg_cleanup'] ) ) return;
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
+	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_cleanup' ) ) {
+		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
+	}
 
 	global $wpdb;
 	$em = $wpdb->prefix . 'gf_entry_meta';
@@ -2466,6 +2473,9 @@ add_action( 'admin_init', function () {
 add_action( 'admin_init', function () {
 	if ( empty( $_GET['sfa_qg_auditpeek'] ) ) return;
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
+	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_auditpeek' ) ) {
+		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
+	}
 
 	global $wpdb;
 	$tbl = $wpdb->prefix . 'sfa_qg_audit';
