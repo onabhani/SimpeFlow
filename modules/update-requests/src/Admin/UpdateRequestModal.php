@@ -132,7 +132,7 @@ class UpdateRequestModal {
 		check_ajax_referer( 'sfa_ur_submit', 'nonce' );
 
 		// Check permissions
-		if ( ! current_user_can( 'gravityforms_view_entries' ) && ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'edit_posts' ) ) {
 			wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
 		}
 
@@ -152,8 +152,8 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Parent entry not found' ] );
 		}
 
-		// Check if current user is the entry creator (primary authorization)
-		if ( ! FormSettings::is_entry_creator( $parent_entry ) && ! current_user_can( 'manage_options' ) ) {
+		// Check if current user is the entry creator
+		if ( ! FormSettings::is_entry_creator( $parent_entry ) ) {
 			wp_send_json_error( [ 'message' => 'Only the entry creator can submit update requests' ] );
 		}
 
@@ -209,32 +209,22 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Failed to create update request entry' ] );
 		}
 
-		// Save metadata and link to parent — clean up on failure to prevent orphaned entries
-		try {
-			gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
-			gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
-			gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
-			gform_update_meta( $child_entry_id, '_ur_type', 'drawing_update' );
-			gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
-			gform_update_meta( $child_entry_id, '_ur_original_filename', $filename );
-			gform_update_meta( $child_entry_id, '_ur_reason', $reason );
-			gform_update_meta( $child_entry_id, '_ur_drawing_file', $drawing_file );
+		// Save update request metadata
+		gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
+		gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
+		gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
+		gform_update_meta( $child_entry_id, '_ur_type', 'drawing_update' );
+		gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
+		gform_update_meta( $child_entry_id, '_ur_original_filename', $filename );
+		gform_update_meta( $child_entry_id, '_ur_reason', $reason );
+		gform_update_meta( $child_entry_id, '_ur_drawing_file', $drawing_file );
 
-			if ( $invoice_file ) {
-				gform_update_meta( $child_entry_id, '_ur_invoice_file', $invoice_file );
-			}
-
-			// Link to parent entry
-			$this->link_to_parent( $entry_id, $child_entry_id, 'drawing_update' );
-		} catch ( \Exception $e ) {
-			\GFAPI::delete_entry( $child_entry_id );
-			error_log( sprintf(
-				'Update Requests: Rolled back child entry %d due to error: %s',
-				$child_entry_id,
-				$e->getMessage()
-			) );
-			wp_send_json_error( [ 'message' => 'Failed to set up update request. Please try again.' ] );
+		if ( $invoice_file ) {
+			gform_update_meta( $child_entry_id, '_ur_invoice_file', $invoice_file );
 		}
+
+		// Link to parent entry
+		$this->link_to_parent( $entry_id, $child_entry_id, 'drawing_update' );
 
 		// Add entry note
 		\GFAPI::add_note(
@@ -270,7 +260,7 @@ class UpdateRequestModal {
 		check_ajax_referer( 'sfa_ur_submit', 'nonce' );
 
 		// Check permissions
-		if ( ! current_user_can( 'gravityforms_view_entries' ) && ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'edit_posts' ) ) {
 			wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
 		}
 
@@ -289,8 +279,8 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Parent entry not found' ] );
 		}
 
-		// Check if current user is the entry creator (primary authorization)
-		if ( ! FormSettings::is_entry_creator( $parent_entry ) && ! current_user_can( 'manage_options' ) ) {
+		// Check if current user is the entry creator
+		if ( ! FormSettings::is_entry_creator( $parent_entry ) ) {
 			wp_send_json_error( [ 'message' => 'Only the entry creator can submit following invoices' ] );
 		}
 
@@ -338,27 +328,17 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Failed to create following invoice entry' ] );
 		}
 
-		// Save metadata and link to parent — clean up on failure to prevent orphaned entries
-		try {
-			gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
-			gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
-			gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
-			gform_update_meta( $child_entry_id, '_ur_type', 'following_invoice' );
-			gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
-			gform_update_meta( $child_entry_id, '_ur_reason', $reason );
-			gform_update_meta( $child_entry_id, '_ur_invoice_file', $invoice_file );
+		// Save following invoice metadata
+		gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
+		gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
+		gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
+		gform_update_meta( $child_entry_id, '_ur_type', 'following_invoice' );
+		gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
+		gform_update_meta( $child_entry_id, '_ur_reason', $reason );
+		gform_update_meta( $child_entry_id, '_ur_invoice_file', $invoice_file );
 
-			// Link to parent entry
-			$this->link_to_parent( $entry_id, $child_entry_id, 'following_invoice' );
-		} catch ( \Exception $e ) {
-			\GFAPI::delete_entry( $child_entry_id );
-			error_log( sprintf(
-				'Update Requests: Rolled back child entry %d due to error: %s',
-				$child_entry_id,
-				$e->getMessage()
-			) );
-			wp_send_json_error( [ 'message' => 'Failed to set up following invoice. Please try again.' ] );
-		}
+		// Link to parent entry
+		$this->link_to_parent( $entry_id, $child_entry_id, 'following_invoice' );
 
 		// Add entry note
 		\GFAPI::add_note(
