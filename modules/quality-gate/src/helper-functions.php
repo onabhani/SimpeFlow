@@ -164,19 +164,35 @@ if ( ! function_exists( 'sfa_qg_collect_rework_values_from_post' ) ) {
 
 		$selected = array();
 
-		// Standard GF style: input_5_1, input_5_2, ...
+		// Build whitelist of allowed values from the field's choices
+		$allowed_values = array();
+		$target_field   = null;
 		foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
-			if ( (int) rgar( (array) $f, 'id' ) !== (int) $field_id || $f->type !== 'checkbox' || empty( $f->inputs ) ) {
-				continue;
-			}
-			foreach ( $f->inputs as $inp ) {
-				$key = 'input_' . str_replace( '.', '_', $inp['id'] );
-				$val = isset( $_POST[ $key ] ) ? (string) wp_unslash( $_POST[ $key ] ) : '';
-				if ( $val !== '' ) {
-					$selected[] = $val;
+			if ( (int) rgar( (array) $f, 'id' ) === (int) $field_id && $f->type === 'checkbox' ) {
+				$target_field = $f;
+				if ( ! empty( $f->choices ) ) {
+					foreach ( $f->choices as $c ) {
+						$cv = trim( (string) rgar( (array) $c, 'value', rgar( (array) $c, 'text', '' ) ) );
+						if ( $cv !== '' ) {
+							$allowed_values[] = $cv;
+						}
+					}
 				}
+				break;
 			}
-			break;
+		}
+
+		if ( ! $target_field || empty( $target_field->inputs ) ) {
+			return array();
+		}
+
+		// Standard GF style: input_5_1, input_5_2, ...
+		foreach ( $target_field->inputs as $inp ) {
+			$key = 'input_' . str_replace( '.', '_', $inp['id'] );
+			$val = isset( $_POST[ $key ] ) ? (string) wp_unslash( $_POST[ $key ] ) : '';
+			if ( $val !== '' ) {
+				$selected[] = $val;
+			}
 		}
 
 		// Array style: input_5[]
@@ -192,16 +208,52 @@ if ( ! function_exists( 'sfa_qg_collect_rework_values_from_post' ) ) {
 				}
 			}
 		}
+
+		// Validate: only accept values that match known field choices
+		if ( $allowed_values ) {
+			$selected = array_values( array_intersect( $selected, $allowed_values ) );
+		}
+
 		return array_values( array_unique( $selected ) );
 	}
 }
 
-// Detect if we are on a Gravity Flow **User Input** step (i.e., the rework step).
+/**
+ * Detect if we are on a Gravity Flow **User Input** step that is a rework step
+ * (i.e., QC field is NOT editable — if QC is editable, it's an inspection step).
+ */
 if ( ! function_exists( 'sfa_qg_is_rework_context' ) ) {
 	function sfa_qg_is_rework_context( $form ) {
 		if ( ! function_exists( 'gravity_flow' ) ) {
 			return false;
 		}
+
+		// Helper: check if QC field is editable on the given step for a given entry.
+		$qc_is_editable_on_step = function( $step, $form, $entry ) {
+			$qc_field_id = 0;
+			foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
+				if ( rgar( (array) $f, 'type' ) === 'quality_checklist' ) {
+					$qc_field_id = (int) rgar( (array) $f, 'id' );
+					break;
+				}
+			}
+			if ( ! $qc_field_id ) return false;
+
+			if ( method_exists( $step, 'is_editable_field' ) ) {
+				$qc_field_obj = null;
+				foreach ( (array) rgar( $form, 'fields', array() ) as $f ) {
+					if ( (int) rgar( (array) $f, 'id' ) === $qc_field_id ) {
+						$qc_field_obj = $f;
+						break;
+					}
+				}
+				return $qc_field_obj ? (bool) $step->is_editable_field( $qc_field_obj, $form, $entry ) : false;
+			}
+
+			$ids = method_exists( $step, 'get_editable_fields' ) ? (array) $step->get_editable_fields() : array();
+			$ids = apply_filters( 'gravityflow_editable_fields', $ids, $step, $form, $entry );
+			return in_array( $qc_field_id, array_map( 'intval', $ids ), true );
+		};
 
 		// --- Try 1: explicit step id from the request ---
 		$step_id = sfa_qg_current_step_id();
@@ -215,11 +267,19 @@ if ( ! function_exists( 'sfa_qg_is_rework_context' ) ) {
 				) {
 					return false;
 				}
-				// User Input => editable
-				if (
+				// User Input step — but only if QC field is NOT editable (rework, not inspection)
+				$is_user_input = (
 					( property_exists( $step, '_step_type' ) && $step->_step_type === 'user_input' ) ||
 					( class_exists( '\Gravity_Flow_Step_User_Input' ) && $step instanceof \Gravity_Flow_Step_User_Input )
-				) {
+				);
+				if ( $is_user_input ) {
+					$entry_id = sfa_qg_current_entry_id();
+					$entry    = ( $entry_id && class_exists( 'GFAPI' ) ) ? \GFAPI::get_entry( $entry_id ) : null;
+					if ( is_wp_error( $entry ) ) $entry = null;
+					// If QC is editable, this is an inspection step, not rework
+					if ( $entry && $qc_is_editable_on_step( $step, $form, $entry ) ) {
+						return false;
+					}
 					return true;
 				}
 			}
@@ -232,10 +292,14 @@ if ( ! function_exists( 'sfa_qg_is_rework_context' ) ) {
 			if ( ! is_wp_error( $entry ) ) {
 				$curr = gravity_flow()->get_current_step( $form, $entry );
 				if ( $curr ) {
-					if (
+					$is_user_input = (
 						( property_exists( $curr, '_step_type' ) && $curr->_step_type === 'user_input' ) ||
 						( class_exists( '\Gravity_Flow_Step_User_Input' ) && $curr instanceof \Gravity_Flow_Step_User_Input )
-					) {
+					);
+					if ( $is_user_input ) {
+						if ( $qc_is_editable_on_step( $curr, $form, $entry ) ) {
+							return false;
+						}
 						return true;
 					}
 				}

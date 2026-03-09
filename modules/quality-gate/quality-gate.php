@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.19
+ * Version: 2.3.20
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -20,7 +20,7 @@ if ( ! function_exists( 'sfa_qg_log' ) ) {
 	}
 }
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.19');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.20');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -191,7 +191,7 @@ add_filter( 'gform_add_field_buttons', function ( $groups ) {
 	// Add exactly one back to Advanced
 	$groups[$adv_i]['fields'][] = array(
 		'class'     => 'button',
-		'value'     => esc_html__( 'Quality Checklist', 'sfa-quality-gate' ),
+		'value'     => esc_html__( 'Quality Checklist', 'simpleflow' ),
 		'data-type' => 'quality_checklist',
 	);
 
@@ -199,32 +199,28 @@ add_filter( 'gform_add_field_buttons', function ( $groups ) {
 }, PHP_INT_MAX ); // run absolutely last
 
 
-add_filter('gform_validation', function($result){
-	$entry_id = function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0;
-	if ( $entry_id ) {
-		sfa_qg_save_recheck_items_from_post($result['form'], (int)$entry_id);
-	}
-	return $result;
-}, 9999);
+// Note: recheck items are persisted in the post-save hooks
+// (gform_after_submission / gform_after_update_entry), NOT during
+// gform_validation, because validation must not mutate state.
 
 
 add_action( 'gform_field_advanced_settings', function ( $position, $form_id ) {
 	if ( (int) $position !== 200 ) return; ?>
 	<li class="sfa_qg_setting_source_upload field_setting">
 		<label for="sfa_qg_source_upload_field" class="section_label">
-			<?php esc_html_e( 'QC Source Upload field', 'sfa-quality-gate' ); ?>
+			<?php esc_html_e( 'QC Source Upload field', 'simpleflow' ); ?>
 		</label>
 		<select id="sfa_qg_source_upload_field" onchange="SetFieldProperty('sfa_qg_source_upload_field', this.value);"></select>
-		<p class="description"><?php esc_html_e( 'Choose a File Upload field; filenames will become QC items.', 'sfa-quality-gate' ); ?></p>
+		<p class="description"><?php esc_html_e( 'Choose a File Upload field; filenames will become QC items.', 'simpleflow' ); ?></p>
 	</li>
 	<li class="sfa_qg_setting_metrics field_setting">
 	<label for="sfa_qg_metric_labels" class="section_label">
-		<?php esc_html_e( 'Metric labels (one per line)', 'sfa-quality-gate' ); ?>
+		<?php esc_html_e( 'Metric labels (one per line)', 'simpleflow' ); ?>
 	</label>
 	<textarea id="sfa_qg_metric_labels" class="fieldwidth-3" rows="6"
 	          oninput="SetFieldProperty('sfa_qg_metric_labels', this.value);"
-	          placeholder="<?php echo esc_attr__( 'e.g.'."\n".'Dimensions'."\n".'Finish'."\n".'Holes'."\n"."Packaging", 'sfa-quality-gate' ); ?>"></textarea>
-	<p class="description"><?php esc_html_e( 'Up to 10 metrics. Leave blank to use a single "Overall" check.', 'sfa-quality-gate' ); ?></p>
+	          placeholder="<?php echo esc_attr__( 'e.g.'."\n".'Dimensions'."\n".'Finish'."\n".'Holes'."\n"."Packaging", 'simpleflow' ); ?>"></textarea>
+	<p class="description"><?php esc_html_e( 'Up to 10 metrics. Leave blank to use a single "Overall" check.', 'simpleflow' ); ?></p>
 </li>
 <?php }, 10, 2 );
 
@@ -234,7 +230,7 @@ add_action( 'gform_field_standard_settings', function ( $position, $form_id ) {
 		<input type="checkbox" id="sfa_qg_require_note_on_fail"
 			onclick="SetFieldProperty('sfa_qg_require_note_on_fail', this.checked ? 1 : 0);" />
 		<label for="sfa_qg_require_note_on_fail" class="inline">
-			<?php esc_html_e( 'Require note when a QC metric fails', 'sfa-quality-gate' ); ?>
+			<?php esc_html_e( 'Require note when a QC metric fails', 'simpleflow' ); ?>
 		</label>
 	</li>
 <?php }, 10, 2 );
@@ -252,7 +248,7 @@ add_action( 'gform_editor_js', function () { ?>
 		var $sel = $( '#sfa_qg_source_upload_field' );
 		if ( !$sel.length ) return;
 		$sel.empty();
-		$sel.append( $('<option/>').val('').text('<?php echo esc_js( __( '-- Select upload field --', 'sfa-quality-gate' ) ); ?>') );
+		$sel.append( $('<option/>').val('').text('<?php echo esc_js( __( '-- Select upload field --', 'simpleflow' ) ); ?>') );
 
 		if ( typeof GetFieldsByType === 'function' ) {
 			var uploads = GetFieldsByType( ['fileupload'] ) || [];
@@ -334,8 +330,8 @@ if ( ! function_exists( 'sfa_qg_report_admin_menu' ) ) {
 		$cap = current_user_can( 'gravityflow_workflow' ) ? 'gravityflow_workflow' : 'gravityforms_view_entries';
 		add_submenu_page(
 			'simpleflow', // Changed from 'gravityflow-inbox' to 'simpleflow'
-			__( 'Quality Gate Report', 'sfa-quality-gate' ),
-			__( 'Quality Gate Report', 'sfa-quality-gate' ),
+			__( 'Quality Gate Report', 'simpleflow' ),
+			__( 'Quality Gate Report', 'simpleflow' ),
 			$cap,
 			'sfa-qg-report',
 			'sfa_qg_report_admin_page'
@@ -614,13 +610,13 @@ $desc  = '<div class="qg-rework-help"'
 	if ( $editable_field && ! empty( $failed ) ) {
 		$desc .= '<div class="qg-rework-controls" style="margin:0 0 8px 0;">'
 		       .   '<button type="button" class="button qg-select-all-fixed" data-field-id="' . esc_attr( $target_id ) . '">'
-		       .       esc_html__( 'Mark all fixed', 'sfa-quality-gate' )
+		       .       esc_html__( 'Mark all fixed', 'simpleflow' )
 		       .   '</button>'
 		       . '</div>';
 	}
 
 	// Table always visible for context (row checkboxes only if editable)
-	$desc .= $table_html_local ?: '<p class="description" style="margin:0;">' . esc_html__( 'No failed items for this entry.', 'sfa-quality-gate' ) . '</p>';
+	$desc .= $table_html_local ?: '<p class="description" style="margin:0;">' . esc_html__( 'No failed items for this entry.', 'simpleflow' ) . '</p>';
 
 	$desc .= '</div>';
 	$field->description = $desc;
@@ -696,7 +692,7 @@ add_filter( 'gform_validation', function( $result ) {
 			if ( (int) $fld->id === (int) $field_id ) {
 				$fld->failed_validation  = true;
 				$fld->validation_message = sprintf(
-					esc_html__( 'You must mark all failed items as fixed before submitting. Missing: %s', 'sfa-quality-gate' ),
+					esc_html__( 'You must mark all failed items as fixed before submitting. Missing: %s', 'simpleflow' ),
 					esc_html( implode( ', ', $missing ) )
 				);
 			}

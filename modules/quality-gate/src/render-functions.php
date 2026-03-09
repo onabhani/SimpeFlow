@@ -96,7 +96,7 @@ if ( ! function_exists( 'sfa_qg_render_failed_table' ) ) {
 		}
 
 		$out  = '<table class="qg-rework-table widefat striped">';
-		$out .= '<thead><tr><th>' . esc_html__( 'Item', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Failed metrics', 'sfa-quality-gate' ) . '</th><th>' . esc_html__( 'Photos', 'sfa-quality-gate' ) . '</th></tr></thead><tbody>';
+		$out .= '<thead><tr><th>' . esc_html__( 'Item', 'simpleflow' ) . '</th><th>' . esc_html__( 'Failed metrics', 'simpleflow' ) . '</th><th>' . esc_html__( 'Photos', 'simpleflow' ) . '</th></tr></thead><tbody>';
 
 		foreach ( $map as $name => $data ) {
 			// Support both old format (array of labels) and new format (array with 'labels' and 'photos')
@@ -105,7 +105,7 @@ if ( ! function_exists( 'sfa_qg_render_failed_table' ) ) {
 
 			$is_fixed = in_array( (string) $name, $fixed_list, true );
 			$badge = $is_fixed
-				? ' <span class="sfa-qg-badge is-fixed">' . esc_html__( 'Fixed', 'sfa-quality-gate' ) . '</span>'
+				? ' <span class="sfa-qg-badge is-fixed">' . esc_html__( 'Fixed', 'simpleflow' ) . '</span>'
 				: '';
 
 			$chk = '';
@@ -165,13 +165,13 @@ function sfa_qg_entry_qc_summary_box( $form, $entry ) {
 
 	?>
 	<div class="sfa-qg-report" style="margin-top:10px;">
-		<h3 style="margin:0 0 6px;"><?php esc_html_e( 'Quality Gate', 'sfa-quality-gate' ); ?></h3>
+		<h3 style="margin:0 0 6px;"><?php esc_html_e( 'Quality Gate', 'simpleflow' ); ?></h3>
 		<div class="qg-row">
-			<div class="qg-name"><?php esc_html_e( 'Totals', 'sfa-quality-gate' ); ?></div>
+			<div class="qg-name"><?php esc_html_e( 'Totals', 'simpleflow' ); ?></div>
 			<div class="qg-meta">
 				<?php
 				printf(
-					esc_html__( '%d metrics (%d failed) across %d items', 'sfa-quality-gate' ),
+					esc_html__( '%d metrics (%d failed) across %d items', 'simpleflow' ),
 					(int) ( $sum['metrics_total'] ?? 0 ),
 					(int) ( $sum['metrics_failed'] ?? 0 ),
 					(int) ( $sum['items_total'] ?? 0 )
@@ -181,13 +181,13 @@ function sfa_qg_entry_qc_summary_box( $form, $entry ) {
 		</div>
 		<?php if ( $failed_items ) : ?>
 			<div class="qg-row">
-				<div class="qg-name"><?php esc_html_e( 'Failed items', 'sfa-quality-gate' ); ?></div>
+				<div class="qg-name"><?php esc_html_e( 'Failed items', 'simpleflow' ); ?></div>
 				<div class="qg-meta"><?php echo esc_html( implode( ', ', $failed_items ) ); ?></div>
 			</div>
 		<?php endif; ?>
 		<?php if ( $failed_metrics ) : ?>
 			<div class="qg-row">
-				<div class="qg-name"><?php esc_html_e( 'Failing metrics', 'sfa-quality-gate' ); ?></div>
+				<div class="qg-name"><?php esc_html_e( 'Failing metrics', 'simpleflow' ); ?></div>
 				<div class="qg-meta"><?php echo esc_html( implode( ', ', $failed_metrics ) ); ?></div>
 			</div>
 		<?php endif; ?>

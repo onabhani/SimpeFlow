@@ -38,7 +38,7 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 		}
 
 		echo '<div class="wrap">';
-		echo '<h1>' . esc_html__( 'Quality Gate Report', 'sfa-quality-gate' ) . '</h1>';
+		echo '<h1>' . esc_html__( 'Quality Gate Report', 'simpleflow' ) . '</h1>';
 
 		// =========================
 		// Filter / Search bar (UI)
@@ -69,19 +69,19 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 
 			<div class="row row-top">
 				<!-- Range chips -->
-				<div class="seg" role="tablist" aria-label="<?php esc_attr_e('Range','sfa-quality-gate'); ?>">
-					<label><input type="radio" name="mode" value="today"        <?php checked( $mode, 'today' ); ?>><span><?php esc_html_e('Today','sfa-quality-gate'); ?></span></label>
-					<label><input type="radio" name="mode" value="month"        <?php checked( $mode, 'month' ); ?>><span><?php esc_html_e('This month','sfa-quality-gate'); ?></span></label>
-					<label><input type="radio" name="mode" value="year"         <?php checked( $mode, 'year' ); ?>><span><?php esc_html_e('This year','sfa-quality-gate'); ?></span></label>
-					<label><input type="radio" name="mode" value="last_year"    <?php checked( $mode, 'last_year' ); ?>><span><?php esc_html_e('Last year','sfa-quality-gate'); ?></span></label>
-					<label><input type="radio" name="mode" value="month_custom" <?php checked( $mode, 'month_custom' ); ?>><span><?php esc_html_e('Specific month','sfa-quality-gate'); ?></span></label>
-					<label><input type="radio" name="mode" value="compare"      <?php checked( $mode, 'compare' ); ?>><span><?php esc_html_e('Compare','sfa-quality-gate'); ?></span></label>
+				<div class="seg" role="tablist" aria-label="<?php esc_attr_e('Range','simpleflow'); ?>">
+					<label><input type="radio" name="mode" value="today"        <?php checked( $mode, 'today' ); ?>><span><?php esc_html_e('Today','simpleflow'); ?></span></label>
+					<label><input type="radio" name="mode" value="month"        <?php checked( $mode, 'month' ); ?>><span><?php esc_html_e('This month','simpleflow'); ?></span></label>
+					<label><input type="radio" name="mode" value="year"         <?php checked( $mode, 'year' ); ?>><span><?php esc_html_e('This year','simpleflow'); ?></span></label>
+					<label><input type="radio" name="mode" value="last_year"    <?php checked( $mode, 'last_year' ); ?>><span><?php esc_html_e('Last year','simpleflow'); ?></span></label>
+					<label><input type="radio" name="mode" value="month_custom" <?php checked( $mode, 'month_custom' ); ?>><span><?php esc_html_e('Specific month','simpleflow'); ?></span></label>
+					<label><input type="radio" name="mode" value="compare"      <?php checked( $mode, 'compare' ); ?>><span><?php esc_html_e('Compare','simpleflow'); ?></span></label>
 				</div>
 
 				<!-- Form select + Apply packed beside the chips -->
-				<label for="qg-form" style="font-weight:600;margin-left:6px;"><?php esc_html_e('Form','sfa-quality-gate'); ?>:</label>
+				<label for="qg-form" style="font-weight:600;margin-left:6px;"><?php esc_html_e('Form','simpleflow'); ?>:</label>
 				<select id="qg-form" name="form_id">
-					<option value="0"><?php esc_html_e('All forms','sfa-quality-gate'); ?></option>
+					<option value="0"><?php esc_html_e('All forms','simpleflow'); ?></option>
 					<?php foreach ( (array) $forms as $f ): ?>
 						<option value="<?php echo (int) $f['id']; ?>" <?php selected( $form_id, (int) $f['id'] ); ?>>
 							<?php echo esc_html( $f['title'] . ' (ID ' . (int) $f['id'] . ')' ); ?>
@@ -89,41 +89,41 @@ if ( ! function_exists( 'sfa_qg_report_admin_page' ) ) {
 					<?php endforeach; ?>
 				</select>
 
-				<button class="button button-primary" type="submit"><?php esc_html_e('Apply','sfa-quality-gate'); ?></button>
+				<button class="button button-primary" type="submit"><?php esc_html_e('Apply','simpleflow'); ?></button>
 			</div>
 
 			<!-- Specific month -->
 			<div class="row js-specific" style="display:<?php echo ( $mode === 'month_custom' ) ? 'flex' : 'none'; ?>">
-				<label for="qg-ym" style="font-weight:600;"><?php esc_html_e('Month','sfa-quality-gate'); ?>:</label>
+				<label for="qg-ym" style="font-weight:600;"><?php esc_html_e('Month','simpleflow'); ?>:</label>
 				<!-- NOTE: name is m1 (not ym). Canonical ym is filled into the hidden #canon-ym on submit. -->
 				<input id="qg-ym" type="month" name="m1" value="<?php echo esc_attr( $ym ?: date_i18n('Y-m', current_time('timestamp') ) ); ?>">
-				<span class="hint"><?php esc_html_e('Tip: use ←/→ keys while focused to step months','sfa-quality-gate'); ?></span>
+				<span class="hint"><?php esc_html_e('Tip: use ←/→ keys while focused to step months','simpleflow'); ?></span>
 			</div>
 
 			<!-- Compare chooser -->
 			<div class="row js-compare" style="display:<?php echo ( $mode === 'compare' ) ? 'flex' : 'none'; ?>">
-				<div class="seg" aria-label="<?php esc_attr_e('Compare type','sfa-quality-gate'); ?>">
-					<label><input type="radio" name="ctype" value="mm" <?php checked( $ctype, 'mm' ); ?>><span><?php esc_html_e('Month ↔ Month','sfa-quality-gate'); ?></span></label>
-					<label><input type="radio" name="ctype" value="yy" <?php checked( $ctype, 'yy' ); ?>><span><?php esc_html_e('Year ↔ Year','sfa-quality-gate'); ?></span></label>
+				<div class="seg" aria-label="<?php esc_attr_e('Compare type','simpleflow'); ?>">
+					<label><input type="radio" name="ctype" value="mm" <?php checked( $ctype, 'mm' ); ?>><span><?php esc_html_e('Month ↔ Month','simpleflow'); ?></span></label>
+					<label><input type="radio" name="ctype" value="yy" <?php checked( $ctype, 'yy' ); ?>><span><?php esc_html_e('Year ↔ Year','simpleflow'); ?></span></label>
 				</div>
-				<label style="margin-left:12px;"><input type="checkbox" name="autoprev" value="1" <?php checked( isset($_GET['autoprev']) && $_GET['autoprev'] === '1' ); ?>> <?php esc_html_e('vs previous period','sfa-quality-gate'); ?></label>
+				<label style="margin-left:12px;"><input type="checkbox" name="autoprev" value="1" <?php checked( isset($_GET['autoprev']) && $_GET['autoprev'] === '1' ); ?>> <?php esc_html_e('vs previous period','simpleflow'); ?></label>
 			</div>
 
 			<!-- Month↔Month fields -->
 			<div class="row js-mm" style="display:<?php echo ( $mode === 'compare' && $ctype === 'mm' ) ? 'flex' : 'none'; ?>">
-				<label style="font-weight:600;"><?php esc_html_e('Left month','sfa-quality-gate'); ?>:</label>
+				<label style="font-weight:600;"><?php esc_html_e('Left month','simpleflow'); ?>:</label>
 				<input type="month" name="m1"  value="<?php echo esc_attr( $ym ?: date_i18n('Y-m', current_time('timestamp') ) ); ?>" class="js-month-a">
-				<label style="font-weight:600;"><?php esc_html_e('Right month','sfa-quality-gate'); ?>:</label>
+				<label style="font-weight:600;"><?php esc_html_e('Right month','simpleflow'); ?>:</label>
 				<input type="month" name="m2" value="<?php echo esc_attr( $ym2 ); ?>" class="js-month-b">
 			</div>
 
 			<!-- Year↔Year fields -->
 			<div class="row js-yy" style="display:<?php echo ( $mode === 'compare' && $ctype === 'yy' ) ? 'flex' : 'none'; ?>">
-				<label style="font-weight:600;"><?php esc_html_e('Left year','sfa-quality-gate'); ?>:</label>
+				<label style="font-weight:600;"><?php esc_html_e('Left year','simpleflow'); ?>:</label>
 				<input type="number" name="yy"  min="2000" max="2100" step="1" value="<?php echo esc_attr( preg_match('/^\d{4}$/',$ym) ? $ym : date_i18n('Y') ); ?>" class="js-year-a">
-				<label style="font-weight:600;"><?php esc_html_e('Right year','sfa-quality-gate'); ?>:</label>
+				<label style="font-weight:600;"><?php esc_html_e('Right year','simpleflow'); ?>:</label>
 				<input type="number" name="yy2" min="2000" max="2100" step="1" value="<?php echo esc_attr( preg_match('/^\d{4}$/',$ym2) ? $ym2 : '' ); ?>" class="js-year-b">
-				<span class="hint"><?php esc_html_e('Use ←/→ keys to step years','sfa-quality-gate'); ?></span>
+				<span class="hint"><?php esc_html_e('Use ←/→ keys to step years','simpleflow'); ?></span>
 			</div>
 
 			<script>

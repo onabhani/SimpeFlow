@@ -151,7 +151,7 @@ function sfa_qg_stamp_fail_times_if_missing( $entry_id, array $failed_names ) {
 		$name = trim( (string) $n );
 		if ( $name === '' ) continue;
 
-		$key         = '_qg_fail_time_' . sfa_qg_item_hash( $name );
+		$key         = '_qc_fail_time_' . sfa_qg_item_hash( $name );
 		$when_local  = (string) gform_get_meta( (int) $entry_id, $key );
 		if ( ! $when_local ) {
 			$when_local = current_time( 'mysql', false );
@@ -195,7 +195,9 @@ function sfa_qg_fixed_log_append_items( $form_id, $entry_id, array $items, $step
 	$log   = sfa_qg_fixed_log_get( $entry_id );
 	$seen  = array();
 	foreach ( $log as $ev ) {
-		$seen[ strtolower( (string) ( $ev['item'] ?? '' ) ) ] = true;
+		// Dedupe key includes step_id so same item fixed in different steps is preserved
+		$ev_step = (int) ( $ev['step_id'] ?? 0 );
+		$seen[ strtolower( (string) ( $ev['item'] ?? '' ) ) . '|step:' . $ev_step ] = true;
 	}
 
 	$added = array();
@@ -203,10 +205,10 @@ function sfa_qg_fixed_log_append_items( $form_id, $entry_id, array $items, $step
 		$name = trim( (string) $name );
 		if ( $name === '' ) continue;
 
-		$norm = strtolower( $name );
-		if ( isset( $seen[ $norm ] ) ) continue; // already logged for this item
+		$norm = strtolower( $name ) . '|step:' . (int) $step_id;
+		if ( isset( $seen[ $norm ] ) ) continue; // already logged for this item+step
 
-		$failed_at = gform_get_meta( (int) $entry_id, '_qg_fail_time_' . sfa_qg_item_hash( $name ) );
+		$failed_at = gform_get_meta( (int) $entry_id, '_qc_fail_time_' . sfa_qg_item_hash( $name ) );
 		$duration  = null;
 		if ( $failed_at ) {
 			$duration = max( 0, strtotime( $now ) - strtotime( $failed_at ) );
@@ -238,3 +240,41 @@ function sfa_qg_fixed_log_append_items( $form_id, $entry_id, array $items, $step
 
 	return $added;
 }
+
+// --- Entry deletion cleanup ------------------------------------------------------
+
+/**
+ * Remove all QC-related entry meta when an entry is deleted.
+ * Covers both explicit keys and per-item fail-time keys.
+ */
+function sfa_qg_cleanup_entry_meta( $entry_id ) {
+	$entry_id = (int) $entry_id;
+	if ( ! $entry_id ) return;
+
+	// Explicit QC meta keys
+	$qc_keys = array(
+		'_qc_summary',
+		'_qc_failed_items',
+		'_qc_failed_metrics',
+		'_qc_recheck_items',
+		'_qc_fixed_log',
+		'_qc_history',
+		'_qc_nodata',
+		'_qc_pending_noted',
+	);
+	foreach ( $qc_keys as $key ) {
+		gform_delete_meta( $entry_id, $key );
+	}
+
+	// Per-item fail-time keys (_qc_fail_time_*)
+	global $wpdb;
+	$tbl = $wpdb->prefix . 'gf_entry_meta';
+	$wpdb->query(
+		$wpdb->prepare(
+			"DELETE FROM $tbl WHERE entry_id = %d AND meta_key LIKE %s",
+			$entry_id,
+			'_qc_fail_time_%'
+		)
+	);
+}
+add_action( 'gform_delete_entry', 'sfa_qg_cleanup_entry_meta', 10, 1 );

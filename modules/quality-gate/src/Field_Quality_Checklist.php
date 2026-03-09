@@ -8,7 +8,7 @@ class Field_Quality_Checklist extends \GF_Field {
 	public $type = 'quality_checklist';
 
 	public function get_form_editor_field_title() {
-		return esc_html__('Quality Checklist','sfa-quality-gate');
+		return esc_html__('Quality Checklist','simpleflow');
 	}
 
 	public function get_form_editor_field_settings() {
@@ -69,8 +69,15 @@ public function get_field_input( $form, $value = '', $entry = null ) {
 	
 
 
-// Before echoing HTML, extend $cfg with fixedItems and failedItems from meta
-$entry_id = function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0;
+// Before echoing HTML, extend $cfg with fixedItems and failedItems from meta.
+// Prefer the resolved $entry (passed by GF) over sfa_qg_current_entry_id() fallback.
+$entry_id = 0;
+if ( is_array( $entry ) && ! empty( $entry['id'] ) ) {
+    $entry_id = (int) $entry['id'];
+}
+if ( ! $entry_id ) {
+    $entry_id = function_exists('sfa_qg_current_entry_id') ? sfa_qg_current_entry_id() : 0;
+}
 $fixed_from_meta = array();
 $failed_from_meta = array();
 if ( $entry_id ) {
@@ -242,7 +249,7 @@ $cfg['failedItems'] = $failed_from_meta;
 		$form_id,
 		$field_id,
 		$data_config,
-		esc_html__( 'Quality checklist UI will render here.', 'sfa-quality-gate' ),
+		esc_html__( 'Quality checklist UI will render here.', 'simpleflow' ),
 		$field_id,
 		esc_attr( $input_id ),
 		esc_attr( $payload_val )
@@ -270,7 +277,7 @@ $cfg['failedItems'] = $failed_from_meta;
 		$decoded = json_decode($raw,true);
 		if ( ! is_array($decoded) || ! isset($decoded['items']) || ! is_array($decoded['items']) ) {
 			$this->failed_validation = true;
-			$this->validation_message = esc_html__('Invalid quality data.','sfa-quality-gate');
+			$this->validation_message = esc_html__('Invalid quality data.','simpleflow');
 			return;
 		}
 
@@ -284,7 +291,7 @@ $cfg['failedItems'] = $failed_from_meta;
 				$note   = isset($m['note']) ? trim((string)$m['note']) : '';
 				if ( $result === 'fail' && $note === '' ) {
 					$this->failed_validation = true;
-					$this->validation_message = esc_html__('A note is required for failed checks.','sfa-quality-gate');
+					$this->validation_message = esc_html__('A note is required for failed checks.','simpleflow');
 					return;
 				}
 			}
@@ -334,7 +341,7 @@ $cfg['failedItems'] = $failed_from_meta;
 		$items = isset( $payload['items'] ) && is_array( $payload['items'] ) ? $payload['items'] : array();
 
 		if ( empty( $items ) ) {
-			return '<div class="sfa-qg-report"><div class="qg-summary">' . esc_html__( 'No checklist data.', 'sfa-quality-gate' ) . '</div></div>';
+			return '<div class="sfa-qg-report"><div class="qg-summary">' . esc_html__( 'No checklist data.', 'simpleflow' ) . '</div></div>';
 		}
 
 		ob_start();
@@ -384,9 +391,9 @@ foreach ( $items as $it ) {
 		$metrics_failed= isset( $summary['metrics_failed'] ) ? (int) $summary['metrics_failed'] : 0;
 
 		echo '<div class="qg-summary">' .
-		     esc_html__( 'Items', 'sfa-quality-gate' ) . ': ' . (int) $items_total . ' · ' .
-		     esc_html__( 'Checks', 'sfa-quality-gate' ) . ': ' . (int) $metrics_total . ' · ' .
-		     esc_html__( 'Failed', 'sfa-quality-gate' ) . ': ' . (int) $metrics_failed .
+		     esc_html__( 'Items', 'simpleflow' ) . ': ' . (int) $items_total . ' · ' .
+		     esc_html__( 'Checks', 'simpleflow' ) . ': ' . (int) $metrics_total . ' · ' .
+		     esc_html__( 'Failed', 'simpleflow' ) . ': ' . (int) $metrics_failed .
 		     '</div>';
 
 		echo '</div>';

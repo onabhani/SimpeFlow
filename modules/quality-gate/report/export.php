@@ -9,7 +9,7 @@ function sfa_qg_handle_export() {
     // Permissions (same cap as the page)
     $cap = current_user_can( 'gravityflow_workflow' ) ? 'gravityflow_workflow' : 'gravityforms_view_entries';
     if ( ! current_user_can( $cap ) ) {
-        wp_die( esc_html__( 'You do not have permission to export this report.', 'sfa-quality-gate' ) );
+        wp_die( esc_html__( 'You do not have permission to export this report.', 'simpleflow' ) );
     }
 
     // Params

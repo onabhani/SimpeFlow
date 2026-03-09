@@ -8,12 +8,12 @@
 
 | Category | Critical | High | Medium | Low | Total |
 |----------|----------|------|--------|-----|-------|
-| Security | 2 | 2 | 1 | 1 | 6 |
-| Performance | — | 3 | 2 | 1 | 6 |
+| Security | 2 | 2 | 1 | — | 5 |
+| Performance | — | 4 | 2 | 1 | 7 |
 | Duplication | — | 4 | 1 | — | 5 |
-| Correctness | — | 2 | 3 | 1 | 6 |
+| Correctness | — | 2 | 4 | 1 | 7 |
 | Maintainability | — | — | — | 1 | 1 |
-| **Total** | **2** | **11** | **7** | **4** | **24** |
+| **Total** | **2** | **12** | **8** | **3** | **25** |
 
 ## Detailed Findings
 

@@ -15,7 +15,7 @@ function sfa_qg_admin_backfill() {
 	if ( empty( $_GET['sfa_qg_backfill'] ) ) return;
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
 	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_backfill' ) ) {
-		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
+		wp_die( esc_html__( 'Security check failed.', 'simpleflow' ), 403 );
 	}
 
 	sfa_qg_install_audit_table();
@@ -55,7 +55,7 @@ function sfa_qg_admin_backfill() {
 			$name = trim( (string) $name ); if ( $name === '' ) continue;
 
 			// Prefer item fail-time meta; else fall back to entry date.
-			$key         = '_qg_fail_time_' . sfa_qg_item_hash( $name );
+			$key         = '_qc_fail_time_' . sfa_qg_item_hash( $name );
 			$when_local  = (string) gform_get_meta( $eid, $key );
 			if ( ! $when_local ) $when_local = $entry_when_local ?: current_time( 'mysql', false );
 
@@ -79,11 +79,11 @@ function sfa_qg_admin_backfill() {
 	}
 
 	wp_die(
-		'<p>Backfill done.</p>'
-		. '<p>Scanned entries: <code>' . esc_html( (string) $scanned ) . '</code><br>'
-		. 'New audit rows: <code>' . esc_html( (string) $added ) . '</code><br>'
-		. 'Skipped (already existed): <code>' . esc_html( (string) $skipped ) . '</code></p>'
-		. '<p>Tip: add <code>&force=1</code> to re-create missing rows if needed.</p>'
+		'<p>' . esc_html__( 'Backfill done.', 'simpleflow' ) . '</p>'
+		. '<p>' . esc_html__( 'Scanned entries:', 'simpleflow' ) . ' <code>' . esc_html( (string) $scanned ) . '</code><br>'
+		. esc_html__( 'New audit rows:', 'simpleflow' ) . ' <code>' . esc_html( (string) $added ) . '</code><br>'
+		. esc_html__( 'Skipped (already existed):', 'simpleflow' ) . ' <code>' . esc_html( (string) $skipped ) . '</code></p>'
+		. '<p>' . esc_html__( 'Tip: add &force=1 to re-create missing rows if needed.', 'simpleflow' ) . '</p>'
 	);
 }
 
@@ -93,7 +93,7 @@ function sfa_qg_admin_cleanup() {
 	if ( empty( $_GET['sfa_qg_cleanup'] ) ) return;
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
 	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_cleanup' ) ) {
-		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
+		wp_die( esc_html__( 'Security check failed.', 'simpleflow' ), 403 );
 	}
 
 	global $wpdb;
@@ -101,10 +101,13 @@ function sfa_qg_admin_cleanup() {
 	$e  = $wpdb->prefix . 'gf_entry';
 	$confirm = ! empty( $_GET['confirm'] );
 
-	// Get all form IDs that have _qc_fixed_log or _qc_recheck_items meta
-	$meta_keys = array( '_qc_fixed_log', '_qc_recheck_items' );
+	// Get all form IDs that have any QC-related meta
+	$meta_keys = array( '_qc_fixed_log', '_qc_recheck_items', '_qc_failed_items', '_qc_failed_metrics', '_qc_summary', '_qc_history' );
 	$in_keys = "'" . implode( "','", $meta_keys ) . "'";
-	$forms_with_meta = $wpdb->get_col( "SELECT DISTINCT e.form_id FROM $e e INNER JOIN $em m ON m.entry_id = e.id WHERE m.meta_key IN ($in_keys)" );
+	// Also match per-item fail-time keys (_qc_fail_time_*)
+	$forms_with_meta = $wpdb->get_col(
+		"SELECT DISTINCT e.form_id FROM $e e INNER JOIN $em m ON m.entry_id = e.id WHERE m.meta_key IN ($in_keys) OR m.meta_key LIKE '_qc_fail_time_%'"
+	);
 
 	// Check which forms have quality_checklist fields
 	$non_qc_forms = array();
@@ -127,27 +130,30 @@ function sfa_qg_admin_cleanup() {
 		}
 	}
 
-	echo '<div class="wrap"><h1>QG Cleanup: Non-QC Form Meta</h1>';
+	echo '<div class="wrap"><h1>' . esc_html__( 'QG Cleanup: Non-QC Form Meta', 'simpleflow' ) . '</h1>';
 
 	if ( empty( $non_qc_forms ) ) {
-		echo '<p>No polluted data found. All forms with QG meta have quality_checklist fields.</p></div>';
+		echo '<p>' . esc_html__( 'No polluted data found. All forms with QG meta have quality_checklist fields.', 'simpleflow' ) . '</p></div>';
 		exit;
 	}
 
 	// Count entries with polluted data
 	$in_forms = implode( ',', array_map( 'intval', $non_qc_forms ) );
-	$count = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT e.id) FROM $e e INNER JOIN $em m ON m.entry_id = e.id WHERE e.form_id IN ($in_forms) AND m.meta_key IN ($in_keys)" );
+	$count = (int) $wpdb->get_var( "SELECT COUNT(DISTINCT e.id) FROM $e e INNER JOIN $em m ON m.entry_id = e.id WHERE e.form_id IN ($in_forms) AND (m.meta_key IN ($in_keys) OR m.meta_key LIKE '_qc_fail_time_%')" );
 
-	echo '<p>Found <strong>' . esc_html( $count ) . '</strong> entries in forms without quality_checklist fields that have QG meta data.</p>';
-	echo '<p>Non-QC Form IDs: <code>' . esc_html( implode( ', ', $non_qc_forms ) ) . '</code></p>';
+	/* translators: %s: number of entries */
+	echo '<p>' . sprintf( esc_html__( 'Found %s entries in forms without quality_checklist fields that have QG meta data.', 'simpleflow' ), '<strong>' . esc_html( $count ) . '</strong>' ) . '</p>';
+	/* translators: %s: comma-separated form IDs */
+	echo '<p>' . sprintf( esc_html__( 'Non-QC Form IDs: %s', 'simpleflow' ), '<code>' . esc_html( implode( ', ', $non_qc_forms ) ) . '</code>' ) . '</p>';
 
 	if ( $confirm ) {
 		// Delete the polluted meta
-		$deleted = $wpdb->query( "DELETE m FROM $em m INNER JOIN $e e ON m.entry_id = e.id WHERE e.form_id IN ($in_forms) AND m.meta_key IN ($in_keys)" );
-		echo '<p style="color:green;"><strong>Cleaned up ' . esc_html( $deleted ) . ' meta rows.</strong></p>';
+		$deleted = $wpdb->query( "DELETE m FROM $em m INNER JOIN $e e ON m.entry_id = e.id WHERE e.form_id IN ($in_forms) AND (m.meta_key IN ($in_keys) OR m.meta_key LIKE '_qc_fail_time_%')" );
+		/* translators: %s: number of deleted rows */
+		echo '<p style="color:green;"><strong>' . sprintf( esc_html__( 'Cleaned up %s meta rows.', 'simpleflow' ), esc_html( $deleted ) ) . '</strong></p>';
 	} else {
-		echo '<p><a class="button button-primary" href="' . esc_url( add_query_arg( 'confirm', '1' ) ) . '">Delete polluted meta</a></p>';
-		echo '<p><em>Add &amp;confirm=1 to the URL to actually delete the data.</em></p>';
+		echo '<p><a class="button button-primary" href="' . esc_url( add_query_arg( 'confirm', '1' ) ) . '">' . esc_html__( 'Delete polluted meta', 'simpleflow' ) . '</a></p>';
+		echo '<p><em>' . esc_html__( 'Add &confirm=1 to the URL to actually delete the data.', 'simpleflow' ) . '</em></p>';
 	}
 
 	echo '</div>';
@@ -159,15 +165,15 @@ function sfa_qg_admin_auditpeek() {
 	if ( empty( $_GET['sfa_qg_auditpeek'] ) ) return;
 	if ( ! is_user_logged_in() || ! current_user_can( 'manage_options' ) ) return;
 	if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_auditpeek' ) ) {
-		wp_die( esc_html__( 'Security check failed.', 'sfa-quality-gate' ), 403 );
+		wp_die( esc_html__( 'Security check failed.', 'simpleflow' ), 403 );
 	}
 
 	global $wpdb;
 	$tbl = $wpdb->prefix . 'sfa_qg_audit';
 	$rows = $wpdb->get_results( "SELECT * FROM $tbl ORDER BY id DESC LIMIT 20", ARRAY_A );
 
-	echo '<div class="wrap"><h1>SFA QG Audit (latest)</h1><table class="widefat striped">';
-	echo '<thead><tr><th>ID</th><th>type</th><th>form</th><th>entry</th><th>item</th><th>metric_key</th><th>user</th><th>utc</th></tr></thead><tbody>';
+	echo '<div class="wrap"><h1>' . esc_html__( 'SFA QG Audit (latest)', 'simpleflow' ) . '</h1><table class="widefat striped">';
+	echo '<thead><tr><th>' . esc_html__( 'ID', 'simpleflow' ) . '</th><th>' . esc_html__( 'type', 'simpleflow' ) . '</th><th>' . esc_html__( 'form', 'simpleflow' ) . '</th><th>' . esc_html__( 'entry', 'simpleflow' ) . '</th><th>' . esc_html__( 'item', 'simpleflow' ) . '</th><th>' . esc_html__( 'metric_key', 'simpleflow' ) . '</th><th>' . esc_html__( 'user', 'simpleflow' ) . '</th><th>' . esc_html__( 'utc', 'simpleflow' ) . '</th></tr></thead><tbody>';
 	foreach ( (array) $rows as $r ) {
 		printf(
 			'<tr><td>%d</td><td>%s</td><td>%d</td><td>%d</td><td>%s</td><td>%s</td><td>%d</td><td>%s</td></tr>',

@@ -6,7 +6,7 @@ require_once __DIR__ . '/collect.php';
 if ( ! function_exists( 'sfa_qg_report_render_html' ) ) {
     function sfa_qg_report_render_html( $range = 'today', $form_id = 0, $ym = '', $ym2 = '' ) {
         // Sanitized query args — whitelist known report parameters only
-        $sfa_qg_allowed_keys = array( 'page', 'range', 'form_id', 'ym', 'ym2', 'tables_ym', 'pfe', 'pfm', 'plf', 'pfxd' );
+        $sfa_qg_allowed_keys = array( 'page', 'range', 'form_id', 'ym', 'ym2', 'tables_ym', 'pfe', 'pfm', 'plf', 'pfxd', 'mode', 'ctype', 'autoprev' );
         $sfa_qg_safe_args = array_intersect_key(
             array_map( 'sanitize_text_field', wp_unslash( $_GET ) ),
             array_flip( $sfa_qg_allowed_keys )
@@ -117,7 +117,7 @@ if ( ! empty( $hist['_has_history'] ) ) {
             }
             $val = $is_percent ? sprintf( '%.1fpp', abs( $diff ) ) : (int) abs( $diff );
             $pct = ( ! $is_percent && $old > 0 ) ? ' <small>(' . round( 100 * abs( $diff ) / $old, 1 ) . '%)</small>' : '';
-            return '<div class="' . esc_attr( $cls ) . '">' . esc_html__( 'vs', 'sfa-quality-gate' ) . ' ' . esc_html( $prevPeriod ) . ' ' . esc_html( $sign . $val ) . $pct . '</div>';
+            return '<div class="' . esc_attr( $cls ) . '">' . esc_html__( 'vs', 'simpleflow' ) . ' ' . esc_html( $prevPeriod ) . ' ' . esc_html( $sign . $val ) . $pct . '</div>';
         };
 
         ob_start(); ?>
@@ -178,57 +178,57 @@ if ( ! empty( $hist['_has_history'] ) ) {
 
             <?php
             $range_labels = array(
-                'today'        => __( 'Today', 'sfa-quality-gate' ),
-                'month'        => __( 'This Month', 'sfa-quality-gate' ),
-                'year'         => __( 'This Year', 'sfa-quality-gate' ),
-                'last_year'    => __( 'Last Year', 'sfa-quality-gate' ),
-                'month_custom' => __( 'Month', 'sfa-quality-gate' ),
-                'year_custom'  => __( 'Year', 'sfa-quality-gate' ),
+                'today'        => __( 'Today', 'simpleflow' ),
+                'month'        => __( 'This Month', 'simpleflow' ),
+                'year'         => __( 'This Year', 'simpleflow' ),
+                'last_year'    => __( 'Last Year', 'simpleflow' ),
+                'month_custom' => __( 'Month', 'simpleflow' ),
+                'year_custom'  => __( 'Year', 'simpleflow' ),
             );
             $range_label = isset( $range_labels[ $data['range'] ] ) ? $range_labels[ $data['range'] ] : ucfirst( $data['range'] );
             ?>
-            <h2><?php echo esc_html( sprintf( __( 'Quality Gate Report — %s', 'sfa-quality-gate' ), $range_label ) ); ?></h2>
+            <h2><?php echo esc_html( sprintf( __( 'Quality Gate Report — %s', 'simpleflow' ), $range_label ) ); ?></h2>
             <p><small><?php echo esc_html( $data['start'] ); ?> → <?php echo esc_html( $data['end'] ); ?></small></p>
 
 <!-- Sticky subnav (single instance) -->
-<div class="sfa-qg-subnav" role="navigation" aria-label="<?php esc_attr_e('Report sections','sfa-quality-gate'); ?>">
-  <a href="#sec-fe"><?php esc_html_e('Failed entries','sfa-quality-gate'); ?></a>
-  <a href="#sec-fm"><?php esc_html_e('Top failing metrics','sfa-quality-gate'); ?></a>
-  <a href="#sec-lf"><?php esc_html_e('Latest failed entries','sfa-quality-gate'); ?></a>
+<div class="sfa-qg-subnav" role="navigation" aria-label="<?php esc_attr_e('Report sections','simpleflow'); ?>">
+  <a href="#sec-fe"><?php esc_html_e('Failed entries','simpleflow'); ?></a>
+  <a href="#sec-fm"><?php esc_html_e('Top failing metrics','simpleflow'); ?></a>
+  <a href="#sec-lf"><?php esc_html_e('Latest failed entries','simpleflow'); ?></a>
   <span class="sep">·</span>
-  <a href="#sec-fxm"><?php esc_html_e('Fixed — Monthly','sfa-quality-gate'); ?></a>
-  <a href="#sec-fxd"><?php esc_html_e('Fixed — Details','sfa-quality-gate'); ?></a>
+  <a href="#sec-fxm"><?php esc_html_e('Fixed — Monthly','simpleflow'); ?></a>
+  <a href="#sec-fxd"><?php esc_html_e('Fixed — Details','simpleflow'); ?></a>
 
   <!-- right-aligned actions -->
-  <a class="share" href="#" id="qg-share-link" style="margin-left:auto;"><?php esc_html_e('Share this view','sfa-quality-gate'); ?></a>
-  <a class="share" href="#" id="qg-reset-layout" style="margin-left:8px;"><?php esc_html_e('Reset layout','sfa-quality-gate'); ?></a>
+  <a class="share" href="#" id="qg-share-link" style="margin-left:auto;"><?php esc_html_e('Share this view','simpleflow'); ?></a>
+  <a class="share" href="#" id="qg-reset-layout" style="margin-left:8px;"><?php esc_html_e('Reset layout','simpleflow'); ?></a>
 </div>
 
 
             <!-- KPI Cards -->
             <div class="cards">
                 <div class="card">
-                    <div><?php esc_html_e('Total metrics','sfa-quality-gate'); ?></div>
+                    <div><?php esc_html_e('Total metrics','simpleflow'); ?></div>
                     <div class="sfa-qg-mono"><strong><?php echo (int) $data['totals']['metrics_total']; ?></strong></div>
                     <?php echo $qg_delta( (int) $data['totals']['metrics_total'], (int) ( $prevData['totals']['metrics_total'] ?? 0 ) ); ?>
                 </div>
                 <div class="card">
-                    <div><?php esc_html_e('Failed metrics','sfa-quality-gate'); ?></div>
+                    <div><?php esc_html_e('Failed metrics','simpleflow'); ?></div>
                     <div class="sfa-qg-mono"><strong><?php echo (int) $data['totals']['metrics_failed']; ?></strong></div>
                     <?php echo $qg_delta( (int) $data['totals']['metrics_failed'], (int) ( $prevData['totals']['metrics_failed'] ?? 0 ), 'less_is_good' ); ?>
                 </div>
                 <div class="card">
-                    <div><?php esc_html_e('Completion %','sfa-quality-gate'); ?></div>
+                    <div><?php esc_html_e('Completion %','simpleflow'); ?></div>
                     <div class="sfa-qg-mono"><strong><?php echo esc_html( $data['completion'] ); ?>%</strong></div>
                     <?php echo $qg_delta( (float) $data['completion'], (float) ( $prevData['completion'] ?? 0 ), 'more_is_good', true ); ?>
                 </div>
                 <div class="card">
-                    <div><?php esc_html_e('Items checked','sfa-quality-gate'); ?></div>
+                    <div><?php esc_html_e('Items checked','simpleflow'); ?></div>
                     <div class="sfa-qg-mono"><strong><?php echo (int) $data['totals']['items_total']; ?></strong></div>
                     <?php echo $qg_delta( (int) $data['totals']['items_total'], (int) ( $prevData['totals']['items_total'] ?? 0 ) ); ?>
                 </div>
                 <div class="card">
-                    <div><?php esc_html_e('Entries included','sfa-quality-gate'); ?></div>
+                    <div><?php esc_html_e('Entries included','simpleflow'); ?></div>
                     <div class="sfa-qg-mono"><strong><?php echo (int) $data['totals']['entries']; ?></strong></div>
                     <?php echo $qg_delta( (int) $data['totals']['entries'], (int) ( $prevData['totals']['entries'] ?? 0 ) ); ?>
                 </div>
@@ -236,39 +236,39 @@ if ( ! empty( $hist['_has_history'] ) ) {
 
             <?php if ( $has_compare ) : ?>
                 <style>.sfa-qg-report .qg-table td.num,.sfa-qg-report .qg-table th.num{text-align:right;white-space:nowrap}</style>
-                <h3 style="margin-top:6px;"><?php esc_html_e('Comparison','sfa-quality-gate'); ?></h3>
+                <h3 style="margin-top:6px;"><?php esc_html_e('Comparison','simpleflow'); ?></h3>
                 <p><small><?php echo esc_html( $labelA ); ?> vs <?php echo esc_html( $labelB ); ?></small></p>
 
-                <table class="qg-table" aria-label="<?php esc_attr_e('Period comparison','sfa-quality-gate'); ?>">
+                <table class="qg-table" aria-label="<?php esc_attr_e('Period comparison','simpleflow'); ?>">
                   <thead>
                     <tr>
-                      <th><?php esc_html_e('Metric','sfa-quality-gate'); ?></th>
+                      <th><?php esc_html_e('Metric','simpleflow'); ?></th>
                       <th class="num"><?php echo esc_html( $labelA ); ?></th>
                       <th class="num"><?php echo esc_html( $labelB ); ?></th>
-                      <th class="num"><?php esc_html_e('Δ','sfa-quality-gate'); ?></th>
+                      <th class="num"><?php esc_html_e('Δ','simpleflow'); ?></th>
                     </tr>
                   </thead>
                   <tbody>
                     <tr>
-                      <td><?php esc_html_e('Failed metrics','sfa-quality-gate'); ?></td>
+                      <td><?php esc_html_e('Failed metrics','simpleflow'); ?></td>
                       <td class="num"><?php echo (int) $metA; ?></td>
                       <td class="num"><?php echo (int) $metB; ?></td>
                       <td class="num"><?php echo (int) ( $metB - $metA ); ?></td>
                     </tr>
                     <tr>
-                      <td><?php esc_html_e('Failed item occurrences','sfa-quality-gate'); ?></td>
+                      <td><?php esc_html_e('Failed item occurrences','simpleflow'); ?></td>
                       <td class="num"><?php echo (int) $itmA; ?></td>
                       <td class="num"><?php echo (int) $itmB; ?></td>
                       <td class="num"><?php echo (int) ( $itmB - $itmA ); ?></td>
                     </tr>
                     <tr>
-                      <td><?php esc_html_e('Items checked','sfa-quality-gate'); ?></td>
+                      <td><?php esc_html_e('Items checked','simpleflow'); ?></td>
                       <td class="num"><?php echo (int) ( $cmpA['totals']['items_total'] ?? 0 ); ?></td>
                       <td class="num"><?php echo (int) ( $cmpB['totals']['items_total'] ?? 0 ); ?></td>
                       <td class="num"><?php echo (int) ( ( $cmpB['totals']['items_total'] ?? 0 ) - ( $cmpA['totals']['items_total'] ?? 0 ) ); ?></td>
                     </tr>
                     <tr>
-                      <td><?php esc_html_e('Completion %','sfa-quality-gate'); ?></td>
+                      <td><?php esc_html_e('Completion %','simpleflow'); ?></td>
                       <td class="num"><?php echo esc_html( $cmpA['completion'] ); ?>%</td>
                       <td class="num"><?php echo esc_html( $cmpB['completion'] ); ?>%</td>
                       <td class="num"><?php echo esc_html( round( $cmpB['completion'] - $cmpA['completion'], 1 ) ); ?>%</td>
@@ -279,15 +279,15 @@ if ( ! empty( $hist['_has_history'] ) ) {
                 <?php
                   // Tiny SVG chart: use $labelA/$labelB (do NOT overwrite them)
                   $vals = array(
-                      __( 'Failed metrics', 'sfa-quality-gate' ) => array( (int)$metA, (int)$metB ),
-                      __( 'Failed items',   'sfa-quality-gate' ) => array( (int)$itmA, (int)$itmB ),
+                      __( 'Failed metrics', 'simpleflow' ) => array( (int)$metA, (int)$metB ),
+                      __( 'Failed items',   'simpleflow' ) => array( (int)$itmA, (int)$itmB ),
                   );
                   $maxv = max( 1, (int)$metA, (int)$metB, (int)$itmA, (int)$itmB );
                   $w=680;$h=220;$pad=40;$barw=60;$gap=40;$group_gap=140;
                   $x0=$pad+40;$y0=$h-$pad;$scale=($h-2*$pad)/$maxv;$groups=array_keys($vals);
                 ?>
                 <div class="sfa-qg-compare">
-                  <svg viewBox="0 0 <?php echo (int)$w; ?> <?php echo (int)$h; ?>" role="img" aria-label="<?php echo esc_attr__('Comparison chart','sfa-quality-gate'); ?>">
+                  <svg viewBox="0 0 <?php echo (int)$w; ?> <?php echo (int)$h; ?>" role="img" aria-label="<?php echo esc_attr__('Comparison chart','simpleflow'); ?>">
                     <line x1="<?php echo (int)$pad; ?>" y1="<?php echo (int)$y0; ?>" x2="<?php echo (int)($w-$pad); ?>" y2="<?php echo (int)$y0; ?>" stroke="#999" stroke-width="1"/>
                     <line x1="<?php echo (int)$pad; ?>" y1="<?php echo (int)$pad; ?>" x2="<?php echo (int)$pad; ?>" y2="<?php echo (int)$y0; ?>" stroke="#999" stroke-width="1"/>
                     <?php
@@ -360,11 +360,11 @@ if ( function_exists( 'sfa_qg_report_collect_history' ) ) {
 
 
     echo '<p style="margin:6px 0;"><strong>'
-       . esc_html__( 'Tables show period:', 'sfa-quality-gate' ) . ' '
+       . esc_html__( 'Tables show period:', 'simpleflow' ) . ' '
        . esc_html( $tables_view === 'ym2' ? $labelB : $labelA )
        . '</strong> <a class="button button-small" style="margin-left:8px;" href="'
        . esc_url( add_query_arg( array_merge( $sfa_qg_safe_args, array( 'tables_ym' => ( $tables_view === 'ym2' ? 'ym1' : 'ym2' ) ) ) ) )
-       . '">'. sprintf( esc_html__( 'Show tables for %s', 'sfa-quality-gate' ), esc_html( $tables_view === 'ym2' ? $labelA : $labelB ) ) .'</a></p>';
+       . '">'. sprintf( esc_html__( 'Show tables for %s', 'simpleflow' ), esc_html( $tables_view === 'ym2' ? $labelA : $labelB ) ) .'</a></p>';
 }
 $qg_tables_ym = ( $has_compare && isset($_GET['tables_ym']) && $_GET['tables_ym'] === 'ym2' ) ? 'ym2' : 'ym1';
 ?>
@@ -372,7 +372,7 @@ $qg_tables_ym = ( $has_compare && isset($_GET['tables_ym']) && $_GET['tables_ym'
 <!-- SECTION: Entries with failed items -->
 <details id="sec-fe" class="qg-section" open>
   <summary>
-    <strong><?php esc_html_e('Entries with failed items','sfa-quality-gate'); ?></strong>
+    <strong><?php esc_html_e('Entries with failed items','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($data['failed_entries'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
        href="<?php echo esc_url( add_query_arg( array(
@@ -382,7 +382,7 @@ $qg_tables_ym = ( $has_compare && isset($_GET['tables_ym']) && $_GET['tables_ym'
            'ym'        => (string) $ym,
            'ym2'       => (string) $ym2,
            'tables_ym' => $qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','sfa-quality-gate'); ?></a>
+       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $data['failed_entries'] ) ) : ?>
@@ -394,10 +394,10 @@ $qg_tables_ym = ( $has_compare && isset($_GET['tables_ym']) && $_GET['tables_ym'
     $page_url_fe = function( $n ) use ( $sfa_qg_safe_args ){ $args = $sfa_qg_safe_args; $args['pfe']=max(1,(int)$n); return esc_url( add_query_arg( $args ) ); };
   ?>
   <div class="qg-tools">
-    <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-fe"></div>
+    <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','simpleflow'); ?>" data-filter="#tbl-fe"></div>
     <div class="qg-count" data-count-for="#tbl-fe"></div>
   </div>
-  <table id="tbl-fe" class="qg-table latest" aria-label="<?php esc_attr_e('Entries with failed items','sfa-quality-gate'); ?>">
+  <table id="tbl-fe" class="qg-table latest" aria-label="<?php esc_attr_e('Entries with failed items','simpleflow'); ?>">
     <colgroup>
       <col style="width:110px"/>
       <col style="width:90px"/>
@@ -407,12 +407,12 @@ $qg_tables_ym = ( $has_compare && isset($_GET['tables_ym']) && $_GET['tables_ym'
       <col style="width:80px"/>
     </colgroup>
     <thead><tr>
-      <th class="qg-sort" data-sort="num"><?php esc_html_e('Entry ID','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="num"><?php esc_html_e('Form ID','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Date','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Failed items','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Failing metrics','sfa-quality-gate'); ?></th>
-      <th><?php esc_html_e('Link','sfa-quality-gate'); ?></th>
+      <th class="qg-sort" data-sort="num"><?php esc_html_e('Entry ID','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="num"><?php esc_html_e('Form ID','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Date','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Failed items','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Failing metrics','simpleflow'); ?></th>
+      <th><?php esc_html_e('Link','simpleflow'); ?></th>
     </tr></thead>
 <tbody>
 <?php
@@ -477,9 +477,9 @@ $items = array_values( array_filter( array_map( static function( $x ) {
             <td class="sfa-qg-mono"><?php echo $eid; ?></td>
             <td class="sfa-qg-mono"><?php echo $fid; ?></td>
             <td><?php echo esc_html( (string) ( $row['date_created'] ?? '' ) ); ?></td>
-            <td><em><?php echo $metrics_count > 0 ? esc_html__( '(metric-level)', 'sfa-quality-gate' ) : '—'; ?></em></td>
+            <td><em><?php echo $metrics_count > 0 ? esc_html__( '(metric-level)', 'simpleflow' ) : '—'; ?></em></td>
             <td><?php echo $metrics_display; ?><?php if ( $metrics_count > 0 && empty( $entry_level_labels ) ) : ?> <small>(<?php echo $metrics_count; ?>)</small><?php endif; ?></td>
-            <td><a href="<?php echo esc_url( $link ); ?>"><?php esc_html_e( 'Open', 'sfa-quality-gate' ); ?></a></td>
+            <td><a href="<?php echo esc_url( $link ); ?>"><?php esc_html_e( 'Open', 'simpleflow' ); ?></a></td>
         </tr>
     <?php
         continue;
@@ -504,7 +504,7 @@ $items = array_values( array_filter( array_map( static function( $x ) {
             <td><?php echo esc_html( (string) ( $row['date_created'] ?? '' ) ); ?></td>
             <td><?php echo esc_html( $item ); ?></td>
             <td><?php echo $metrics ? esc_html( implode( ', ', $metrics ) ) : '—'; ?></td>
-            <td><a href="<?php echo esc_url( $link ); ?>"><?php esc_html_e( 'Open', 'sfa-quality-gate' ); ?></a></td>
+            <td><a href="<?php echo esc_url( $link ); ?>"><?php esc_html_e( 'Open', 'simpleflow' ); ?></a></td>
         </tr>
     <?php endforeach;
 endforeach; ?>
@@ -516,24 +516,24 @@ endforeach; ?>
   <?php if ( $pages_fe > 1 ) :
         $from = $offset_fe + 1; $to = min( $offset_fe + $per_fe, $total_fe ); ?>
     <div class="tablenav" style="margin-top:8px;display:flex;align-items:center;gap:10px;">
-      <span><?php printf( esc_html__( 'Showing %1$d–%2$d of %3$d', 'sfa-quality-gate' ), (int)$from, (int)$to, (int)$total_fe ); ?></span>
+      <span><?php printf( esc_html__( 'Showing %1$d–%2$d of %3$d', 'simpleflow' ), (int)$from, (int)$to, (int)$total_fe ); ?></span>
       <div class="tablenav-pages">
         <?php if ( $pfe > 1 ) : ?>
-          <a class="button button-small" href="<?php echo $page_url_fe($pfe-1); ?>">&laquo; <?php esc_html_e('Prev','sfa-quality-gate'); ?></a>
+          <a class="button button-small" href="<?php echo $page_url_fe($pfe-1); ?>">&laquo; <?php esc_html_e('Prev','simpleflow'); ?></a>
         <?php else : ?>
-          <span class="button button-small disabled" aria-disabled="true">&laquo; <?php esc_html_e('Prev','sfa-quality-gate'); ?></span>
+          <span class="button button-small disabled" aria-disabled="true">&laquo; <?php esc_html_e('Prev','simpleflow'); ?></span>
         <?php endif; ?>
-        <span style="margin:0 6px;"><?php printf( esc_html__( 'Page %1$d of %2$d', 'sfa-quality-gate' ), (int)$pfe, (int)$pages_fe ); ?></span>
+        <span style="margin:0 6px;"><?php printf( esc_html__( 'Page %1$d of %2$d', 'simpleflow' ), (int)$pfe, (int)$pages_fe ); ?></span>
         <?php if ( $pfe < $pages_fe ) : ?>
-          <a class="button button-small" href="<?php echo $page_url_fe($pfe+1); ?>"><?php esc_html_e('Next','sfa-quality-gate'); ?> &raquo;</a>
+          <a class="button button-small" href="<?php echo $page_url_fe($pfe+1); ?>"><?php esc_html_e('Next','simpleflow'); ?> &raquo;</a>
         <?php else : ?>
-          <span class="button button-small disabled" aria-disabled="true"><?php esc_html_e('Next','sfa-quality-gate'); ?> &raquo;</span>
+          <span class="button button-small disabled" aria-disabled="true"><?php esc_html_e('Next','simpleflow'); ?> &raquo;</span>
         <?php endif; ?>
       </div>
     </div>
   <?php endif; ?>
 <?php else: ?>
-  <p><em><?php esc_html_e('No failed entries in this range.','sfa-quality-gate'); ?></em></p>
+  <p><em><?php esc_html_e('No failed entries in this range.','simpleflow'); ?></em></p>
 <?php endif; ?>
   </div>
 </details>
@@ -541,13 +541,13 @@ endforeach; ?>
 <!-- SECTION: Top failing metrics -->
 <details id="sec-fm" class="qg-section" open>
   <summary>
-    <strong><?php esc_html_e('Top failing metrics','sfa-quality-gate'); ?></strong>
+    <strong><?php esc_html_e('Top failing metrics','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($data['top_failed_metrics'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
        href="<?php echo esc_url( add_query_arg( array(
          'qg_export'=>'top_failed_metrics','range'=>$data['range'],'form_id'=>$data['form_id'],
          'ym'=>(string)$ym,'ym2'=>(string)$ym2,'tables_ym'=>$qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','sfa-quality-gate'); ?></a>
+       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $data['top_failed_metrics'] ) ) : ?>
@@ -559,17 +559,17 @@ endforeach; ?>
     $page_url=function($n) use ($sfa_qg_safe_args){$args=$sfa_qg_safe_args;$args['pfm']=max(1,(int)$n);return esc_url(add_query_arg($args));};
   ?>
   <div class="qg-tools">
-    <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-fm"></div>
+    <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','simpleflow'); ?>" data-filter="#tbl-fm"></div>
     <div class="qg-count" data-count-for="#tbl-fm"></div>
   </div>
   <?php $metric_entries_map = isset( $data['top_failed_metrics_entries'] ) ? $data['top_failed_metrics_entries'] : array(); ?>
-  <table id="tbl-fm" class="qg-table" aria-label="<?php esc_attr_e('Top failing metrics','sfa-quality-gate'); ?>">
+  <table id="tbl-fm" class="qg-table" aria-label="<?php esc_attr_e('Top failing metrics','simpleflow'); ?>">
     <colgroup><col/><col style="width:100px"/><col style="width:200px"/></colgroup>
     <thead>
       <tr>
-        <th class="qg-sort" data-sort="text"><?php esc_html_e('Metric label','sfa-quality-gate'); ?></th>
-        <th class="qg-sort" data-sort="num"><?php esc_html_e('Failures','sfa-quality-gate'); ?></th>
-        <th><?php esc_html_e('Entries','sfa-quality-gate'); ?></th>
+        <th class="qg-sort" data-sort="text"><?php esc_html_e('Metric label','simpleflow'); ?></th>
+        <th class="qg-sort" data-sort="num"><?php esc_html_e('Failures','simpleflow'); ?></th>
+        <th><?php esc_html_e('Entries','simpleflow'); ?></th>
       </tr>
     </thead>
     <tbody>
@@ -609,24 +609,24 @@ endforeach; ?>
   <?php if ( $pages_fm > 1 ) :
         $from=$offset_fm+1; $to=min($offset_fm+$per_fm,$total_fm); ?>
     <div class="tablenav" style="margin-top:8px;display:flex;align-items:center;gap:10px;">
-      <span><?php printf( esc_html__( 'Showing %1$d–%2$d of %3$d', 'sfa-quality-gate' ), (int)$from, (int)$to, (int)$total_fm ); ?></span>
+      <span><?php printf( esc_html__( 'Showing %1$d–%2$d of %3$d', 'simpleflow' ), (int)$from, (int)$to, (int)$total_fm ); ?></span>
       <div class="tablenav-pages">
         <?php if ( $pfm > 1 ) : ?>
-          <a class="button button-small" href="<?php echo $page_url($pfm-1); ?>">&laquo; <?php esc_html_e('Prev','sfa-quality-gate'); ?></a>
+          <a class="button button-small" href="<?php echo $page_url($pfm-1); ?>">&laquo; <?php esc_html_e('Prev','simpleflow'); ?></a>
         <?php else : ?>
-          <span class="button button-small disabled" aria-disabled="true">&laquo; <?php esc_html_e('Prev','sfa-quality-gate'); ?></span>
+          <span class="button button-small disabled" aria-disabled="true">&laquo; <?php esc_html_e('Prev','simpleflow'); ?></span>
         <?php endif; ?>
-        <span style="margin:0 6px;"><?php printf( esc_html__( 'Page %1$d of %2$d', 'sfa-quality-gate' ), (int)$pfm, (int)$pages_fm ); ?></span>
+        <span style="margin:0 6px;"><?php printf( esc_html__( 'Page %1$d of %2$d', 'simpleflow' ), (int)$pfm, (int)$pages_fm ); ?></span>
         <?php if ( $pfm < $pages_fm ) : ?>
-          <a class="button button-small" href="<?php echo $page_url($pfm+1); ?>"><?php esc_html_e('Next','sfa-quality-gate'); ?> &raquo;</a>
+          <a class="button button-small" href="<?php echo $page_url($pfm+1); ?>"><?php esc_html_e('Next','simpleflow'); ?> &raquo;</a>
         <?php else : ?>
-          <span class="button button-small disabled" aria-disabled="true"><?php esc_html_e('Next','sfa-quality-gate'); ?> &raquo;</span>
+          <span class="button button-small disabled" aria-disabled="true"><?php esc_html_e('Next','simpleflow'); ?> &raquo;</span>
         <?php endif; ?>
       </div>
     </div>
   <?php endif; ?>
 <?php else: ?>
-  <p><em><?php esc_html_e('No metric failures recorded in this range.','sfa-quality-gate'); ?></em></p>
+  <p><em><?php esc_html_e('No metric failures recorded in this range.','simpleflow'); ?></em></p>
 <?php endif; ?>
   </div>
 </details>
@@ -634,13 +634,13 @@ endforeach; ?>
 <!-- SECTION: Latest failed entries -->
 <details id="sec-lf" class="qg-section">
   <summary>
-    <strong><?php esc_html_e('Latest failed entries','sfa-quality-gate'); ?></strong>
+    <strong><?php esc_html_e('Latest failed entries','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($data['latest_failed'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
        href="<?php echo esc_url( add_query_arg( array(
          'qg_export'=>'latest_failed','range'=>$data['range'],'form_id'=>$data['form_id'],
          'ym'=>(string)$ym,'ym2'=>(string)$ym2,'tables_ym'=>$qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','sfa-quality-gate'); ?></a>
+       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $data['latest_failed'] ) ) : ?>
@@ -652,17 +652,17 @@ endforeach; ?>
     $page_url_lf=function($n) use ($sfa_qg_safe_args){$args=$sfa_qg_safe_args;$args['plf']=max(1,(int)$n);return esc_url(add_query_arg($args));};
   ?>
   <div class="qg-tools">
-    <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-lf"></div>
+    <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','simpleflow'); ?>" data-filter="#tbl-lf"></div>
     <div class="qg-count" data-count-for="#tbl-lf"></div>
   </div>
-  <table id="tbl-lf" class="qg-table latest" aria-label="<?php esc_attr_e('Latest failed entries','sfa-quality-gate'); ?>">
+  <table id="tbl-lf" class="qg-table latest" aria-label="<?php esc_attr_e('Latest failed entries','simpleflow'); ?>">
     <colgroup><col style="width:110px"/><col style="width:90px"/><col/><col style="width:130px"/><col style="width:80px"/></colgroup>
     <thead><tr>
-      <th class="qg-sort" data-sort="num"><?php esc_html_e('Entry ID','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="num"><?php esc_html_e('Form ID','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Date','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="num" style="text-align:right"><?php esc_html_e('Failed metrics','sfa-quality-gate'); ?></th>
-      <th><?php esc_html_e('Link','sfa-quality-gate'); ?></th>
+      <th class="qg-sort" data-sort="num"><?php esc_html_e('Entry ID','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="num"><?php esc_html_e('Form ID','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Date','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="num" style="text-align:right"><?php esc_html_e('Failed metrics','simpleflow'); ?></th>
+      <th><?php esc_html_e('Link','simpleflow'); ?></th>
     </tr></thead>
     <tbody>
     <?php foreach ( $lf_page as $row ) :
@@ -672,7 +672,7 @@ endforeach; ?>
         <td class="sfa-qg-mono"><?php echo (int)$row['form_id']; ?></td>
         <td><?php echo esc_html( $row['date_created'] ); ?></td>
         <td class="sfa-qg-mono" style="text-align:right"><?php echo (int)$row['metrics_failed']; ?></td>
-        <td><a href="<?php echo esc_url($link); ?>"><?php esc_html_e('Open','sfa-quality-gate'); ?></a></td>
+        <td><a href="<?php echo esc_url($link); ?>"><?php esc_html_e('Open','simpleflow'); ?></a></td>
       </tr>
     <?php endforeach; ?>
     </tbody>
@@ -680,24 +680,24 @@ endforeach; ?>
   <?php if ( $pages_lf > 1 ) :
         $from=$offset_lf+1; $to=min($offset_lf+$per_lf,$total_lf); ?>
     <div class="tablenav" style="margin-top:8px;display:flex;align-items:center;gap:10px;">
-      <span><?php printf( esc_html__( 'Showing %1$d–%2$d of %3$d', 'sfa-quality-gate' ), (int)$from, (int)$to, (int)$total_lf ); ?></span>
+      <span><?php printf( esc_html__( 'Showing %1$d–%2$d of %3$d', 'simpleflow' ), (int)$from, (int)$to, (int)$total_lf ); ?></span>
       <div class="tablenav-pages">
         <?php if ( $plf > 1 ) : ?>
-          <a class="button button-small" href="<?php echo $page_url_lf($plf-1); ?>">&laquo; <?php esc_html_e('Prev','sfa-quality-gate'); ?></a>
+          <a class="button button-small" href="<?php echo $page_url_lf($plf-1); ?>">&laquo; <?php esc_html_e('Prev','simpleflow'); ?></a>
         <?php else : ?>
-          <span class="button button-small disabled" aria-disabled="true">&laquo; <?php esc_html_e('Prev','sfa-quality-gate'); ?></span>
+          <span class="button button-small disabled" aria-disabled="true">&laquo; <?php esc_html_e('Prev','simpleflow'); ?></span>
         <?php endif; ?>
-        <span style="margin:0 6px;"><?php printf( esc_html__( 'Page %1$d of %2$d', 'sfa-quality-gate' ), (int)$plf, (int)$pages_lf ); ?></span>
+        <span style="margin:0 6px;"><?php printf( esc_html__( 'Page %1$d of %2$d', 'simpleflow' ), (int)$plf, (int)$pages_lf ); ?></span>
         <?php if ( $plf < $pages_lf ) : ?>
-          <a class="button button-small" href="<?php echo $page_url_lf($plf+1); ?>"><?php esc_html_e('Next','sfa-quality-gate'); ?> &raquo;</a>
+          <a class="button button-small" href="<?php echo $page_url_lf($plf+1); ?>"><?php esc_html_e('Next','simpleflow'); ?> &raquo;</a>
         <?php else : ?>
-          <span class="button button-small disabled" aria-disabled="true"><?php esc_html_e('Next','sfa-quality-gate'); ?> &raquo;</span>
+          <span class="button button-small disabled" aria-disabled="true"><?php esc_html_e('Next','simpleflow'); ?> &raquo;</span>
         <?php endif; ?>
       </div>
     </div>
   <?php endif; ?>
 <?php else: ?>
-  <p><em><?php esc_html_e('No failed entries in this range.','sfa-quality-gate'); ?></em></p>
+  <p><em><?php esc_html_e('No failed entries in this range.','simpleflow'); ?></em></p>
 <?php endif; ?>
   </div>
 </details>
@@ -705,22 +705,22 @@ endforeach; ?>
 <!-- SECTION: Fixed — Monthly -->
 <details id="sec-fxm" class="qg-section">
   <summary>
-    <strong><?php esc_html_e('Fixed — Monthly','sfa-quality-gate'); ?></strong>
+    <strong><?php esc_html_e('Fixed — Monthly','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($fx['monthly'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
        href="<?php echo esc_url( add_query_arg( array(
          'qg_export'=>'fixed_monthly','range'=>$data['range'],'form_id'=>$data['form_id'],
          'ym'=>(string)$ym,'ym2'=>(string)$ym2,'tables_ym'=>$qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','sfa-quality-gate'); ?></a>
+       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $fx['monthly'] ) ) : ?>
-  <table class="qg-table two-col" aria-label="<?php esc_attr_e('Fixed per month','sfa-quality-gate'); ?>">
+  <table class="qg-table two-col" aria-label="<?php esc_attr_e('Fixed per month','simpleflow'); ?>">
     <colgroup><col/><col style="width:140px"/></colgroup>
     <thead><tr>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Month','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="num"><?php esc_html_e('Fixed count','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Avg time to fix','sfa-quality-gate'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Month','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="num"><?php esc_html_e('Fixed count','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Avg time to fix','simpleflow'); ?></th>
     </tr></thead>
     <tbody>
     <?php foreach ( $fx['monthly'] as $ym_k => $cnt ) : ?>
@@ -733,7 +733,7 @@ endforeach; ?>
     </tbody>
   </table>
 <?php else: ?>
-  <p><em><?php esc_html_e('No fixed items in this range.','sfa-quality-gate'); ?></em></p>
+  <p><em><?php esc_html_e('No fixed items in this range.','simpleflow'); ?></em></p>
 <?php endif; ?>
   </div>
 </details>
@@ -741,13 +741,13 @@ endforeach; ?>
 <!-- SECTION: Fixed — Details -->
 <details id="sec-fxd" class="qg-section">
   <summary>
-    <strong><?php esc_html_e('Fixed — Details','sfa-quality-gate'); ?></strong>
+    <strong><?php esc_html_e('Fixed — Details','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($fx['details'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
        href="<?php echo esc_url( add_query_arg( array(
          'qg_export'=>'fixed_details','range'=>$data['range'],'form_id'=>$data['form_id'],
          'ym'=>(string)$ym,'ym2'=>(string)$ym2,'tables_ym'=>$qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','sfa-quality-gate'); ?></a>
+       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $fx['details'] ) ) : ?>
@@ -759,18 +759,18 @@ endforeach; ?>
     $page_url_fxd=function($n) use ($sfa_qg_safe_args){$args=$sfa_qg_safe_args;$args['pfxd']=max(1,(int)$n);return esc_url(add_query_arg($args));};
   ?>
   <div class="qg-tools">
-    <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','sfa-quality-gate'); ?>" data-filter="#tbl-fxd"></div>
+    <div class="qg-search"><input type="search" placeholder="<?php echo esc_attr__('Filter this page…','simpleflow'); ?>" data-filter="#tbl-fxd"></div>
     <div class="qg-count" data-count-for="#tbl-fxd"></div>
   </div>
-  <table id="tbl-fxd" class="qg-table latest" aria-label="<?php esc_attr_e('Fixed details','sfa-quality-gate'); ?>">
+  <table id="tbl-fxd" class="qg-table latest" aria-label="<?php esc_attr_e('Fixed details','simpleflow'); ?>">
     <colgroup><col style="width:110px"/><col style="width:90px"/><col/><col/><col style="width:110px"/><col style="width:80px"/></colgroup>
     <thead><tr>
-      <th class="qg-sort" data-sort="num"><?php esc_html_e('Entry ID','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="num"><?php esc_html_e('Form ID','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Item','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Fixed at','sfa-quality-gate'); ?></th>
-      <th class="qg-sort" data-sort="text"><?php esc_html_e('Time to fix','sfa-quality-gate'); ?></th>
-      <th><?php esc_html_e('Link','sfa-quality-gate'); ?></th>
+      <th class="qg-sort" data-sort="num"><?php esc_html_e('Entry ID','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="num"><?php esc_html_e('Form ID','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Item','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Fixed at','simpleflow'); ?></th>
+      <th class="qg-sort" data-sort="text"><?php esc_html_e('Time to fix','simpleflow'); ?></th>
+      <th><?php esc_html_e('Link','simpleflow'); ?></th>
     </tr></thead>
     <tbody>
     <?php foreach ( $fxd_page as $r ) :
@@ -781,7 +781,7 @@ endforeach; ?>
         <td><?php echo esc_html($r['item']); ?></td>
         <td><?php echo esc_html($r['fixed_at']); ?></td>
         <td class="sfa-qg-mono"><?php echo esc_html( sfa_qg_human_dur( (int)($r['duration_seconds'] ?? 0) ) ); ?></td>
-        <td><a href="<?php echo esc_url($link); ?>"><?php esc_html_e('Open','sfa-quality-gate'); ?></a></td>
+        <td><a href="<?php echo esc_url($link); ?>"><?php esc_html_e('Open','simpleflow'); ?></a></td>
       </tr>
     <?php endforeach; ?>
     </tbody>
@@ -789,24 +789,24 @@ endforeach; ?>
   <?php if ( $pages_fxd > 1 ) :
         $from=$offset_fxd+1; $to=min($offset_fxd+$per_fxd,$total_fxd); ?>
     <div class="tablenav" style="margin-top:8px;display:flex;align-items:center;gap:10px;">
-      <span><?php printf( esc_html__( 'Showing %1$d–%2$d of %3$d', 'sfa-quality-gate' ), (int)$from, (int)$to, (int)$total_fxd ); ?></span>
+      <span><?php printf( esc_html__( 'Showing %1$d–%2$d of %3$d', 'simpleflow' ), (int)$from, (int)$to, (int)$total_fxd ); ?></span>
       <div class="tablenav-pages">
         <?php if ( $pfxd > 1 ) : ?>
-          <a class="button button-small" href="<?php echo $page_url_fxd($pfxd-1); ?>">&laquo; <?php esc_html_e('Prev','sfa-quality-gate'); ?></a>
+          <a class="button button-small" href="<?php echo $page_url_fxd($pfxd-1); ?>">&laquo; <?php esc_html_e('Prev','simpleflow'); ?></a>
         <?php else : ?>
-          <span class="button button-small disabled" aria-disabled="true">&laquo; <?php esc_html_e('Prev','sfa-quality-gate'); ?></span>
+          <span class="button button-small disabled" aria-disabled="true">&laquo; <?php esc_html_e('Prev','simpleflow'); ?></span>
         <?php endif; ?>
-        <span style="margin:0 6px;"><?php printf( esc_html__( 'Page %1$d of %2$d', 'sfa-quality-gate' ), (int)$pfxd, (int)$pages_fxd ); ?></span>
+        <span style="margin:0 6px;"><?php printf( esc_html__( 'Page %1$d of %2$d', 'simpleflow' ), (int)$pfxd, (int)$pages_fxd ); ?></span>
         <?php if ( $pfxd < $pages_fxd ) : ?>
-          <a class="button button-small" href="<?php echo $page_url_fxd($pfxd+1); ?>"><?php esc_html_e('Next','sfa-quality-gate'); ?> &raquo;</a>
+          <a class="button button-small" href="<?php echo $page_url_fxd($pfxd+1); ?>"><?php esc_html_e('Next','simpleflow'); ?> &raquo;</a>
         <?php else : ?>
-          <span class="button button-small disabled" aria-disabled="true"><?php esc_html_e('Next','sfa-quality-gate'); ?> &raquo;</span>
+          <span class="button button-small disabled" aria-disabled="true"><?php esc_html_e('Next','simpleflow'); ?> &raquo;</span>
         <?php endif; ?>
       </div>
     </div>
   <?php endif; ?>
 <?php else: ?>
-  <p><em><?php esc_html_e('No fixed items in this range.','sfa-quality-gate'); ?></em></p>
+  <p><em><?php esc_html_e('No fixed items in this range.','simpleflow'); ?></em></p>
 <?php endif; ?>
   </div>
 </details>
@@ -836,8 +836,8 @@ endforeach; ?>
       e.preventDefault();
       try{
         navigator.clipboard.writeText(window.location.href);
-        share.textContent = '<?php echo esc_js( __( 'Link copied', 'sfa-quality-gate' ) ); ?>';
-        setTimeout(function(){ share.textContent = '<?php echo esc_js( __( 'Share this view', 'sfa-quality-gate' ) ); ?>'; }, 1500);
+        share.textContent = '<?php echo esc_js( __( 'Link copied', 'simpleflow' ) ); ?>';
+        setTimeout(function(){ share.textContent = '<?php echo esc_js( __( 'Share this view', 'simpleflow' ) ); ?>'; }, 1500);
       }catch(err){
         alert(window.location.href);
       }
@@ -865,7 +865,7 @@ endforeach; ?>
     var cnt = document.querySelector('[data-count-for="#'+tbl.id+'"]');
     if(cnt){
       var total = tbl.querySelectorAll('tbody tr').length;
-      cnt.textContent = vis + ' / ' + total + ' ' + '<?php echo esc_js( __( 'rows', 'sfa-quality-gate' ) ); ?>';
+      cnt.textContent = vis + ' / ' + total + ' ' + '<?php echo esc_js( __( 'rows', 'simpleflow' ) ); ?>';
     }
   }
   document.querySelectorAll('[data-filter]').forEach(function(inp){

@@ -11,16 +11,16 @@ class Step_Quality_Gate extends \Gravity_Flow_Step {
 	public $_step_type    = 'quality_gate';
 	protected $_rest_base = 'quality-gates';
 
-	public function get_label()    { return esc_html__( 'Quality Gate', 'sfa-quality-gate' ); }
+	public function get_label()    { return esc_html__( 'Quality Gate', 'simpleflow' ); }
 	public function get_icon_url() { return '<i class="fa fa-clipboard-check" style="color:#2563eb;"></i>'; }
 
 	public function get_settings() {
 		return array(
-			'title'  => esc_html__( 'Quality Gate', 'sfa-quality-gate' ),
+			'title'  => esc_html__( 'Quality Gate', 'simpleflow' ),
 			'fields' => array(
 				array(
 					'name'  => 'qc_field_id',
-					'label' => esc_html__( 'Quality Checklist Field', 'sfa-quality-gate' ),
+					'label' => esc_html__( 'Quality Checklist Field', 'simpleflow' ),
 					'type'  => 'field_select',
 					'args'  => array( 'input_types' => array( 'quality_checklist' ) ),
 				),
@@ -32,14 +32,14 @@ class Step_Quality_Gate extends \Gravity_Flow_Step {
 		return array(
 			array(
 				'status'                    => 'failed',
-				'status_label'              => esc_html__( 'Failed', 'sfa-quality-gate' ),
-				'destination_setting_label' => esc_html__( 'Next step if Failed', 'sfa-quality-gate' ),
+				'status_label'              => esc_html__( 'Failed', 'simpleflow' ),
+				'destination_setting_label' => esc_html__( 'Next step if Failed', 'simpleflow' ),
 				'default_destination'       => 'complete',
 			),
 			array(
 				'status'                    => 'passed',
-				'status_label'              => esc_html__( 'Passed', 'sfa-quality-gate' ),
-				'destination_setting_label' => esc_html__( 'Next step if Passed', 'sfa-quality-gate' ),
+				'status_label'              => esc_html__( 'Passed', 'simpleflow' ),
+				'destination_setting_label' => esc_html__( 'Next step if Passed', 'simpleflow' ),
 				'default_destination'       => 'next',
 			),
 		);
@@ -71,7 +71,7 @@ public function process() {
 
 	// If compute ruled it invalid, fail the step and clear failed-items list.
 	if ( $err ) {
-		$this->add_note( sprintf( esc_html__( 'Quality Gate: invalid data (%s).', 'sfa-quality-gate' ), $err ), true );
+		$this->add_note( sprintf( esc_html__( 'Quality Gate: invalid data (%s).', 'simpleflow' ), $err ), true );
 		$this->update_step_status( 'failed' );
 		gform_update_meta( $entry_id, '_qc_failed_items', wp_json_encode( array() ) );
 		return true; // continue routing
@@ -136,8 +136,8 @@ gform_update_meta( $entry_id, '_qc_failed_metrics', wp_json_encode( $failed_metr
 	// Final note + status.
 	$this->add_note(
 		( $status === 'failed' )
-			? sprintf( esc_html__( 'Quality Gate: %d failed checks.', 'sfa-quality-gate' ), (int) ( $summary['metrics_failed'] ?? 0 ) )
-			: esc_html__( 'Quality Gate: all checks passed.', 'sfa-quality-gate' ),
+			? sprintf( esc_html__( 'Quality Gate: %d failed checks.', 'simpleflow' ), (int) ( $summary['metrics_failed'] ?? 0 ) )
+			: esc_html__( 'Quality Gate: all checks passed.', 'simpleflow' ),
 		true
 	);
 	$this->update_step_status( $status );
@@ -163,8 +163,8 @@ public function workflow_detail_box( $form, $args ) {
     $summary  = json_decode( gform_get_meta( $entry_id, '_qc_summary' ), true );
 
     $status_text = ( $status === 'pending' )
-        ? esc_html__( 'Pending (waiting for QC data)', 'sfa-quality-gate' )
-        : ( $status === 'failed' ? esc_html__( 'Failed', 'sfa-quality-gate' ) : esc_html__( 'Passed', 'sfa-quality-gate' ) );
+        ? esc_html__( 'Pending (waiting for QC data)', 'simpleflow' )
+        : ( $status === 'failed' ? esc_html__( 'Failed', 'simpleflow' ) : esc_html__( 'Passed', 'simpleflow' ) );
 
     printf(
         '<div class="gravityflow-status-box-field"><h4>%s: %s</h4></div>',
@@ -175,11 +175,11 @@ public function workflow_detail_box( $form, $args ) {
     if ( is_array( $summary ) ) {
         printf(
             '<div class="gravityflow-status-box-field sfa-qg-summary">%s: %d | %s: %d | %s: %d</div>',
-            esc_html__( 'Items', 'sfa-quality-gate' ),
+            esc_html__( 'Items', 'simpleflow' ),
             (int) ( $summary['items_total'] ?? 0 ),
-            esc_html__( 'Checks', 'sfa-quality-gate' ),
+            esc_html__( 'Checks', 'simpleflow' ),
             (int) ( $summary['metrics_total'] ?? 0 ),
-            esc_html__( 'Failed', 'sfa-quality-gate' ),
+            esc_html__( 'Failed', 'simpleflow' ),
             (int) ( $summary['metrics_failed'] ?? 0 )
         );
     }
