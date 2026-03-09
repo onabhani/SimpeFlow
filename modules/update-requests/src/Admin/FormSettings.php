@@ -156,7 +156,7 @@ class FormSettings {
 
 			<form method="post" action="<?php echo admin_url( 'admin-post.php' ); ?>">
 				<input type="hidden" name="action" value="sfa_ur_save_form_settings">
-				<input type="hidden" name="form_id" value="<?php echo $form_id; ?>">
+				<input type="hidden" name="form_id" value="<?php echo esc_attr( $form_id ); ?>">
 				<?php wp_nonce_field( 'sfa_ur_form_settings_' . $form_id ); ?>
 
 				<!-- Enable Update Requests -->
@@ -581,6 +581,10 @@ class FormSettings {
 
 	/**
 	 * Check if user is the entry creator
+	 *
+	 * Note: This relies on `created_by` being immutable in Gravity Forms.
+	 * GF does not expose a public API to change `created_by` after creation.
+	 * If it is ever modified via direct DB access, this check will be stale.
 	 *
 	 * @param array $entry Entry array
 	 * @param int   $user_id User ID to check (defaults to current user)

@@ -122,7 +122,7 @@ class ParentPanel {
 									</span>
 								</td>
 								<td style="padding: 8px; font-size: 12px;">
-									<?php echo date( 'M j, Y g:i a', strtotime( $submitted_at ) ); ?>
+									<?php echo esc_html( wp_date( 'M j, Y g:i a', strtotime( $submitted_at ) ) ); ?>
 									<br>
 									<small style="color: #666;">by <?php echo esc_html( $submitter_name ); ?></small>
 								</td>

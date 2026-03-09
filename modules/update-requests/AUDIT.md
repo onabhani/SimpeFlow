@@ -1,8 +1,8 @@
 # Update Requests Module — Audit Report
 
-**Module Version:** 1.2.2
+**Module Version:** 1.2.3
 **Audit Date:** 2026-03-09
-**Status:** Stage 1 & 2 (Critical/High/Medium) — Fixed
+**Status:** All issues resolved
 
 ---
 
@@ -24,12 +24,12 @@
 | 12 | **Medium** | `UpdateRequestModal.php` | 383 | Security | File upload validates extension only, not MIME type | **Fixed** (v1.2.2) |
 | 13 | **Medium** | `FormSettings.php` | 45 | Auth | `render_settings_page()` missing capability check | **Fixed** (v1.2.2) |
 | 14 | **Medium** | `UpdateRequestModal.php` | 200–226 | Atomicity | Child entry creation + linking is not transactional; failure mid-way leaves orphans | **Fixed** (v1.2.2) |
-| 15 | **Low** | `ParentPanel.php` | 125 | Time | `strtotime()` without timezone context — mismatch with WordPress UTC storage | Pending |
-| 16 | **Low** | `FileVersionWidget.php` | 169–193 | Best Practice | Numeric data attributes output without `esc_attr()` | Pending |
-| 17 | **Low** | Multiple files | — | Code Quality | Duplicate `is_json()` method in `FileVersionApplier` and `FileVersionWidget` | Pending |
-| 18 | **Low** | `test-update-request.php` | — | Deployment | Test file shipped in production module directory | Pending |
-| 19 | **Low** | `test-update-request.php` | 38 | Quality | References non-existent class `EntryUpdating` | Pending |
-| 20 | **Low** | `FormSettings.php` | 575 | Documentation | Undocumented assumption that `created_by` is immutable | Pending |
+| 15 | **Low** | `ParentPanel.php` / `FileVersionWidget.php` | 125 / 162 | Time | `strtotime()` without timezone context — replaced with `wp_date()` | **Fixed** (v1.2.3) |
+| 16 | **Low** | `FileVersionWidget.php` | 169–193 | Best Practice | All data attributes and hidden inputs escaped with `esc_attr()` | **Fixed** (v1.2.3) |
+| 17 | **Low** | Multiple files | — | Code Quality | Duplicate `is_json()` method in `FileVersionApplier` and `FileVersionWidget` | **Accepted** — trivial 3-line utility, not worth abstracting |
+| 18 | **Low** | `test-update-request.php` | — | Deployment | Test file moved to `tests/` directory | **Fixed** (v1.2.3) |
+| 19 | **Low** | `test-update-request.php` | 38 | Quality | Fixed reference to non-existent `EntryUpdating` → `FileVersionApplier` | **Fixed** (v1.2.3) |
+| 20 | **Low** | `FormSettings.php` | 582 | Documentation | Added immutability note to `is_entry_creator()` docblock | **Fixed** (v1.2.3) |
 
 ---
 

@@ -35,7 +35,7 @@ add_action( 'template_redirect', function() {
 		'SFA\\UpdateRequests\\GravityForms\\ChildLinking',
 		'SFA\\UpdateRequests\\GravityForms\\ApprovalGuards',
 		'SFA\\UpdateRequests\\GravityForms\\FileAttachments',
-		'SFA\\UpdateRequests\\GravityForms\\EntryUpdating',
+		'SFA\\UpdateRequests\\GravityForms\\FileVersionApplier',
 		'SFA\\UpdateRequests\\Admin\\ParentPanel',
 	];
 
