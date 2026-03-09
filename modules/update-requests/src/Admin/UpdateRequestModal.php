@@ -79,7 +79,7 @@ class UpdateRequestModal {
 			\GFAPI::add_note(
 				$entry_id,
 				get_current_user_id(),
-				wp_get_current_user()->display_name,
+				is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 				'<strong>Manual Approval:</strong> Update request was manually approved by admin during manual apply action.'
 			);
 		}
@@ -209,28 +209,38 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Failed to create update request entry' ] );
 		}
 
-		// Save update request metadata
-		gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
-		gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
-		gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
-		gform_update_meta( $child_entry_id, '_ur_type', 'drawing_update' );
-		gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
-		gform_update_meta( $child_entry_id, '_ur_original_filename', $filename );
-		gform_update_meta( $child_entry_id, '_ur_reason', $reason );
-		gform_update_meta( $child_entry_id, '_ur_drawing_file', $drawing_file );
+		// Save metadata and link to parent — clean up on failure to prevent orphaned entries
+		try {
+			gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
+			gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
+			gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
+			gform_update_meta( $child_entry_id, '_ur_type', 'drawing_update' );
+			gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
+			gform_update_meta( $child_entry_id, '_ur_original_filename', $filename );
+			gform_update_meta( $child_entry_id, '_ur_reason', $reason );
+			gform_update_meta( $child_entry_id, '_ur_drawing_file', $drawing_file );
 
-		if ( $invoice_file ) {
-			gform_update_meta( $child_entry_id, '_ur_invoice_file', $invoice_file );
+			if ( $invoice_file ) {
+				gform_update_meta( $child_entry_id, '_ur_invoice_file', $invoice_file );
+			}
+
+			// Link to parent entry
+			$this->link_to_parent( $entry_id, $child_entry_id, 'drawing_update' );
+		} catch ( \Exception $e ) {
+			\GFAPI::delete_entry( $child_entry_id );
+			error_log( sprintf(
+				'Update Requests: Rolled back child entry %d due to error: %s',
+				$child_entry_id,
+				$e->getMessage()
+			) );
+			wp_send_json_error( [ 'message' => 'Failed to set up update request. Please try again.' ] );
 		}
-
-		// Link to parent entry
-		$this->link_to_parent( $entry_id, $child_entry_id, 'drawing_update' );
 
 		// Add entry note
 		\GFAPI::add_note(
 			$child_entry_id,
 			get_current_user_id(),
-			wp_get_current_user()->display_name,
+			is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 			sprintf(
 				'Update request submitted for drawing: %s<br>Reason: %s<br>Parent entry: #%d (Form %d)',
 				esc_html( $filename ),
@@ -328,23 +338,33 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Failed to create following invoice entry' ] );
 		}
 
-		// Save following invoice metadata
-		gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
-		gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
-		gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
-		gform_update_meta( $child_entry_id, '_ur_type', 'following_invoice' );
-		gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
-		gform_update_meta( $child_entry_id, '_ur_reason', $reason );
-		gform_update_meta( $child_entry_id, '_ur_invoice_file', $invoice_file );
+		// Save metadata and link to parent — clean up on failure to prevent orphaned entries
+		try {
+			gform_update_meta( $child_entry_id, '_ur_mode', 'update_request' );
+			gform_update_meta( $child_entry_id, '_ur_parent_id', $entry_id );
+			gform_update_meta( $child_entry_id, '_ur_parent_form_id', $form_id );
+			gform_update_meta( $child_entry_id, '_ur_type', 'following_invoice' );
+			gform_update_meta( $child_entry_id, '_ur_status', 'submitted' );
+			gform_update_meta( $child_entry_id, '_ur_reason', $reason );
+			gform_update_meta( $child_entry_id, '_ur_invoice_file', $invoice_file );
 
-		// Link to parent entry
-		$this->link_to_parent( $entry_id, $child_entry_id, 'following_invoice' );
+			// Link to parent entry
+			$this->link_to_parent( $entry_id, $child_entry_id, 'following_invoice' );
+		} catch ( \Exception $e ) {
+			\GFAPI::delete_entry( $child_entry_id );
+			error_log( sprintf(
+				'Update Requests: Rolled back child entry %d due to error: %s',
+				$child_entry_id,
+				$e->getMessage()
+			) );
+			wp_send_json_error( [ 'message' => 'Failed to set up following invoice. Please try again.' ] );
+		}
 
 		// Add entry note
 		\GFAPI::add_note(
 			$child_entry_id,
 			get_current_user_id(),
-			wp_get_current_user()->display_name,
+			is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 			sprintf(
 				'Following invoice submitted<br>Description: %s<br>Parent entry: #%d (Form %d)',
 				esc_html( $reason ),
@@ -375,7 +395,7 @@ class UpdateRequestModal {
 	private function handle_file_upload( $file, $type ) {
 		require_once ABSPATH . 'wp-admin/includes/file.php';
 
-		// Validate file type
+		// Validate file extension
 		$allowed_types = [
 			'drawing' => [ 'pdf', 'dwg', 'dxf', 'jpg', 'jpeg', 'png' ],
 			'invoice' => [ 'pdf' ],
@@ -387,6 +407,15 @@ class UpdateRequestModal {
 			return new \WP_Error(
 				'invalid_file_type',
 				sprintf( 'Invalid file type. Allowed types: %s', implode( ', ', $allowed_types[ $type ] ) )
+			);
+		}
+
+		// Validate MIME type matches extension
+		$filetype = wp_check_filetype( $file['name'] );
+		if ( ! $filetype['type'] ) {
+			return new \WP_Error(
+				'invalid_mime_type',
+				'File MIME type could not be determined. Upload rejected for security.'
 			);
 		}
 

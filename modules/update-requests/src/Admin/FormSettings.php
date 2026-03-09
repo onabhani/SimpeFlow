@@ -41,6 +41,10 @@ class FormSettings {
 	 * Render settings page
 	 */
 	public function render_settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( __( 'You do not have permission to access this page.' ) );
+		}
+
 		// Get form ID
 		$form_id = isset( $_GET['id'] ) ? absint( $_GET['id'] ) : 0;
 
@@ -78,14 +82,24 @@ class FormSettings {
 		// Get GravityFlow steps if available
 		$workflow_steps = [];
 		if ( class_exists( 'Gravity_Flow_API' ) ) {
-			$api = new \Gravity_Flow_API( $form_id );
-			$steps = $api->get_steps();
-			foreach ( $steps as $step ) {
-				$workflow_steps[] = [
-					'id'    => $step->get_id(),
-					'name'  => $step->get_name(),
-					'type'  => $step->get_type(),
-				];
+			try {
+				$api = new \Gravity_Flow_API( $form_id );
+				$steps = $api->get_steps();
+				if ( is_array( $steps ) ) {
+					foreach ( $steps as $step ) {
+						$workflow_steps[] = [
+							'id'    => $step->get_id(),
+							'name'  => $step->get_name(),
+							'type'  => $step->get_type(),
+						];
+					}
+				}
+			} catch ( \Exception $e ) {
+				error_log( sprintf(
+					'Update Requests: Failed to load GravityFlow steps for form %d: %s',
+					$form_id,
+					$e->getMessage()
+				) );
 			}
 		}
 

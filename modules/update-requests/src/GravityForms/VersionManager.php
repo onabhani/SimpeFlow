@@ -25,6 +25,17 @@ class VersionManager {
 		}
 
 		$versions = json_decode( $versions_json, true );
+
+		if ( json_last_error() !== JSON_ERROR_NONE ) {
+			error_log( sprintf(
+				'Update Requests: Corrupt JSON in %s for entry %d: %s',
+				self::META_KEY,
+				$entry_id,
+				json_last_error_msg()
+			) );
+			return [];
+		}
+
 		return is_array( $versions ) ? $versions : [];
 	}
 
@@ -104,7 +115,7 @@ class VersionManager {
 			'url' => $file_url,
 			'date' => current_time( 'mysql' ),
 			'user_id' => get_current_user_id(),
-			'user_name' => wp_get_current_user()->display_name,
+			'user_name' => is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 			'status' => $status,
 		];
 

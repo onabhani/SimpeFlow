@@ -136,7 +136,7 @@ class FileVersionApplier {
 		\GFAPI::add_note(
 			$parent_id,
 			$user_id,
-			wp_get_current_user()->display_name,
+			is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 			sprintf(
 				'<strong>Drawing Update Applied (v%d)</strong><br>' .
 				'Original: %s<br>' .
@@ -223,7 +223,7 @@ class FileVersionApplier {
 		\GFAPI::add_note(
 			$parent_id,
 			$user_id,
-			wp_get_current_user()->display_name,
+			is_user_logged_in() ? wp_get_current_user()->display_name : 'System',
 			sprintf(
 				'<strong>Following Invoice Added</strong><br>' .
 				'Invoice: <a href="%s" target="_blank">%s</a><br>' .
@@ -266,30 +266,22 @@ class FileVersionApplier {
 		$entry_id = $entry['id'];
 		$current_value = isset( $entry[ $field_id ] ) ? $entry[ $field_id ] : '';
 
-		// Handle JSON array (multi-file)
+		// GF multi-file upload fields store values as JSON arrays.
+		// Try JSON first; fall back to wrapping single/empty values into a JSON array.
 		if ( $this->is_json( $current_value ) ) {
 			$files = json_decode( $current_value, true );
 			if ( ! is_array( $files ) ) {
 				$files = [];
 			}
-			$files[] = $file_url;
-			$new_value = wp_json_encode( $files );
+		} elseif ( ! empty( $current_value ) ) {
+			// Single file URL — normalize to array
+			$files = [ $current_value ];
+		} else {
+			$files = [];
 		}
-		// Handle comma-separated
-		elseif ( strpos( $current_value, ',' ) !== false ) {
-			$files = array_map( 'trim', explode( ',', $current_value ) );
-			$files[] = $file_url;
-			$new_value = implode( ',', $files );
-		}
-		// Handle single file or empty
-		else {
-			if ( empty( $current_value ) ) {
-				$new_value = $file_url;
-			} else {
-				// Convert to comma-separated
-				$new_value = $current_value . ',' . $file_url;
-			}
-		}
+
+		$files[] = $file_url;
+		$new_value = wp_json_encode( $files );
 
 		// Update entry field
 		$entry[ $field_id ] = $new_value;
