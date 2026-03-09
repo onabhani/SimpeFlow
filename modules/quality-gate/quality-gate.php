@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.24
+ * Version: 2.3.25
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -20,7 +20,7 @@ if ( ! function_exists( 'sfa_qg_log' ) ) {
 	}
 }
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.24');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.25');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -60,6 +60,23 @@ function sfa_qg_load_admin_tools() {
 	if ( $loaded ) return;
 	$loaded = true;
 	require_once __DIR__ . '/src/admin-tools.php';
+}
+
+/**
+ * Flush all QG report transient caches so the next report read rebuilds
+ * fresh data. Called after write operations that change QC metadata.
+ */
+function sfa_qg_invalidate_report_cache() {
+	global $wpdb;
+	$wpdb->query(
+		"DELETE FROM {$wpdb->options}
+		 WHERE option_name LIKE '_transient_sfa_qg_rpt_%'
+		    OR option_name LIKE '_transient_timeout_sfa_qg_rpt_%'
+		    OR option_name LIKE '_transient_sfa_qg_fx_%'
+		    OR option_name LIKE '_transient_timeout_sfa_qg_fx_%'
+		    OR option_name LIKE '_transient_sfa_qg_hist_%'
+		    OR option_name LIKE '_transient_timeout_sfa_qg_hist_%'"
+	);
 }
 
 
@@ -803,6 +820,9 @@ if ( ! $field_id ) {
 	$selected = array_values( array_unique( array_filter( array_map('strval', $selected) ) ) );
 	gform_update_meta( $entry_id, '_qc_recheck_items', wp_json_encode( $selected ) );
 
+	// Flush report transient caches so the next report read picks up fresh data.
+	sfa_qg_invalidate_report_cache();
+
 	sfa_qg_history_push( $entry_id, 'REWORK_MARKED', ['items'=>$selected,'user'=>get_current_user_id()] );
 
 
@@ -915,6 +935,9 @@ if ( ! function_exists( 'sfa_qg_persist_fails_from_qc' ) ) {
 		gform_update_meta( (int) $entry_id, '_qc_failed_items',   wp_json_encode( $failed_items ) );
 		gform_update_meta( (int) $entry_id, '_qc_failed_metrics', wp_json_encode( $failed_metrics ) );
 
+		// Flush report transient caches so the next report read picks up fresh data.
+		sfa_qg_invalidate_report_cache();
+
 		// Ensure per-item fail timestamps + audit FAIL rows (idempotent).
 		if ( $failed_items ) {
 			if ( function_exists( 'sfa_qg_stamp_fail_times_if_missing' ) ) {
@@ -976,7 +999,6 @@ add_action( 'admin_init', function() {
 }, 99 );
 
 add_action( 'admin_init', function() {
-	if ( ! is_admin() ) return;
 	if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'sfa-qg-report' ) return;
 	if ( ! isset( $_GET['qg_export'] ) ) return;
 	sfa_qg_load_report_files();
