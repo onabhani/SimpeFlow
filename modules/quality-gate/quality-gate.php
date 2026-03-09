@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.22
+ * Version: 2.3.23
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -20,7 +20,7 @@ if ( ! function_exists( 'sfa_qg_log' ) ) {
 	}
 }
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.22');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.23');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -870,6 +870,9 @@ if ( ! function_exists( 'sfa_qg_persist_fails_from_qc' ) ) {
 			foreach ( (array) rgar( $it, 'metrics', array() ) as $m ) {
 				$res   = strtolower( (string) rgar( $m, 'result', '' ) );
 				$label = trim( (string) rgar( $m, 'label', '' ) );
+				if ( $label === '' ) {
+					$label = trim( (string) rgar( $m, 'k', '' ) ); // fallback for older payloads
+				}
 				if ( $res === 'fail' ) {
 					$item_failed = true;
 					if ( $label !== '' ) $failed_metrics[] = $label;
