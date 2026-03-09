@@ -54,6 +54,19 @@ class ChildLinking {
 		gform_update_meta( $entry_id, '_ur_submitted_at', current_time( 'mysql' ) );
 		gform_update_meta( $entry_id, '_ur_submitted_by', get_current_user_id() );
 
+		// Acquire lock to prevent concurrent _ur_children modifications
+		global $wpdb;
+		$lock_name = 'sfa_ur_children_' . $parent_id;
+		$lock_acquired = $wpdb->get_var( $wpdb->prepare( "SELECT GET_LOCK(%s, 15)", $lock_name ) );
+
+		if ( ! $lock_acquired ) {
+			error_log( sprintf(
+				'Update Requests: Failed to acquire lock for parent entry %d',
+				$parent_id
+			) );
+			return;
+		}
+
 		// Get existing children array from parent
 		$children_json = gform_get_meta( $parent_id, '_ur_children' );
 		$children = $children_json ? json_decode( $children_json, true ) : [];
@@ -73,6 +86,9 @@ class ChildLinking {
 
 		// Update parent's children array
 		gform_update_meta( $parent_id, '_ur_children', wp_json_encode( $children ) );
+
+		// Release lock
+		$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
 
 		error_log( sprintf(
 			'Update Requests: Linked child entry %d to parent %d (type: %s)',

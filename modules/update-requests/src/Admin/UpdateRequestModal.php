@@ -26,15 +26,16 @@ class UpdateRequestModal {
 	 * Used by admins when automatic application fails
 	 */
 	public function handle_manual_apply() {
-		// Get entry ID
-		$entry_id = isset( $_GET['entry_id'] ) ? absint( $_GET['entry_id'] ) : 0;
+		// Get entry ID from POST (preferred) or GET (fallback for backward compat)
+		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : ( isset( $_GET['entry_id'] ) ? absint( $_GET['entry_id'] ) : 0 );
 
 		if ( ! $entry_id ) {
 			wp_die( 'Missing entry ID', 'Error', [ 'response' => 400 ] );
 		}
 
-		// Verify nonce
-		if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', 'sfa_ur_apply_' . $entry_id ) ) {
+		// Verify nonce from POST (preferred) or GET (fallback)
+		$nonce = $_POST['_wpnonce'] ?? $_GET['_wpnonce'] ?? '';
+		if ( ! wp_verify_nonce( $nonce, 'sfa_ur_apply_' . $entry_id ) ) {
 			wp_die( 'Invalid security token', 'Error', [ 'response' => 403 ] );
 		}
 
@@ -131,7 +132,7 @@ class UpdateRequestModal {
 		check_ajax_referer( 'sfa_ur_submit', 'nonce' );
 
 		// Check permissions
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'gravityforms_view_entries' ) && ! current_user_can( 'edit_posts' ) ) {
 			wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
 		}
 
@@ -151,8 +152,8 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Parent entry not found' ] );
 		}
 
-		// Check if current user is the entry creator
-		if ( ! FormSettings::is_entry_creator( $parent_entry ) ) {
+		// Check if current user is the entry creator (primary authorization)
+		if ( ! FormSettings::is_entry_creator( $parent_entry ) && ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( [ 'message' => 'Only the entry creator can submit update requests' ] );
 		}
 
@@ -232,8 +233,8 @@ class UpdateRequestModal {
 			wp_get_current_user()->display_name,
 			sprintf(
 				'Update request submitted for drawing: %s<br>Reason: %s<br>Parent entry: #%d (Form %d)',
-				$filename,
-				$reason,
+				esc_html( $filename ),
+				esc_html( $reason ),
 				$entry_id,
 				$form_id
 			)
@@ -259,7 +260,7 @@ class UpdateRequestModal {
 		check_ajax_referer( 'sfa_ur_submit', 'nonce' );
 
 		// Check permissions
-		if ( ! current_user_can( 'edit_posts' ) ) {
+		if ( ! current_user_can( 'gravityforms_view_entries' ) && ! current_user_can( 'edit_posts' ) ) {
 			wp_send_json_error( [ 'message' => 'Insufficient permissions' ] );
 		}
 
@@ -278,8 +279,8 @@ class UpdateRequestModal {
 			wp_send_json_error( [ 'message' => 'Parent entry not found' ] );
 		}
 
-		// Check if current user is the entry creator
-		if ( ! FormSettings::is_entry_creator( $parent_entry ) ) {
+		// Check if current user is the entry creator (primary authorization)
+		if ( ! FormSettings::is_entry_creator( $parent_entry ) && ! current_user_can( 'manage_options' ) ) {
 			wp_send_json_error( [ 'message' => 'Only the entry creator can submit following invoices' ] );
 		}
 
@@ -346,7 +347,7 @@ class UpdateRequestModal {
 			wp_get_current_user()->display_name,
 			sprintf(
 				'Following invoice submitted<br>Description: %s<br>Parent entry: #%d (Form %d)',
-				$reason,
+				esc_html( $reason ),
 				$entry_id,
 				$form_id
 			)
@@ -408,6 +409,19 @@ class UpdateRequestModal {
 	 * @param string $request_type Request type
 	 */
 	private function link_to_parent( $parent_id, $child_id, $request_type ) {
+		// Acquire lock to prevent concurrent _ur_children modifications
+		global $wpdb;
+		$lock_name = 'sfa_ur_children_' . $parent_id;
+		$lock_acquired = $wpdb->get_var( $wpdb->prepare( "SELECT GET_LOCK(%s, 15)", $lock_name ) );
+
+		if ( ! $lock_acquired ) {
+			error_log( sprintf(
+				'Update Requests: Failed to acquire lock for parent entry %d during link_to_parent',
+				$parent_id
+			) );
+			return;
+		}
+
 		// Get existing children
 		$children_json = gform_get_meta( $parent_id, '_ur_children' );
 		$children = $children_json ? json_decode( $children_json, true ) : [];
@@ -427,6 +441,9 @@ class UpdateRequestModal {
 
 		// Update parent meta
 		gform_update_meta( $parent_id, '_ur_children', wp_json_encode( $children ) );
+
+		// Release lock
+		$wpdb->get_var( $wpdb->prepare( "SELECT RELEASE_LOCK(%s)", $lock_name ) );
 
 		// Fire action
 		do_action( 'sfa_update_request_linked', $child_id, $parent_id, $request_type );

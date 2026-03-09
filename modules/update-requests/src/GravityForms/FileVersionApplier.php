@@ -144,10 +144,10 @@ class FileVersionApplier {
 				'Reason: %s<br>' .
 				'Update request: #%d',
 				$new_version,
-				$original_filename,
-				$new_drawing_url,
-				basename( $new_drawing_url ),
-				$reason,
+				esc_html( $original_filename ),
+				esc_url( $new_drawing_url ),
+				esc_html( basename( $new_drawing_url ) ),
+				esc_html( $reason ),
 				$child_id
 			)
 		);
@@ -229,9 +229,9 @@ class FileVersionApplier {
 				'Invoice: <a href="%s" target="_blank">%s</a><br>' .
 				'Description: %s<br>' .
 				'Request: #%d',
-				$invoice_url,
-				basename( $invoice_url ),
-				$reason,
+				esc_url( $invoice_url ),
+				esc_html( basename( $invoice_url ) ),
+				esc_html( $reason ),
 				$child_id
 			)
 		);

@@ -1,8 +1,8 @@
 # Update Requests Module — Audit Report
 
-**Module Version:** 1.2.0
+**Module Version:** 1.2.1
 **Audit Date:** 2026-03-09
-**Status:** Pending fixes
+**Status:** Stage 1 (Critical/High) — Fixed
 
 ---
 
@@ -10,12 +10,12 @@
 
 | # | Severity | File | Line(s) | Type | Description | Status |
 |---|----------|------|---------|------|-------------|--------|
-| 1 | **Critical** | `ParentPanel.php` | 120 | XSS | `$status_color` output directly into inline CSS without `esc_attr()` | Pending |
-| 2 | **High** | `ApprovalGuards.php` | 207 | Type Bug | Loose `==` comparison on entry IDs instead of `===` | Pending |
-| 3 | **High** | `FileVersionApplier.php` | 140–237 | XSS | Unescaped `$reason` and filenames in HTML entry notes | Pending |
-| 4 | **High** | `ChildLinking.php` / `UpdateRequestModal.php` | 75 / 429 | Race Condition | Concurrent read-modify-write on `_ur_children` JSON meta (no lock) | Pending |
-| 5 | **High** | `UpdateRequestModal.php` | 134–155 | Auth | Broad `edit_posts` capability check; entry creator check comes second | Pending |
-| 6 | **High** | `UpdateRequestModal.php` | 37 | CSRF | State-changing "apply" action uses GET instead of POST | Pending |
+| 1 | **Critical** | `ParentPanel.php` | 120 | XSS | `$status_color` output directly into inline CSS without `esc_attr()` | **Fixed** (v1.2.1) |
+| 2 | **High** | `ApprovalGuards.php` | 207 | Type Bug | Loose `==` comparison on entry IDs instead of `===` | **Fixed** (v1.2.1) |
+| 3 | **High** | `FileVersionApplier.php` | 140–237 | XSS | Unescaped `$reason` and filenames in HTML entry notes | **Fixed** (v1.2.1) |
+| 4 | **High** | `ChildLinking.php` / `UpdateRequestModal.php` / `ApprovalGuards.php` | multiple | Race Condition | Concurrent read-modify-write on `_ur_children` JSON meta (no lock) | **Fixed** (v1.2.1) |
+| 5 | **High** | `UpdateRequestModal.php` | 134–155 | Auth | Broad `edit_posts` capability check; entry creator check comes second | **Fixed** (v1.2.1) |
+| 6 | **High** | `UpdateRequestModal.php` | 37 | CSRF | State-changing "apply" action uses GET instead of POST | **Fixed** (v1.2.1) |
 | 7 | **Medium** | `VersionManager.php` | 27 | Error Handling | `json_decode()` without `json_last_error()` check — silently discards corrupt data | Pending |
 | 8 | **Medium** | `FormSettings.php` | 80–90 | Error Handling | GravityFlow API instantiated without try-catch; may throw if not initialized | Pending |
 | 9 | **Medium** | Multiple files | — | Safety | `wp_get_current_user()->display_name` called without `is_user_logged_in()` guard | Pending |
