@@ -20,6 +20,15 @@ if ( ! function_exists( 'sfa_qg_report_collect' ) ) {
             return $memo[ $memo_key ];
         }
 
+        // Short-lived transient cache (2 min) to avoid re-running the heavy
+        // query on every page load / navigation within the report.
+        $transient_key = 'sfa_qg_rpt_' . md5( $memo_key );
+        $cached = get_transient( $transient_key );
+        if ( is_array( $cached ) ) {
+            $memo[ $memo_key ] = $cached;
+            return $cached;
+        }
+
         global $wpdb;
 
 // Local window for display
@@ -338,6 +347,7 @@ if ( (int) $totals['metrics_failed'] === 0 ) {
             'failed_entries'     => $failed_entries,
             'ym'                 => (string) $ym,
         );
+        set_transient( $transient_key, $memo[ $memo_key ], 2 * MINUTE_IN_SECONDS );
         return $memo[ $memo_key ];
     }
 }
@@ -348,6 +358,13 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
         $memo_key = 'fx|' . $range . '|' . (int) $form_id . '|' . $ym;
         if ( isset( $memo[ $memo_key ] ) ) {
             return $memo[ $memo_key ];
+        }
+
+        $transient_key = 'sfa_qg_fx_' . md5( $memo_key );
+        $cached = get_transient( $transient_key );
+        if ( is_array( $cached ) ) {
+            $memo[ $memo_key ] = $cached;
+            return $cached;
         }
 
         global $wpdb;
@@ -448,6 +465,7 @@ if ( ! function_exists( 'sfa_qg_fixed_report_collect' ) ) {
             'avg'     => $avg,
             'details' => $details,
         );
+        set_transient( $transient_key, $memo[ $memo_key ], 2 * MINUTE_IN_SECONDS );
         return $memo[ $memo_key ];
     }}
     
@@ -458,6 +476,13 @@ if ( ! function_exists( 'sfa_qg_report_collect_history' ) ) {
 		$memo_key = 'hist|' . $range . '|' . (int) $form_id . '|' . $ym;
 		if ( isset( $memo[ $memo_key ] ) ) {
 			return $memo[ $memo_key ];
+		}
+
+		$transient_key = 'sfa_qg_hist_' . md5( $memo_key );
+		$cached = get_transient( $transient_key );
+		if ( is_array( $cached ) ) {
+			$memo[ $memo_key ] = $cached;
+			return $cached;
 		}
 
 		global $wpdb;
@@ -616,6 +641,7 @@ $sql3 = "SELECT form_id, entry_id, MAX(event_utc) AS last_ts,
 		$out['totals_metrics_failed'] = array_sum( array_map( 'intval', array_values( $out['top_failed_metrics'] ) ) );
 
 		$memo[ $memo_key ] = $out;
+		set_transient( $transient_key, $out, 2 * MINUTE_IN_SECONDS );
 		return $out;
 	}
 }

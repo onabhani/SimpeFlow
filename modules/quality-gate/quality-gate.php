@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.21
+ * Version: 2.3.25
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -20,7 +20,7 @@ if ( ! function_exists( 'sfa_qg_log' ) ) {
 	}
 }
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.21');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.25');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -28,16 +28,56 @@ if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ 
 // live in report/ files. See report/collect.php for sfa_qg_report_collect(),
 // sfa_qg_fixed_report_collect(), sfa_qg_report_collect_history();
 // report/utils.php for sfa_qg_report_range_bounds(), sfa_qg_human_dur().
-require_once __DIR__ . '/report/utils.php';
-require_once __DIR__ . '/report/collect.php';
-require_once __DIR__ . '/report/admin-page.php';
-require_once __DIR__ . '/report/export.php';
+//
+// DEFERRED: report/ and admin-tools files are loaded only when needed
+// (report page, export, shortcode, admin tools) to avoid ~1300 lines of
+// PHP parsing on every page load.
 
-// Load extracted function groups — audit, helpers, rendering, admin tools.
+// Load extracted function groups — audit, helpers, rendering (needed by GF hooks on any page).
 require_once __DIR__ . '/src/audit-functions.php';
 require_once __DIR__ . '/src/helper-functions.php';
 require_once __DIR__ . '/src/render-functions.php';
-require_once __DIR__ . '/src/admin-tools.php';
+
+/**
+ * Lazy-load report files (collect, render, admin-page, utils).
+ * Called before any report rendering or data collection.
+ */
+function sfa_qg_load_report_files() {
+	static $loaded = false;
+	if ( $loaded ) return;
+	$loaded = true;
+	require_once __DIR__ . '/report/utils.php';
+	require_once __DIR__ . '/report/collect.php';
+	require_once __DIR__ . '/report/admin-page.php';
+	require_once __DIR__ . '/report/export.php';
+}
+
+/**
+ * Lazy-load admin tools (backfill, cleanup, audit peek).
+ */
+function sfa_qg_load_admin_tools() {
+	static $loaded = false;
+	if ( $loaded ) return;
+	$loaded = true;
+	require_once __DIR__ . '/src/admin-tools.php';
+}
+
+/**
+ * Flush all QG report transient caches so the next report read rebuilds
+ * fresh data. Called after write operations that change QC metadata.
+ */
+function sfa_qg_invalidate_report_cache() {
+	global $wpdb;
+	$wpdb->query(
+		"DELETE FROM {$wpdb->options}
+		 WHERE option_name LIKE '_transient_sfa_qg_rpt_%'
+		    OR option_name LIKE '_transient_timeout_sfa_qg_rpt_%'
+		    OR option_name LIKE '_transient_sfa_qg_fx_%'
+		    OR option_name LIKE '_transient_timeout_sfa_qg_fx_%'
+		    OR option_name LIKE '_transient_sfa_qg_hist_%'
+		    OR option_name LIKE '_transient_timeout_sfa_qg_hist_%'"
+	);
+}
 
 
 /** ----------------------------------------------------------------
@@ -312,6 +352,7 @@ add_action( 'wp_ajax_sfa_qg_items',        'sfa_qg_ajax_items' );
 
 if ( ! function_exists( 'sfa_qg_report_shortcode' ) ) {
   function sfa_qg_report_shortcode( $atts = array() ) {
+    sfa_qg_load_report_files();
     $a = shortcode_atts( array(
       'range'   => 'today',
       'form_id' => 0,
@@ -329,12 +370,15 @@ if ( ! function_exists( 'sfa_qg_report_admin_menu' ) ) {
 	function sfa_qg_report_admin_menu() {
 		$cap = current_user_can( 'gravityflow_workflow' ) ? 'gravityflow_workflow' : 'gravityforms_view_entries';
 		add_submenu_page(
-			'simpleflow', // Changed from 'gravityflow-inbox' to 'simpleflow'
+			'simpleflow',
 			__( 'Quality Gate Report', 'simpleflow' ),
 			__( 'Quality Gate Report', 'simpleflow' ),
 			$cap,
 			'sfa-qg-report',
-			'sfa_qg_report_admin_page'
+			function() {
+				sfa_qg_load_report_files();
+				sfa_qg_report_admin_page();
+			}
 		);
 	}
 	add_action( 'admin_menu', 'sfa_qg_report_admin_menu', 200 );
@@ -776,6 +820,9 @@ if ( ! $field_id ) {
 	$selected = array_values( array_unique( array_filter( array_map('strval', $selected) ) ) );
 	gform_update_meta( $entry_id, '_qc_recheck_items', wp_json_encode( $selected ) );
 
+	// Flush report transient caches so the next report read picks up fresh data.
+	sfa_qg_invalidate_report_cache();
+
 	sfa_qg_history_push( $entry_id, 'REWORK_MARKED', ['items'=>$selected,'user'=>get_current_user_id()] );
 
 
@@ -870,6 +917,9 @@ if ( ! function_exists( 'sfa_qg_persist_fails_from_qc' ) ) {
 			foreach ( (array) rgar( $it, 'metrics', array() ) as $m ) {
 				$res   = strtolower( (string) rgar( $m, 'result', '' ) );
 				$label = trim( (string) rgar( $m, 'label', '' ) );
+				if ( $label === '' ) {
+					$label = trim( (string) rgar( $m, 'k', '' ) ); // fallback for older payloads
+				}
 				if ( $res === 'fail' ) {
 					$item_failed = true;
 					if ( $label !== '' ) $failed_metrics[] = $label;
@@ -884,6 +934,9 @@ if ( ! function_exists( 'sfa_qg_persist_fails_from_qc' ) ) {
 		// Persist meta so reporting can read it.
 		gform_update_meta( (int) $entry_id, '_qc_failed_items',   wp_json_encode( $failed_items ) );
 		gform_update_meta( (int) $entry_id, '_qc_failed_metrics', wp_json_encode( $failed_metrics ) );
+
+		// Flush report transient caches so the next report read picks up fresh data.
+		sfa_qg_invalidate_report_cache();
 
 		// Ensure per-item fail timestamps + audit FAIL rows (idempotent).
 		if ( $failed_items ) {
@@ -934,6 +987,20 @@ add_action('gform_after_update_entry', function($form, $entry_id){
  * ----------------------------------------------------------------*/
 add_action( 'gform_entry_detail_sidebar_middle', 'sfa_qg_entry_qc_summary_box', 10, 2 );
 
-add_action( 'admin_init', 'sfa_qg_admin_backfill', 99 );
-add_action( 'admin_init', 'sfa_qg_admin_cleanup', 99 );
-add_action( 'admin_init', 'sfa_qg_admin_auditpeek', 99 );
+// Admin tools + export: load files on-demand only when relevant GET params are present.
+add_action( 'admin_init', function() {
+	// Admin tools (backfill, cleanup, auditpeek) — only load when triggered.
+	if ( ! empty( $_GET['sfa_qg_backfill'] ) || ! empty( $_GET['sfa_qg_cleanup'] ) || ! empty( $_GET['sfa_qg_auditpeek'] ) ) {
+		sfa_qg_load_admin_tools();
+		if ( ! empty( $_GET['sfa_qg_backfill'] ) )  { sfa_qg_admin_backfill(); }
+		if ( ! empty( $_GET['sfa_qg_cleanup'] ) )    { sfa_qg_admin_cleanup(); }
+		if ( ! empty( $_GET['sfa_qg_auditpeek'] ) )  { sfa_qg_admin_auditpeek(); }
+	}
+}, 99 );
+
+add_action( 'admin_init', function() {
+	if ( ! isset( $_GET['page'] ) || $_GET['page'] !== 'sfa-qg-report' ) return;
+	if ( ! isset( $_GET['qg_export'] ) ) return;
+	sfa_qg_load_report_files();
+	sfa_qg_handle_export();
+}, 1 );

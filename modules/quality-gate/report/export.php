@@ -125,13 +125,8 @@ function sfa_qg_handle_export() {
     exit;
 }}
 
-add_action('admin_init', function () {
-	if ( ! is_admin() ) return;
-	if ( ! isset($_GET['page']) || $_GET['page'] !== 'sfa-qg-report' ) return;
-	if ( ! isset($_GET['qg_export']) ) return;
-	sfa_qg_handle_export();
-}, 1);
-
+// Note: The admin_init hook for export is registered in quality-gate.php
+// to avoid loading this file on every admin page.
 
 
 
