@@ -138,99 +138,16 @@ $cfg['failedItems'] = $failed_from_meta;
 		$cfg['metricLabels'] = $metric_labels;
 	}
 
-	// Server-side embed of item names when we have entry + source
+	// Server-side embed of item names when we have entry + source.
+	// Uses sfa_qg_normalize_files() (defined in quality-gate.php) for parsing.
 	$items     = array();
 	$source_id = $cfg['sourceId'];
-	if ( $source_id && is_array( $entry ) ) {
+	if ( $source_id && is_array( $entry ) && function_exists( 'sfa_qg_normalize_files' ) ) {
 		$raw_upload = rgar( $entry, (string) $source_id );
 		if ( ! $raw_upload && isset( $entry[ $source_id ] ) ) {
 			$raw_upload = $entry[ $source_id ];
 		}
-
-		$push = function( $s ) use ( &$items ) {
-			if ( ! is_string( $s ) || $s === '' ) {
-				return;
-			}
-			$b = wp_basename( $s );
-			if ( $b === '' ) {
-				return;
-			}
-			$n = preg_replace( '/\.[^.]+$/', '', $b );
-			if ( $n !== '' ) {
-				$items[] = array( 'name' => $n );
-			}
-		};
-
-		if ( is_string( $raw_upload ) && $raw_upload !== '' ) {
-			$d = json_decode( $raw_upload, true );
-			if ( is_array( $d ) ) {
-				foreach ( $d as $f ) {
-					if ( is_string( $f ) ) {
-						$push( $f );
-					} elseif ( is_array( $f ) ) {
-						$u = '';
-						if ( isset( $f['uploaded_filename'] ) ) {
-							$u = $f['uploaded_filename'];
-						}
-						if ( ! $u && isset( $f['uploaded_file'] ) ) {
-							$u = $f['uploaded_file'];
-						}
-						if ( ! $u && isset( $f['url'] ) ) {
-							$u = $f['url'];
-						}
-						if ( ! $u && isset( $f['temp_filename'] ) ) {
-							$u = $f['temp_filename'];
-						}
-						if ( ! $u && isset( $f['file'] ) ) {
-							$u = $f['file'];
-						}
-						if ( ! $u && isset( $f['name'] ) ) {
-							$u = $f['name'];
-						}
-						if ( ! $u && isset( $f['filename'] ) ) {
-							$u = $f['filename'];
-						}
-						if ( $u ) {
-							$push( $u );
-						}
-					}
-				}
-			} else {
-				$push( $raw_upload );
-			}
-		} elseif ( is_array( $raw_upload ) ) {
-			foreach ( $raw_upload as $f ) {
-				if ( is_string( $f ) ) {
-					$push( $f );
-				} elseif ( is_array( $f ) ) {
-					$u = '';
-					if ( isset( $f['uploaded_filename'] ) ) {
-						$u = $f['uploaded_filename'];
-					}
-					if ( ! $u && isset( $f['uploaded_file'] ) ) {
-						$u = $f['uploaded_file'];
-					}
-					if ( ! $u && isset( $f['url'] ) ) {
-						$u = $f['url'];
-					}
-					if ( ! $u && isset( $f['temp_filename'] ) ) {
-						$u = $f['temp_filename'];
-					}
-					if ( ! $u && isset( $f['file'] ) ) {
-						$u = $f['file'];
-					}
-					if ( ! $u && isset( $f['name'] ) ) {
-						$u = $f['name'];
-					}
-					if ( ! $u && isset( $f['filename'] ) ) {
-						$u = $f['filename'];
-					}
-					if ( $u ) {
-						$push( $u );
-					}
-				}
-			}
-		}
+		$items = sfa_qg_normalize_files( $raw_upload );
 	}
 
 	if ( function_exists( 'sfa_qg_log' ) ) {
