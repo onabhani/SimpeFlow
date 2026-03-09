@@ -261,6 +261,8 @@ function sfa_qg_cleanup_entry_meta( $entry_id ) {
 		'_qc_history',
 		'_qc_nodata',
 		'_qc_pending_noted',
+		'_qc_has_fail',
+		'_qc_payload',
 	);
 	foreach ( $qc_keys as $key ) {
 		gform_delete_meta( $entry_id, $key );

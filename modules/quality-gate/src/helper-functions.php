@@ -108,6 +108,8 @@ if ( ! function_exists( 'sfa_qg_find_fixed_checkbox_field_id' ) ) {
 			$css = strtolower( (string) rgar( $fa, 'cssClass' ) );
 
 			// 1) Explicit markers (preferred).
+			//    Arabic: \xd8\xa5\xd8\xb5\xd9\x84\xd8\xa7\xd8\xad = إصلاح (repair)
+			//           \xd8\xaa\xd8\xb5\xd8\xad\xd9\x8a\xd8\xad = تصحيح (correction)
 			if (
 				$adm === 'qg_fixed' || $adm === 'qc_fixed' ||
 				strpos( $css, 'qg-fixed' ) !== false ||

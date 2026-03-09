@@ -112,25 +112,25 @@ public function process() {
 		'failed_count' => count($failed_items),
 		'failed_items' => $failed_items
 	));
-	// Collect failed metric labels (count duplicates; used for reporting)
-    $failed_metrics = array();
-        if ( is_array( $payload ) && ! empty( $payload['items'] ) && is_array( $payload['items'] ) ) {
-    	foreach ( $payload['items'] as $it ) {
-		if ( empty( $it['metrics'] ) || ! is_array( $it['metrics'] ) ) { continue; }
-		foreach ( $it['metrics'] as $m ) {
-			if ( isset( $m['result'] ) && $m['result'] === 'fail' ) {
-				$label = '';
-				if ( isset( $m['label'] ) && is_string( $m['label'] ) && $m['label'] !== '' ) {
-					$label = $m['label'];
-				} elseif ( isset( $m['k'] ) && is_string( $m['k'] ) ) {
-					$label = $m['k']; // fallback if label missing (older payloads)
+		// Collect failed metric labels (count duplicates; used for reporting)
+		$failed_metrics = array();
+		if ( is_array( $payload ) && ! empty( $payload['items'] ) && is_array( $payload['items'] ) ) {
+			foreach ( $payload['items'] as $it ) {
+				if ( empty( $it['metrics'] ) || ! is_array( $it['metrics'] ) ) { continue; }
+				foreach ( $it['metrics'] as $m ) {
+					if ( isset( $m['result'] ) && $m['result'] === 'fail' ) {
+						$label = '';
+						if ( isset( $m['label'] ) && is_string( $m['label'] ) && $m['label'] !== '' ) {
+							$label = $m['label'];
+						} elseif ( isset( $m['k'] ) && is_string( $m['k'] ) ) {
+							$label = $m['k']; // fallback if label missing (older payloads)
+						}
+						if ( $label !== '' ) { $failed_metrics[] = $label; }
+					}
 				}
-				if ( $label !== '' ) { $failed_metrics[] = $label; }
 			}
 		}
-	}
-}
-gform_update_meta( $entry_id, '_qc_failed_metrics', wp_json_encode( $failed_metrics ) );
+		gform_update_meta( $entry_id, '_qc_failed_metrics', wp_json_encode( $failed_metrics ) );
 
 
 	// Final note + status.

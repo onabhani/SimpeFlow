@@ -12,6 +12,11 @@ function sfa_qg_handle_export() {
         wp_die( esc_html__( 'You do not have permission to export this report.', 'simpleflow' ) );
     }
 
+    // CSRF protection
+    if ( ! isset( $_GET['_wpnonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_GET['_wpnonce'] ) ), 'sfa_qg_export' ) ) {
+        wp_die( esc_html__( 'Security check failed.', 'simpleflow' ), 403 );
+    }
+
     // Params
     $range   = isset( $_GET['range'] )   ? sanitize_text_field( wp_unslash( $_GET['range'] ) ) : 'today';
     $form_id = isset( $_GET['form_id'] ) ? absint( $_GET['form_id'] ) : 0;

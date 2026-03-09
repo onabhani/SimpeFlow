@@ -375,14 +375,14 @@ $qg_tables_ym = ( $has_compare && isset($_GET['tables_ym']) && $_GET['tables_ym'
     <strong><?php esc_html_e('Entries with failed items','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($data['failed_entries'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
-       href="<?php echo esc_url( add_query_arg( array(
+       href="<?php echo esc_url( wp_nonce_url( add_query_arg( array(
            'qg_export' => 'failed_entries',
            'range'     => $data['range'],
            'form_id'   => $data['form_id'],
            'ym'        => (string) $ym,
            'ym2'       => (string) $ym2,
            'tables_ym' => $qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
+       ) ), 'sfa_qg_export' ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $data['failed_entries'] ) ) : ?>
@@ -544,10 +544,10 @@ endforeach; ?>
     <strong><?php esc_html_e('Top failing metrics','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($data['top_failed_metrics'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
-       href="<?php echo esc_url( add_query_arg( array(
+       href="<?php echo esc_url( wp_nonce_url( add_query_arg( array(
          'qg_export'=>'top_failed_metrics','range'=>$data['range'],'form_id'=>$data['form_id'],
          'ym'=>(string)$ym,'ym2'=>(string)$ym2,'tables_ym'=>$qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
+       ) ), 'sfa_qg_export' ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $data['top_failed_metrics'] ) ) : ?>
@@ -637,10 +637,10 @@ endforeach; ?>
     <strong><?php esc_html_e('Latest failed entries','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($data['latest_failed'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
-       href="<?php echo esc_url( add_query_arg( array(
+       href="<?php echo esc_url( wp_nonce_url( add_query_arg( array(
          'qg_export'=>'latest_failed','range'=>$data['range'],'form_id'=>$data['form_id'],
          'ym'=>(string)$ym,'ym2'=>(string)$ym2,'tables_ym'=>$qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
+       ) ), 'sfa_qg_export' ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $data['latest_failed'] ) ) : ?>
@@ -708,10 +708,10 @@ endforeach; ?>
     <strong><?php esc_html_e('Fixed — Monthly','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($fx['monthly'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
-       href="<?php echo esc_url( add_query_arg( array(
+       href="<?php echo esc_url( wp_nonce_url( add_query_arg( array(
          'qg_export'=>'fixed_monthly','range'=>$data['range'],'form_id'=>$data['form_id'],
          'ym'=>(string)$ym,'ym2'=>(string)$ym2,'tables_ym'=>$qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
+       ) ), 'sfa_qg_export' ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $fx['monthly'] ) ) : ?>
@@ -744,10 +744,10 @@ endforeach; ?>
     <strong><?php esc_html_e('Fixed — Details','simpleflow'); ?></strong>
     <span class="qg-badge"><?php echo (int) count( (array) ($fx['details'] ?? array()) ); ?></span>
     <a class="button button-small" style="margin-left:auto"
-       href="<?php echo esc_url( add_query_arg( array(
+       href="<?php echo esc_url( wp_nonce_url( add_query_arg( array(
          'qg_export'=>'fixed_details','range'=>$data['range'],'form_id'=>$data['form_id'],
          'ym'=>(string)$ym,'ym2'=>(string)$ym2,'tables_ym'=>$qg_tables_ym,
-       ) ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
+       ) ), 'sfa_qg_export' ) ); ?>"><?php esc_html_e('Export CSV','simpleflow'); ?></a>
   </summary>
   <div class="qg-inner">
 <?php if ( ! empty( $fx['details'] ) ) : ?>
