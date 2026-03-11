@@ -14,9 +14,15 @@
 			}
 		}
 
+		self._debounceTimer = null;
+
 		self.init = function() {
 			self.$elems().on( 'change', function() {
-				self.doesValueExist( $( this ) );
+				const $el = $( this );
+				clearTimeout( self._debounceTimer );
+				self._debounceTimer = setTimeout( function() {
+					self.doesValueExist( $el );
+				}, 300 );
 			} );
 		};
 
@@ -47,7 +53,7 @@
 			self.removeIndicators();
 
 			var spinner  = new self.spinner( $elem, false, 'position:relative;top:2px;left:-25px;' ),
-				$buttons = $( '.gform_button' );
+				$buttons = $( '#gform_' + self.targetFormId + ' .gform_button' );
 
 			$buttons.prop( 'disabled', true );
 			self.$elems().prop( 'disabled', true );

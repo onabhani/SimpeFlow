@@ -17,6 +17,11 @@ class Validator {
 	private $rules = [];
 
 	/**
+	 * @var array Rules indexed by target form ID: [ form_id => [ rule, ... ] ]
+	 */
+	private $rules_by_form = [];
+
+	/**
 	 * @var bool Whether the main JS has been output
 	 */
 	private static $is_script_output = false;
@@ -26,6 +31,11 @@ class Validator {
 
 		if ( empty( $this->rules ) ) {
 			return;
+		}
+
+		foreach ( $this->rules as $rule ) {
+			$fid = (int) $rule['target_form_id'];
+			$this->rules_by_form[ $fid ][] = $rule;
 		}
 
 		add_filter( 'gform_validation', [ $this, 'validate' ] );
@@ -63,9 +73,7 @@ class Validator {
 	 * @return array
 	 */
 	private function get_rules_for_form( $form_id ) {
-		return array_filter( $this->rules, function ( $rule ) use ( $form_id ) {
-			return (int) $rule['target_form_id'] === (int) $form_id;
-		} );
+		return $this->rules_by_form[ (int) $form_id ] ?? [];
 	}
 
 	/**
@@ -93,34 +101,42 @@ class Validator {
 		}
 
 		foreach ( $rules as $rule ) {
-			$field_map = $this->get_field_map( $rule );
-			$target_field_ids = array_values( $field_map );
+			$field_map        = $this->get_field_map( $rule );
+			$target_field_ids = array_map( 'intval', array_values( $field_map ) );
+			$validate_blank   = isset( $rule['validate_blank_values'] ) ? (bool) $rule['validate_blank_values'] : true;
 
-			foreach ( $result['form']['fields'] as &$field ) {
-				if ( ! in_array( $field->id, $target_field_ids, false ) ) {
-					continue;
+			// Collect values once per rule (same for all target fields).
+			$values = [];
+			foreach ( $field_map as $source_fid => $target_fid ) {
+				$value = rgpost( 'input_' . $target_fid );
+				if ( ! rgblank( $value ) || $validate_blank ) {
+					$values[ $source_fid ] = $value;
 				}
-				if ( \GFFormsModel::is_field_hidden( $result['form'], $field, [] ) ) {
-					continue;
-				}
+			}
 
-				// Collect values for all mapped fields
-				$values = [];
-				$validate_blank = isset( $rule['validate_blank_values'] ) ? (bool) $rule['validate_blank_values'] : true;
+			if ( empty( $values ) ) {
+				continue;
+			}
 
-				foreach ( $field_map as $source_fid => $target_fid ) {
-					$value = rgpost( 'input_' . $target_fid );
-					if ( ! rgblank( $value ) || $validate_blank ) {
-						$values[ $source_fid ] = $value;
+			// Check existence once per rule instead of once per field.
+			$exists = $this->values_exist( $values, $rule['source_form_id'] );
+
+			if ( ! $exists ) {
+				$message = ! empty( $rule['validation_message'] )
+					? $rule['validation_message']
+					: __( 'Please enter a valid value.', 'simpleflow' );
+
+				foreach ( $result['form']['fields'] as &$field ) {
+					if ( ! in_array( (int) $field->id, $target_field_ids, true ) ) {
+						continue;
 					}
-				}
+					if ( \GFFormsModel::is_field_hidden( $result['form'], $field, [] ) ) {
+						continue;
+					}
 
-				if ( ! empty( $values ) && ! $this->values_exist( $values, $rule['source_form_id'] ) ) {
 					$field->failed_validation  = true;
-					$field->validation_message = isset( $rule['validation_message'] ) && $rule['validation_message']
-						? $rule['validation_message']
-						: __( 'Please enter a valid value.' );
-					$result['is_valid'] = false;
+					$field->validation_message = $message;
+					$result['is_valid']        = false;
 				}
 			}
 		}
@@ -150,9 +166,9 @@ class Validator {
 			'field_filters' => $field_filters,
 		];
 
-		$entries = \GFAPI::get_entries( $form_id, $search_criteria );
+		$count = \GFAPI::count_entries( $form_id, $search_criteria );
 
-		return ! empty( $entries );
+		return $count > 0;
 	}
 
 	/**
@@ -163,6 +179,29 @@ class Validator {
 			wp_send_json_error( 'Invalid nonce' );
 		}
 
+		// Rate limit: max 10 requests per minute per IP.
+		$client_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] )
+			&& apply_filters( 'sfa_cv_trust_x_forwarded_for', false )
+		) {
+			$forwarded = explode( ',', $_SERVER['HTTP_X_FORWARDED_FOR'] );
+			$first_ip  = trim( $forwarded[0] );
+			if ( filter_var( $first_ip, FILTER_VALIDATE_IP ) ) {
+				$client_ip = $first_ip;
+			}
+		}
+
+		$ip_hash    = md5( $client_ip );
+		$rate_key   = 'sfa_cv_rate_' . $ip_hash;
+		$rate_count = (int) get_transient( $rate_key );
+
+		if ( $rate_count >= 10 ) {
+			wp_send_json_error( 'Too many requests. Please try again shortly.', 429 );
+		}
+
+		set_transient( $rate_key, $rate_count + 1, MINUTE_IN_SECONDS );
+
 		$form_id = absint( rgpost( 'form_id' ) );
 		$values  = rgpost( 'values' );
 
@@ -170,11 +209,62 @@ class Validator {
 			wp_send_json_error( 'Invalid request' );
 		}
 
-		$exists = $this->values_exist( $values, $form_id );
+		// Validate that form_id and field keys match a configured rule.
+		$matched_rule = $this->find_matching_rule_for_ajax( $form_id, array_keys( $values ) );
+
+		if ( ! $matched_rule ) {
+			wp_send_json_error( 'Invalid request' );
+		}
+
+		// Sanitize values: only keep keys that are valid field IDs from the matched rule.
+		$field_map      = $this->get_field_map( $matched_rule );
+		$allowed_keys   = array_map( 'intval', array_keys( $field_map ) );
+		$clean_values   = [];
+
+		foreach ( $values as $key => $value ) {
+			$key = intval( $key );
+			if ( in_array( $key, $allowed_keys, true ) ) {
+				$clean_values[ $key ] = sanitize_text_field( $value );
+			}
+		}
+
+		if ( empty( $clean_values ) ) {
+			wp_send_json_error( 'Invalid request' );
+		}
+
+		$exists = $this->values_exist( $clean_values, $form_id );
 
 		wp_send_json( [
 			'doesValueExist' => $exists,
 		] );
+	}
+
+	/**
+	 * Find a configured rule that matches the AJAX request's source form and field keys.
+	 *
+	 * @param int   $source_form_id
+	 * @param array $submitted_keys Field IDs submitted in the request
+	 * @return array|null Matched rule or null
+	 */
+	private function find_matching_rule_for_ajax( $source_form_id, $submitted_keys ) {
+		$submitted_keys = array_map( 'intval', $submitted_keys );
+		sort( $submitted_keys );
+
+		foreach ( $this->rules as $rule ) {
+			if ( (int) $rule['source_form_id'] !== $source_form_id ) {
+				continue;
+			}
+
+			$field_map  = $this->get_field_map( $rule );
+			$rule_keys  = array_map( 'intval', array_keys( $field_map ) );
+			sort( $rule_keys );
+
+			if ( $rule_keys === $submitted_keys ) {
+				return $rule;
+			}
+		}
+
+		return null;
 	}
 
 	/**
