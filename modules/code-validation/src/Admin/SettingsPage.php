@@ -123,8 +123,8 @@ class SettingsPage {
 							<select name="target_form_id" id="target_form_id" required>
 								<option value="">-- Select --</option>
 								<?php foreach ( $forms as $f ): ?>
-									<option value="<?php echo $f['id']; ?>" <?php selected( $edit_rule['target_form_id'] ?? '', $f['id'] ); ?>>
-										<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo $f['id']; ?>)
+									<option value="<?php echo esc_attr( $f['id'] ); ?>" <?php selected( $edit_rule['target_form_id'] ?? '', $f['id'] ); ?>>
+										<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo esc_html( $f['id'] ); ?>)
 									</option>
 								<?php endforeach; ?>
 							</select>
@@ -145,8 +145,8 @@ class SettingsPage {
 							<select name="source_form_id" id="source_form_id" required>
 								<option value="">-- Select --</option>
 								<?php foreach ( $forms as $f ): ?>
-									<option value="<?php echo $f['id']; ?>" <?php selected( $edit_rule['source_form_id'] ?? '', $f['id'] ); ?>>
-										<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo $f['id']; ?>)
+									<option value="<?php echo esc_attr( $f['id'] ); ?>" <?php selected( $edit_rule['source_form_id'] ?? '', $f['id'] ); ?>>
+										<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo esc_html( $f['id'] ); ?>)
 									</option>
 								<?php endforeach; ?>
 							</select>

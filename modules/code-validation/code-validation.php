@@ -2,7 +2,7 @@
 /**
  * Code Validation Module for SimpleFlow
  * Validates confirmation codes entered by salesmen against existing entries
- * Version: 1.0.0
+ * Version: 1.0.2
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Module constants
 if ( ! defined( 'SFA_CV_VER' ) ) {
-	define( 'SFA_CV_VER', '1.0.0' );
+	define( 'SFA_CV_VER', '1.0.2' );
 }
 if ( ! defined( 'SFA_CV_DIR' ) ) {
 	define( 'SFA_CV_DIR', plugin_dir_path( __FILE__ ) );
