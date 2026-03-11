@@ -102,7 +102,7 @@ class Validator {
 
 		foreach ( $rules as $rule ) {
 			$field_map        = $this->get_field_map( $rule );
-			$target_field_ids = array_values( $field_map );
+			$target_field_ids = array_map( 'intval', array_values( $field_map ) );
 			$validate_blank   = isset( $rule['validate_blank_values'] ) ? (bool) $rule['validate_blank_values'] : true;
 
 			// Collect values once per rule (same for all target fields).
@@ -127,7 +127,7 @@ class Validator {
 					: __( 'Please enter a valid value.', 'simpleflow' );
 
 				foreach ( $result['form']['fields'] as &$field ) {
-					if ( ! in_array( $field->id, $target_field_ids, false ) ) {
+					if ( ! in_array( (int) $field->id, $target_field_ids, true ) ) {
 						continue;
 					}
 					if ( \GFFormsModel::is_field_hidden( $result['form'], $field, [] ) ) {
@@ -182,7 +182,9 @@ class Validator {
 		// Rate limit: max 10 requests per minute per IP.
 		$client_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
 
-		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
+		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] )
+			&& apply_filters( 'sfa_cv_trust_x_forwarded_for', false )
+		) {
 			$forwarded = explode( ',', $_SERVER['HTTP_X_FORWARDED_FOR'] );
 			$first_ip  = trim( $forwarded[0] );
 			if ( filter_var( $first_ip, FILTER_VALIDATE_IP ) ) {
