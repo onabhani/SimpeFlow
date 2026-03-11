@@ -124,7 +124,7 @@ class Validator {
 			if ( ! $exists ) {
 				$message = ! empty( $rule['validation_message'] )
 					? $rule['validation_message']
-					: __( 'Please enter a valid value.' );
+					: __( 'Please enter a valid value.', 'simpleflow' );
 
 				foreach ( $result['form']['fields'] as &$field ) {
 					if ( ! in_array( $field->id, $target_field_ids, false ) ) {
@@ -180,7 +180,17 @@ class Validator {
 		}
 
 		// Rate limit: max 10 requests per minute per IP.
-		$ip_hash    = md5( $_SERVER['REMOTE_ADDR'] ?? 'unknown' );
+		$client_ip = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
+
+		if ( ! empty( $_SERVER['HTTP_X_FORWARDED_FOR'] ) ) {
+			$forwarded = explode( ',', $_SERVER['HTTP_X_FORWARDED_FOR'] );
+			$first_ip  = trim( $forwarded[0] );
+			if ( filter_var( $first_ip, FILTER_VALIDATE_IP ) ) {
+				$client_ip = $first_ip;
+			}
+		}
+
+		$ip_hash    = md5( $client_ip );
 		$rate_key   = 'sfa_cv_rate_' . $ip_hash;
 		$rate_count = (int) get_transient( $rate_key );
 

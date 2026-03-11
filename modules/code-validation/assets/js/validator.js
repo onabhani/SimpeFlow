@@ -18,7 +18,7 @@
 
 		self.init = function() {
 			self.$elems().on( 'change', function() {
-				var $el = $( this );
+				const $el = $( this );
 				clearTimeout( self._debounceTimer );
 				self._debounceTimer = setTimeout( function() {
 					self.doesValueExist( $el );
