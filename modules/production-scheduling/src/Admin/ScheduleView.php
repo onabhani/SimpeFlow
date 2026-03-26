@@ -102,38 +102,37 @@ class ScheduleView {
 	}
 
 	/**
-	 * Render nearest appointment countdown card
+	 * Render nearest available slot countdown card
 	 */
 	private function render_nearest_appointment_card() {
-		$nearest = $this->get_nearest_appointment_date();
+		$nearest = $this->get_nearest_available_slot();
 
 		if ( ! $nearest ) {
 			?>
 			<div style="margin: 20px 0; padding: 20px; background: #f0f0f0; border-left: 4px solid #999; border-radius: 4px;">
-				<div style="font-size: 14px; color: #666;">No upcoming appointments found.</div>
+				<div style="font-size: 14px; color: #666;">No available slots found in the next 90 days.</div>
 			</div>
 			<?php
 			return;
 		}
 
 		$today = new \DateTime( current_time( 'Y-m-d' ) );
-		$appointment_date = new \DateTime( $nearest );
-		$diff = $today->diff( $appointment_date );
+		$slot_date = new \DateTime( $nearest );
+		$diff = $today->diff( $slot_date );
 		$days_away = (int) $diff->days;
 
-		// If the appointment is today
 		if ( $days_away === 0 ) {
 			$countdown_text = 'Today';
-			$border_color = '#dc3545';
-			$icon = '&#9200;'; // alarm clock
+			$border_color = '#28a745';
+			$icon = '&#9989;';
 		} elseif ( $days_away === 1 ) {
 			$countdown_text = 'Tomorrow';
-			$border_color = '#fd7e14';
-			$icon = '&#9200;';
+			$border_color = '#28a745';
+			$icon = '&#128197;';
 		} else {
 			$countdown_text = $days_away . ' days';
 			$border_color = '#0073aa';
-			$icon = '&#128197;'; // calendar
+			$icon = '&#128197;';
 		}
 
 		$formatted_date = date( 'l, M j, Y', strtotime( $nearest ) );
@@ -143,7 +142,7 @@ class ScheduleView {
 			<div style="display: flex; align-items: center; gap: 15px;">
 				<div style="font-size: 32px; line-height: 1;"><?php echo $icon; ?></div>
 				<div>
-					<div style="font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Nearest Appointment</div>
+					<div style="font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Nearest Available Slot</div>
 					<div style="font-size: 20px; font-weight: 700; color: #1d2327;">
 						<?php if ( $days_away === 0 ): ?>
 							<?php echo $countdown_text; ?> <span style="font-size: 14px; font-weight: 400; color: #666;">(<?php echo esc_html( $formatted_date ); ?>)</span>
@@ -159,30 +158,91 @@ class ScheduleView {
 	}
 
 	/**
-	 * Get the nearest upcoming installation date from all active confirmed bookings
+	 * Get the nearest working day with available capacity (not full)
 	 */
-	private function get_nearest_appointment_date() {
+	private function get_nearest_available_slot() {
 		global $wpdb;
 
-		$today = current_time( 'Y-m-d' );
+		$daily_capacity = (int) get_option( 'sfa_prod_daily_capacity', 10 );
+		$repo = new CapacityRepository();
 
-		$result = $wpdb->get_var(
-			$wpdb->prepare(
-				"SELECT MIN(inst.meta_value)
-				FROM {$wpdb->prefix}gf_entry_meta inst
-				INNER JOIN {$wpdb->prefix}gf_entry e ON inst.entry_id = e.id
-				LEFT JOIN {$wpdb->prefix}gf_entry_meta bs
-					ON inst.entry_id = bs.entry_id
-					AND bs.meta_key = '_prod_booking_status'
-				WHERE inst.meta_key = '_install_date'
-				AND inst.meta_value >= %s
-				AND e.status = 'active'
-				AND (bs.meta_value IS NULL OR bs.meta_value != 'canceled')",
-				$today
-			)
+		$working_days_json = get_option( 'sfa_prod_working_days', wp_json_encode( [ 0, 1, 2, 3, 4, 6 ] ) );
+		$working_days = json_decode( $working_days_json, true );
+		$holidays_json = get_option( 'sfa_prod_holidays', wp_json_encode( [] ) );
+		$holidays = json_decode( $holidays_json, true );
+
+		$holiday_dates = [];
+		foreach ( $holidays as $holiday ) {
+			if ( is_array( $holiday ) && isset( $holiday['date'] ) ) {
+				$holiday_dates[] = $holiday['date'];
+			} elseif ( is_string( $holiday ) ) {
+				$holiday_dates[] = $holiday;
+			}
+		}
+
+		$today = new \DateTime( current_time( 'Y-m-d' ) );
+		$end = clone $today;
+		$end->modify( '+90 days' );
+
+		$capacity_overrides = $repo->get_range( $today->format( 'Y-m-d' ), $end->format( 'Y-m-d' ) );
+
+		// Get used capacity per day for the range
+		$used_per_day = [];
+		$results = $wpdb->get_results(
+			"SELECT em.meta_value
+			FROM {$wpdb->prefix}gf_entry_meta em
+			INNER JOIN {$wpdb->prefix}gf_entry e ON em.entry_id = e.id
+			LEFT JOIN {$wpdb->prefix}gf_entry_meta bs
+				ON em.entry_id = bs.entry_id
+				AND bs.meta_key = '_prod_booking_status'
+			WHERE em.meta_key = '_prod_slots_allocation'
+			AND e.status = 'active'
+			AND (bs.meta_value IS NULL OR bs.meta_value != 'canceled')",
+			ARRAY_A
 		);
 
-		return $result ?: null;
+		foreach ( $results as $row ) {
+			$allocation = json_decode( $row['meta_value'], true );
+			if ( ! is_array( $allocation ) ) {
+				continue;
+			}
+			foreach ( $allocation as $date => $lm ) {
+				if ( ! isset( $used_per_day[ $date ] ) ) {
+					$used_per_day[ $date ] = 0;
+				}
+				$used_per_day[ $date ] += (int) $lm;
+			}
+		}
+
+		// Walk each day from today looking for first available slot
+		$current = clone $today;
+		while ( $current <= $end ) {
+			$date_str = $current->format( 'Y-m-d' );
+			$day_of_week = (int) $current->format( 'w' );
+
+			// Skip non-working days and holidays
+			if ( ! in_array( $day_of_week, $working_days, true ) || in_array( $date_str, $holiday_dates, true ) ) {
+				$current->modify( '+1 day' );
+				continue;
+			}
+
+			// Get capacity for this day
+			$cap = isset( $capacity_overrides[ $date_str ] ) ? (int) $capacity_overrides[ $date_str ] : $daily_capacity;
+			if ( $cap <= 0 ) {
+				$current->modify( '+1 day' );
+				continue;
+			}
+
+			$used = isset( $used_per_day[ $date_str ] ) ? $used_per_day[ $date_str ] : 0;
+
+			if ( $used < $cap ) {
+				return $date_str;
+			}
+
+			$current->modify( '+1 day' );
+		}
+
+		return null;
 	}
 
 	/**
