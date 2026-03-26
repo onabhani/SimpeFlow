@@ -88,6 +88,8 @@ class ScheduleView {
 
 			<?php $this->render_entry_search(); ?>
 
+			<?php $this->render_nearest_appointment_card(); ?>
+
 			<?php $this->render_month_navigation( $date ); ?>
 
 			<?php $this->render_calendar( $date, $bookings, $daily_capacity, $capacity_overrides, $off_days, $holidays ); ?>
@@ -97,6 +99,90 @@ class ScheduleView {
 			<?php $this->render_bookings_list( $bookings ); ?>
 		</div>
 		<?php
+	}
+
+	/**
+	 * Render nearest appointment countdown card
+	 */
+	private function render_nearest_appointment_card() {
+		$nearest = $this->get_nearest_appointment_date();
+
+		if ( ! $nearest ) {
+			?>
+			<div style="margin: 20px 0; padding: 20px; background: #f0f0f0; border-left: 4px solid #999; border-radius: 4px;">
+				<div style="font-size: 14px; color: #666;">No upcoming appointments found.</div>
+			</div>
+			<?php
+			return;
+		}
+
+		$today = new \DateTime( current_time( 'Y-m-d' ) );
+		$appointment_date = new \DateTime( $nearest );
+		$diff = $today->diff( $appointment_date );
+		$days_away = (int) $diff->days;
+
+		// If the appointment is today
+		if ( $days_away === 0 ) {
+			$countdown_text = 'Today';
+			$border_color = '#dc3545';
+			$icon = '&#9200;'; // alarm clock
+		} elseif ( $days_away === 1 ) {
+			$countdown_text = 'Tomorrow';
+			$border_color = '#fd7e14';
+			$icon = '&#9200;';
+		} else {
+			$countdown_text = $days_away . ' days';
+			$border_color = '#0073aa';
+			$icon = '&#128197;'; // calendar
+		}
+
+		$formatted_date = date( 'l, M j, Y', strtotime( $nearest ) );
+
+		?>
+		<div style="margin: 20px 0; padding: 20px; background: #fff; border-left: 4px solid <?php echo $border_color; ?>; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+			<div style="display: flex; align-items: center; gap: 15px;">
+				<div style="font-size: 32px; line-height: 1;"><?php echo $icon; ?></div>
+				<div>
+					<div style="font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">Nearest Appointment</div>
+					<div style="font-size: 20px; font-weight: 700; color: #1d2327;">
+						<?php if ( $days_away === 0 ): ?>
+							<?php echo $countdown_text; ?> <span style="font-size: 14px; font-weight: 400; color: #666;">(<?php echo esc_html( $formatted_date ); ?>)</span>
+						<?php else: ?>
+							After: <span style="color: <?php echo $border_color; ?>;"><?php echo $countdown_text; ?></span>
+							<span style="font-size: 14px; font-weight: 400; color: #666;">(<?php echo esc_html( $formatted_date ); ?>)</span>
+						<?php endif; ?>
+					</div>
+				</div>
+			</div>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Get the nearest upcoming installation date from all active confirmed bookings
+	 */
+	private function get_nearest_appointment_date() {
+		global $wpdb;
+
+		$today = current_time( 'Y-m-d' );
+
+		$result = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT MIN(inst.meta_value)
+				FROM {$wpdb->prefix}gf_entry_meta inst
+				INNER JOIN {$wpdb->prefix}gf_entry e ON inst.entry_id = e.id
+				LEFT JOIN {$wpdb->prefix}gf_entry_meta bs
+					ON inst.entry_id = bs.entry_id
+					AND bs.meta_key = '_prod_booking_status'
+				WHERE inst.meta_key = '_install_date'
+				AND inst.meta_value >= %s
+				AND e.status = 'active'
+				AND (bs.meta_value IS NULL OR bs.meta_value != 'canceled')",
+				$today
+			)
+		);
+
+		return $result ?: null;
 	}
 
 	/**
