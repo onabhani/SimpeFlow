@@ -34,15 +34,15 @@
 			var values = {};
 			// Invert fieldMap (source => target) to (target => source)
 			// so we send source field IDs as keys, matching what the server expects.
-			var targetToSource = {};
-			for ( var sourceId in self.fieldMap ) {
+			const targetToSource = {};
+			for ( const sourceId in self.fieldMap ) {
 				if ( self.fieldMap.hasOwnProperty( sourceId ) ) {
 					targetToSource[ String( self.fieldMap[ sourceId ] ) ] = sourceId;
 				}
 			}
 			self.$elems().each( function() {
-				var inputId   = gf_get_input_id_by_html_id( $( this ).attr( 'id' ) );
-				var sourceKey = targetToSource[ String( inputId ) ] || inputId;
+				const inputId   = gf_get_input_id_by_html_id( $( this ).attr( 'id' ) );
+				const sourceKey = targetToSource[ String( inputId ) ] || inputId;
 				values[ sourceKey ] = $( this ).val();
 			} );
 			return values;
