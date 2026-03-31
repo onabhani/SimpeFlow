@@ -5,10 +5,11 @@
 		return;
 	}
 
-	var debounceTimer = null;
-	var currentXhr    = null;
-	var DEBOUNCE_MS   = 300;
-	var MIN_DIGITS    = 9;
+	var debounceTimer  = null;
+	var currentXhr     = null;
+	var DEBOUNCE_MS    = 100;
+	var MIN_DIGITS     = 9;
+	var lastLookup     = '';
 
 	/**
 	 * Strip phone to digits only.
@@ -128,12 +129,19 @@
 		clearTimeout(debounceTimer);
 
 		if (digits.length < MIN_DIGITS) {
+			lastLookup = '';
 			return;
 		}
 
-		debounceTimer = setTimeout(function () {
+		// Fire immediately on first valid input or when digits changed; debounce the rest
+		if (digits !== lastLookup) {
+			lastLookup = digits;
 			doLookup(digits, $this);
-		}, DEBOUNCE_MS);
+		} else {
+			debounceTimer = setTimeout(function () {
+				doLookup(digits, $this);
+			}, DEBOUNCE_MS);
+		}
 	});
 
 })(jQuery);
