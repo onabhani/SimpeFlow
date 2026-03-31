@@ -64,7 +64,7 @@ class CustomerTable {
 			UNIQUE KEY    uq_phone (phone),
 			UNIQUE KEY    uq_phone_alt (phone_alt),
 			KEY           idx_status_created (status, created_at),
-			KEY           idx_gf_entry_id (gf_entry_id),
+			UNIQUE KEY    uq_gf_entry_id (gf_entry_id),
 			KEY           idx_odoo_id (odoo_id),
 			KEY           idx_file_number (file_number)
 		) {$charset};";
@@ -490,17 +490,17 @@ class CustomerTable {
 			$data['phone_alt'] = '' !== $normalized_alt ? $normalized_alt : null;
 		}
 
-		// Validate enum-like fields — default to safe value if invalid
+		// Validate enum-like fields — fail-fast to surface upstream bugs
 		if ( isset( $data['customer_type'] ) && ! in_array( $data['customer_type'], self::VALID_CUSTOMER_TYPES, true ) ) {
-			$data['customer_type'] = 'individual';
+			return false;
 		}
 
 		if ( isset( $data['source'] ) && ! in_array( $data['source'], self::VALID_SOURCES, true ) ) {
-			$data['source'] = 'manual';
+			return false;
 		}
 
 		if ( isset( $data['status'] ) && ! in_array( $data['status'], self::VALID_STATUSES, true ) ) {
-			$data['status'] = 'active';
+			return false;
 		}
 
 		// Sanitize strings

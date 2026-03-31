@@ -15,6 +15,20 @@ namespace SFA\CustomerLookup\Database;
 class CustomerMigrate {
 
 	/**
+	 * Map legacy GF customer_type values to valid enum values.
+	 * Case-insensitive, unmapped values default to 'individual'.
+	 */
+	private static function normalize_customer_type( string $value ): string {
+		$map = [
+			'individual' => 'individual',
+			'company'    => 'company',
+			'project'    => 'project',
+		];
+		$lower = strtolower( trim( $value ) );
+		return $map[ $lower ] ?? 'individual';
+	}
+
+	/**
 	 * Run the migration.
 	 *
 	 * @param bool $dry_run If true, validate and report without inserting.
@@ -116,6 +130,12 @@ class CustomerMigrate {
 					continue;
 				}
 
+				// Check if this GF entry was already imported (idempotent reruns)
+				if ( CustomerTable::get_by_gf_entry_id( $entry_id ) ) {
+					$result['skipped_duplicate']++;
+					continue;
+				}
+
 				if ( CustomerTable::phone_exists( $normalized ) ) {
 					$result['skipped_duplicate']++;
 					continue;
@@ -129,12 +149,17 @@ class CustomerMigrate {
 					'source'      => 'migration',
 				];
 
-				// Map optional fields
-				$optional = [ 'phone_alt', 'name_english', 'email', 'address', 'customer_type', 'branch', 'file_number' ];
+				// Map optional fields with legacy value normalization
+				$optional = [ 'phone_alt', 'name_english', 'email', 'address', 'branch', 'file_number' ];
 				foreach ( $optional as $key ) {
 					if ( ! empty( $fields[ $key ] ) ) {
 						$insert_data[ $key ] = $fields[ $key ];
 					}
+				}
+
+				// Normalize customer_type from GF (may be capitalized or non-standard)
+				if ( ! empty( $fields['customer_type'] ) ) {
+					$insert_data['customer_type'] = self::normalize_customer_type( $fields['customer_type'] );
 				}
 
 				if ( $dry_run ) {
@@ -227,6 +252,16 @@ class CustomerMigrate {
 			return;
 		}
 
+		$valid_modes = [ '', 'dry-run', 'verify' ];
+		if ( ! in_array( $mode, $valid_modes, true ) ) {
+			echo "Unknown mode: \"{$mode}\"\n";
+			echo "Usage:\n";
+			echo "  run_cli()          — real migration\n";
+			echo "  run_cli(\"dry-run\") — preview without writing\n";
+			echo "  run_cli(\"verify\")  — check migration completeness\n";
+			return;
+		}
+
 		if ( 'verify' === $mode ) {
 			self::print_verify();
 			return;
@@ -234,6 +269,15 @@ class CustomerMigrate {
 
 		$is_dry_run = ( 'dry-run' === $mode );
 		$result     = self::run( $is_dry_run );
+
+		// Detect startup/fatal errors (total_entries = 0 with errors present)
+		if ( 0 === $result['total_entries'] && ! empty( $result['errors'] ) ) {
+			echo "=== ERROR ===\n";
+			foreach ( $result['errors'] as $msg ) {
+				echo $msg . "\n";
+			}
+			return;
+		}
 
 		if ( $is_dry_run ) {
 			echo "=== DRY RUN (no data written) ===\n";
