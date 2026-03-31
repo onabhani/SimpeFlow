@@ -9,14 +9,39 @@ namespace SFA\CustomerLookup\Database;
  */
 class CustomerRepository {
 
+	/** @var array|null Cached settings loaded once per request. */
+	private static ?array $settings = null;
+
+	/**
+	 * Load module settings once per request.
+	 *
+	 * @return array{form_id: int, field_map: array, use_wpdb: bool}
+	 */
+	private static function get_settings(): array {
+		if ( null === self::$settings ) {
+			self::$settings = [
+				'form_id'   => (int) get_option( 'sfa_cl_source_form_id', 0 ),
+				'field_map' => get_option( 'sfa_cl_field_map', [] ),
+				'use_wpdb'  => (bool) get_option( 'sfa_cl_use_direct_db', false ),
+			];
+		}
+		return self::$settings;
+	}
+
+	/**
+	 * Transient key for a phone lookup.
+	 */
+	private static function transient_key( string $phone ): string {
+		return 'sfa_cl_' . substr( md5( $phone ), 0, 12 );
+	}
+
 	/**
 	 * Invalidate cached lookup for a specific phone number.
 	 *
 	 * @param string $phone
 	 */
 	public static function invalidate_cache( string $phone ): void {
-		$cache_key = 'sfa_cl_' . md5( $phone );
-		wp_cache_delete( $cache_key, 'sfa_customer_lookup' );
+		delete_transient( self::transient_key( $phone ) );
 	}
 
 	/**
@@ -26,14 +51,15 @@ class CustomerRepository {
 	 * @param array $entry
 	 */
 	public static function on_entry_changed( $entry ): void {
+		$settings  = self::get_settings();
+		$source_id = $settings['form_id'];
 		$form_id   = (int) ( $entry['form_id'] ?? 0 );
-		$source_id = (int) get_option( 'sfa_cl_source_form_id', 0 );
 
 		if ( ! $source_id || $form_id !== $source_id ) {
 			return;
 		}
 
-		$field_map = get_option( 'sfa_cl_field_map', [] );
+		$field_map = $settings['field_map'];
 
 		// Clear cache for both phone fields if present
 		foreach ( [ 'phone', 'phone_alt' ] as $key ) {
@@ -48,6 +74,9 @@ class CustomerRepository {
 				}
 			}
 		}
+
+		// Reset static cache so next call in this request re-reads
+		self::$settings = null;
 	}
 
 	/**
@@ -60,40 +89,33 @@ class CustomerRepository {
 	 * @return array|null
 	 */
 	public static function find_by_phone( string $phone ): ?array {
-		$form_id   = (int) get_option( 'sfa_cl_source_form_id', 0 );
-		$field_map = get_option( 'sfa_cl_field_map', [] );
+		$settings  = self::get_settings();
+		$form_id   = $settings['form_id'];
+		$field_map = $settings['field_map'];
 
 		if ( ! $form_id || empty( $field_map ) || empty( $field_map['phone'] ) ) {
 			return null;
 		}
 
-		// Check object cache first
-		$cache_key = 'sfa_cl_' . md5( $phone );
-		$cached    = wp_cache_get( $cache_key, 'sfa_customer_lookup' );
+		// Check transient cache (persists across AJAX requests)
+		$t_key  = self::transient_key( $phone );
+		$cached = get_transient( $t_key );
 
 		if ( false !== $cached ) {
-			// Sentinel value for cached "not found"
 			if ( is_array( $cached ) && isset( $cached['__null'] ) ) {
 				return null;
 			}
 			return $cached;
 		}
 
-		$use_wpdb = (bool) get_option( 'sfa_cl_use_direct_db', false );
-
-		if ( $use_wpdb ) {
+		if ( $settings['use_wpdb'] ) {
 			$result = self::query_wpdb( $phone, $form_id, $field_map );
 		} else {
 			$result = self::query_gfapi( $phone, $form_id, $field_map );
 		}
 
 		// Cache both hits and misses (5-minute TTL)
-		wp_cache_set(
-			$cache_key,
-			$result ?? [ '__null' => true ],
-			'sfa_customer_lookup',
-			300
-		);
+		set_transient( $t_key, $result ?? [ '__null' => true ], 300 );
 
 		return $result;
 	}
