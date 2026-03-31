@@ -52,7 +52,7 @@ class CustomersAdmin {
 		add_submenu_page(
 			'simpleflow',
 			__( 'Customers', 'simpleflow' ),
-			__( 'العملاء', 'simpleflow' ),
+			__( 'Customers', 'simpleflow' ),
 			'gform_full_access',
 			self::MENU_SLUG,
 			[ $this, 'render_page' ]
@@ -313,6 +313,10 @@ class CustomersAdmin {
 
 		if ( ! empty( $customer->odoo_id ) ) {
 			$fields['odoo_id'] = __( 'Odoo ID', 'simpleflow' );
+		}
+
+		if ( ! empty( $customer->gf_entry_id ) ) {
+			$fields['gf_entry_id'] = __( 'GF Entry ID', 'simpleflow' );
 		}
 
 		$status_labels = self::status_labels();

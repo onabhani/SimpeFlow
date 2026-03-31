@@ -4,7 +4,7 @@ namespace SFA\CustomerLookup\Database;
 /**
  * Customer Migrate
  *
- * One-time migration from Gravity Forms entries to wp_sf_customers.
+ * One-time migration from Gravity Forms entries to sfa_cl_customers.
  * Restricted to WP-CLI context only.
  *
  * Intentional deviation from the "no direct GF queries" rule:
@@ -17,16 +17,12 @@ class CustomerMigrate {
 	/**
 	 * Run the migration.
 	 *
-	 * @return array { inserted: int, skipped_duplicate: int, skipped_incomplete: int, errors: array }
+	 * @param bool $dry_run If true, validate and report without inserting.
+	 * @return array { inserted: int, skipped_duplicate: int, skipped_incomplete: int, would_insert: int, total_entries: int, errors: array }
 	 */
-	public static function run(): array {
+	public static function run( bool $dry_run = false ): array {
 		if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
-			return [
-				'inserted'           => 0,
-				'skipped_duplicate'  => 0,
-				'skipped_incomplete' => 0,
-				'errors'             => [ 0 => 'Migration can only be run via WP-CLI.' ],
-			];
+			return self::error_result( 'Migration can only be run via WP-CLI.' );
 		}
 
 		$settings  = CustomerRepository::get_settings();
@@ -34,12 +30,7 @@ class CustomerMigrate {
 		$field_map = $settings['field_map'];
 
 		if ( ! $form_id || empty( $field_map ) || empty( $field_map['phone'] ) ) {
-			return [
-				'inserted'           => 0,
-				'skipped_duplicate'  => 0,
-				'skipped_incomplete' => 0,
-				'errors'             => [ 0 => 'Source form or phone field not configured. Check Customer Lookup settings.' ],
-			];
+			return self::error_result( 'Source form or phone field not configured. Check Customer Lookup settings.' );
 		}
 
 		global $wpdb;
@@ -60,26 +51,23 @@ class CustomerMigrate {
 		) );
 
 		if ( empty( $entry_ids ) ) {
-			return [
-				'inserted'           => 0,
-				'skipped_duplicate'  => 0,
-				'skipped_incomplete' => 0,
-				'errors'             => [ 0 => 'No active entries found in source form.' ],
-			];
+			return self::error_result( 'No active entries found in source form.' );
 		}
 
 		$result = [
 			'inserted'           => 0,
 			'skipped_duplicate'  => 0,
 			'skipped_incomplete' => 0,
+			'would_insert'       => 0,
+			'total_entries'      => count( $entry_ids ),
 			'errors'             => [],
 		];
 
-		$field_ids    = array_keys( $flipped );
-		$batches      = array_chunk( $entry_ids, 100 );
+		$field_ids = array_keys( $flipped );
+		$batches   = array_chunk( $entry_ids, 100 );
 
 		foreach ( $batches as $batch ) {
-			$id_placeholders = implode( ', ', array_fill( 0, count( $batch ), '%d' ) );
+			$id_placeholders  = implode( ', ', array_fill( 0, count( $batch ), '%d' ) );
 			$fid_placeholders = implode( ', ', array_fill( 0, count( $field_ids ), '%s' ) );
 
 			// Batch-fetch all relevant meta for this chunk of entries
@@ -112,7 +100,7 @@ class CustomerMigrate {
 				$entry_id = (int) $entry_id;
 				$fields   = $grouped[ $entry_id ] ?? [];
 
-				$phone      = $fields['phone'] ?? '';
+				$phone       = $fields['phone'] ?? '';
 				$name_arabic = $fields['name_arabic'] ?? '';
 
 				// Validate required fields
@@ -133,11 +121,12 @@ class CustomerMigrate {
 					continue;
 				}
 
-				// Build insert data
+				// Build insert data — include gf_entry_id to link back to GF
 				$insert_data = [
-					'phone'      => $phone,
+					'phone'       => $phone,
 					'name_arabic' => $name_arabic,
-					'source'     => 'migration',
+					'gf_entry_id' => $entry_id,
+					'source'      => 'migration',
 				];
 
 				// Map optional fields
@@ -148,10 +137,19 @@ class CustomerMigrate {
 					}
 				}
 
+				if ( $dry_run ) {
+					$result['would_insert']++;
+					continue;
+				}
+
 				$id = CustomerTable::insert( $insert_data );
 
 				if ( false === $id ) {
-					$result['errors'][ $entry_id ] = $wpdb->last_error ?: 'Insert failed (validation or DB error)';
+					$error = $wpdb->last_error;
+					if ( ! $error ) {
+						$error = 'Validation failed — phone: "' . ( $insert_data['phone'] ?? '' ) . '", name: "' . mb_substr( $insert_data['name_arabic'] ?? '', 0, 30 ) . '"';
+					}
+					$result['errors'][ $entry_id ] = $error;
 				} else {
 					$result['inserted']++;
 				}
@@ -162,25 +160,150 @@ class CustomerMigrate {
 	}
 
 	/**
-	 * CLI-friendly wrapper that prints results.
+	 * Verify migration completeness.
+	 * Compares GF source entries against sfa_cl_customers to find gaps.
+	 *
+	 * @return array { total_gf: int, total_sf: int, missing: int[], orphaned: int[] }
 	 */
-	public static function run_cli(): void {
+	public static function verify(): array {
+		if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
+			return [ 'error' => 'Verification can only be run via WP-CLI.' ];
+		}
+
+		$settings  = CustomerRepository::get_settings();
+		$form_id   = $settings['form_id'];
+		$field_map = $settings['field_map'];
+
+		if ( ! $form_id || empty( $field_map['phone'] ) ) {
+			return [ 'error' => 'Source form or phone field not configured.' ];
+		}
+
+		global $wpdb;
+
+		$sf_table = CustomerTable::table_name();
+
+		// All active GF entry IDs for the source form
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$gf_ids = $wpdb->get_col( $wpdb->prepare(
+			"SELECT id FROM {$wpdb->prefix}gf_entry WHERE form_id = %d AND status = 'active' ORDER BY id ASC",
+			$form_id
+		) );
+		$gf_ids = array_map( 'intval', $gf_ids );
+
+		// All gf_entry_id values stored in sfa_cl_customers
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$sf_ids = $wpdb->get_col(
+			"SELECT gf_entry_id FROM {$sf_table} WHERE gf_entry_id IS NOT NULL"
+		);
+		$sf_ids = array_map( 'intval', $sf_ids );
+
+		// Missing = in GF but not in SF table (not yet migrated)
+		$missing = array_values( array_diff( $gf_ids, $sf_ids ) );
+
+		// Orphaned = in SF table but no longer in GF (entry was deleted/trashed)
+		$orphaned = array_values( array_diff( $sf_ids, $gf_ids ) );
+
+		return [
+			'total_gf'  => count( $gf_ids ),
+			'total_sf'  => count( $sf_ids ),
+			'missing'   => $missing,
+			'orphaned'  => $orphaned,
+		];
+	}
+
+	/**
+	 * CLI-friendly wrapper that prints results.
+	 *
+	 * Usage:
+	 *   wp eval 'SFA\CustomerLookup\Database\CustomerMigrate::run_cli("dry-run");'
+	 *   wp eval 'SFA\CustomerLookup\Database\CustomerMigrate::run_cli("verify");'
+	 *   wp eval 'SFA\CustomerLookup\Database\CustomerMigrate::run_cli();'
+	 *
+	 * @param string $mode "dry-run", "verify", or empty for real migration.
+	 */
+	public static function run_cli( string $mode = '' ): void {
 		if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
 			echo "This command can only be run via WP-CLI.\n";
 			return;
 		}
 
-		$result = self::run();
+		if ( 'verify' === $mode ) {
+			self::print_verify();
+			return;
+		}
 
-		echo "Inserted: {$result['inserted']}\n";
-		echo "Skipped (duplicate): {$result['skipped_duplicate']}\n";
-		echo "Skipped (incomplete): {$result['skipped_incomplete']}\n";
-		echo "Errors: " . count( $result['errors'] ) . "\n";
+		$is_dry_run = ( 'dry-run' === $mode );
+		$result     = self::run( $is_dry_run );
 
-		if ( ! empty( $result['errors'] ) ) {
-			foreach ( $result['errors'] as $eid => $msg ) {
-				echo "  Entry {$eid}: {$msg}\n";
+		if ( $is_dry_run ) {
+			echo "=== DRY RUN (no data written) ===\n";
+			echo "Total GF entries: {$result['total_entries']}\n";
+			echo "Would insert: {$result['would_insert']}\n";
+			echo "Skipped (duplicate): {$result['skipped_duplicate']}\n";
+			echo "Skipped (incomplete): {$result['skipped_incomplete']}\n";
+			$accounted = $result['would_insert'] + $result['skipped_duplicate'] + $result['skipped_incomplete'];
+			echo "Unaccounted: " . ( $result['total_entries'] - $accounted ) . "\n";
+		} else {
+			echo "=== MIGRATION COMPLETE ===\n";
+			echo "Total GF entries: {$result['total_entries']}\n";
+			echo "Inserted: {$result['inserted']}\n";
+			echo "Skipped (duplicate): {$result['skipped_duplicate']}\n";
+			echo "Skipped (incomplete): {$result['skipped_incomplete']}\n";
+			echo "Errors: " . count( $result['errors'] ) . "\n";
+
+			if ( ! empty( $result['errors'] ) ) {
+				foreach ( $result['errors'] as $eid => $msg ) {
+					echo "  Entry {$eid}: {$msg}\n";
+				}
+			}
+
+			// Auto-verify after migration
+			echo "\n";
+			self::print_verify();
+		}
+	}
+
+	/**
+	 * Print verification results.
+	 */
+	private static function print_verify(): void {
+		$v = self::verify();
+
+		if ( isset( $v['error'] ) ) {
+			echo "Verify error: {$v['error']}\n";
+			return;
+		}
+
+		echo "=== VERIFICATION ===\n";
+		echo "GF source entries: {$v['total_gf']}\n";
+		echo "SF customer records (with gf_entry_id): {$v['total_sf']}\n";
+		echo "Missing (in GF, not in SF): " . count( $v['missing'] ) . "\n";
+		echo "Orphaned (in SF, not in GF): " . count( $v['orphaned'] ) . "\n";
+
+		if ( ! empty( $v['missing'] ) ) {
+			$sample = array_slice( $v['missing'], 0, 20 );
+			echo "  Missing entry IDs (first 20): " . implode( ', ', $sample ) . "\n";
+			if ( count( $v['missing'] ) > 20 ) {
+				echo "  ... and " . ( count( $v['missing'] ) - 20 ) . " more\n";
 			}
 		}
+
+		if ( empty( $v['missing'] ) && empty( $v['orphaned'] ) ) {
+			echo "All entries accounted for.\n";
+		}
+	}
+
+	/**
+	 * Build an error result array.
+	 */
+	private static function error_result( string $message ): array {
+		return [
+			'inserted'           => 0,
+			'skipped_duplicate'  => 0,
+			'skipped_incomplete' => 0,
+			'would_insert'       => 0,
+			'total_entries'      => 0,
+			'errors'             => [ 0 => $message ],
+		];
 	}
 }
