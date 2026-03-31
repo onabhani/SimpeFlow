@@ -74,14 +74,34 @@ class CustomerTable {
 	}
 
 	/**
-	 * Normalize a phone number to digits-only, strip leading zeros.
+	 * Minimum digits for a phone number to be considered valid.
+	 */
+	const MIN_PHONE_DIGITS = 9;
+
+	/**
+	 * Normalize a phone number to digits-only canonical form.
+	 *
+	 * Handles: +966561133336, 0561133336, +9660561133336, 966561133336
+	 * All normalize to: 966561133336
 	 *
 	 * @param string $phone Raw phone input.
-	 * @return string Digits-only, no leading zeros.
+	 * @return string Digits-only canonical form, or empty if too short.
 	 */
 	public static function normalize_phone( string $phone ): string {
 		$digits = preg_replace( '/[^0-9]/', '', $phone );
-		return ltrim( $digits, '0' );
+		$digits = ltrim( $digits, '0' );
+
+		// Fix Saudi trunk prefix: 9660XXXXXXXX → 966XXXXXXXX
+		if ( preg_match( '/^9660(\d{8,})$/', $digits, $m ) ) {
+			$digits = '966' . $m[1];
+		}
+
+		// Too short to be a real phone number (e.g. just "966")
+		if ( strlen( $digits ) < self::MIN_PHONE_DIGITS ) {
+			return '';
+		}
+
+		return $digits;
 	}
 
 	/**
