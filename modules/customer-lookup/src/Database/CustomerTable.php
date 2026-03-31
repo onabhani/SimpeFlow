@@ -13,12 +13,13 @@ class CustomerTable {
 
 	const VALID_CUSTOMER_TYPES = [ 'individual', 'company', 'project' ];
 	const VALID_SOURCES        = [ 'manual', 'odoo', 'migration' ];
-	const VALID_STATUSES       = [ 'active', 'inactive' ];
+	const VALID_STATUSES       = [ 'active', 'inactive', 'needs_review' ];
 
 	const ALLOWED_COLUMNS = [
 		'phone', 'phone_alt', 'name_arabic', 'name_english',
 		'email', 'address', 'customer_type', 'branch',
 		'file_number', 'odoo_id', 'gf_entry_id', 'source', 'status',
+		'review_note',
 	];
 
 	const SORTABLE_COLUMNS = [
@@ -57,7 +58,8 @@ class CustomerTable {
 			odoo_id       BIGINT UNSIGNED DEFAULT NULL,
 			gf_entry_id   BIGINT UNSIGNED DEFAULT NULL,
 			source        VARCHAR(20)  NOT NULL DEFAULT 'manual',
-			status        VARCHAR(10)  NOT NULL DEFAULT 'active',
+			status        VARCHAR(20)  NOT NULL DEFAULT 'active',
+			review_note   TEXT         DEFAULT NULL,
 			created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY   (id),
@@ -498,8 +500,10 @@ class CustomerTable {
 		// Strip unknown keys
 		$data = array_intersect_key( $data, array_flip( self::ALLOWED_COLUMNS ) );
 
-		// Normalize phone fields
-		if ( isset( $data['phone'] ) ) {
+		// Normalize phone fields (skip for needs_review records with placeholder phones)
+		$is_review = ( $data['status'] ?? '' ) === 'needs_review';
+
+		if ( isset( $data['phone'] ) && ! $is_review ) {
 			$data['phone'] = self::normalize_phone( $data['phone'] );
 			if ( '' === $data['phone'] ) {
 				return false;
@@ -538,6 +542,10 @@ class CustomerTable {
 
 		if ( isset( $data['address'] ) ) {
 			$data['address'] = sanitize_textarea_field( $data['address'] );
+		}
+
+		if ( isset( $data['review_note'] ) ) {
+			$data['review_note'] = sanitize_textarea_field( $data['review_note'] );
 		}
 
 		if ( isset( $data['odoo_id'] ) ) {

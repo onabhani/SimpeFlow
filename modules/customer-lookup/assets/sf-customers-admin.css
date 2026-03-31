@@ -29,6 +29,10 @@
 	background: #e5e7eb;
 	color: #6b7280;
 }
+.sfa-badge--needs_review {
+	background: #fef3c7;
+	color: #92400e;
+}
 
 /* Source badges */
 .sfa-badge--source-manual {
