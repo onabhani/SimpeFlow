@@ -18,8 +18,9 @@ class CustomersAdmin {
 	 */
 	private static function status_labels(): array {
 		return [
-			'active'   => __( 'Active', 'simpleflow' ),
-			'inactive' => __( 'Inactive', 'simpleflow' ),
+			'active'       => __( 'Active', 'simpleflow' ),
+			'inactive'     => __( 'Inactive', 'simpleflow' ),
+			'needs_review' => __( 'Needs Review', 'simpleflow' ),
 		];
 	}
 
@@ -317,6 +318,10 @@ class CustomersAdmin {
 
 		if ( ! empty( $customer->gf_entry_id ) ) {
 			$fields['gf_entry_id'] = __( 'GF Entry ID', 'simpleflow' );
+		}
+
+		if ( ! empty( $customer->review_note ) ) {
+			$fields['review_note'] = __( 'Review Note', 'simpleflow' );
 		}
 
 		$status_labels = self::status_labels();

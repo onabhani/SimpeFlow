@@ -162,11 +162,6 @@ class CustomerMigrate {
 					continue;
 				}
 
-				if ( CustomerTable::phone_exists( $normalized ) ) {
-					$result['skipped_duplicate']++;
-					continue;
-				}
-
 				// Build insert data — include gf_entry_id to link back to GF
 				$insert_data = [
 					'phone'       => $phone,
@@ -188,11 +183,19 @@ class CustomerMigrate {
 					$insert_data['customer_type'] = self::normalize_customer_type( $fields['customer_type'] );
 				}
 
+				// Check for duplicate phone — mark for review instead of skipping
+				$review_note = '';
+				if ( CustomerTable::phone_exists( $normalized ) ) {
+					$review_note = 'Duplicate phone: ' . $normalized . ' — already exists in another record';
+					$insert_data['phone']  = 'REVIEW_' . $entry_id;
+					$insert_data['status'] = 'needs_review';
+					$insert_data['review_note'] = $review_note;
+				}
+
 				if ( $dry_run ) {
-					// Run the same validation as insert() to get accurate counts
 					$validated = CustomerTable::sanitize_data( $insert_data );
 					if ( false === $validated ) {
-						$result['errors'][ $entry_id ] = 'Validation failed — phone: "' . ( $insert_data['phone'] ?? '' ) . '", type: "' . ( $insert_data['customer_type'] ?? '' ) . '"';
+						$result['errors'][ $entry_id ] = 'Validation failed — phone: "' . ( $phone ?? '' ) . '", type: "' . ( $insert_data['customer_type'] ?? '' ) . '"';
 					} else {
 						$result['would_insert']++;
 					}
@@ -201,10 +204,20 @@ class CustomerMigrate {
 
 				$id = CustomerTable::insert( $insert_data );
 
+				// If insert failed due to phone_alt UNIQUE collision, retry as needs_review
+				if ( false === $id && $wpdb->last_error && strpos( $wpdb->last_error, 'uq_phone_alt' ) !== false ) {
+					$original_alt = $insert_data['phone_alt'] ?? '';
+					$insert_data['phone_alt']   = null;
+					$insert_data['status']      = 'needs_review';
+					$insert_data['review_note'] = ( $review_note ? $review_note . ' | ' : '' )
+						. 'Duplicate phone_alt: ' . $original_alt . ' — cleared for import';
+					$id = CustomerTable::insert( $insert_data );
+				}
+
 				if ( false === $id ) {
 					$error = $wpdb->last_error;
 					if ( ! $error ) {
-						$error = 'Validation failed — phone: "' . ( $insert_data['phone'] ?? '' ) . '", name: "' . mb_substr( $insert_data['name_arabic'] ?? '', 0, 30 ) . '"';
+						$error = 'Validation failed — phone: "' . $phone . '", name: "' . mb_substr( $name_arabic, 0, 30 ) . '"';
 					}
 					$result['errors'][ $entry_id ] = $error;
 				} else {

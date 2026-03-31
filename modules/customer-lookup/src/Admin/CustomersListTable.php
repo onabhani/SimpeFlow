@@ -34,6 +34,7 @@ class CustomersListTable extends \WP_List_Table {
 			'customer_type' => __( 'Type', 'simpleflow' ),
 			'branch'        => __( 'Branch', 'simpleflow' ),
 			'status'        => __( 'Status', 'simpleflow' ),
+			'review_note'   => __( 'Review Note', 'simpleflow' ),
 			'actions'       => __( 'Actions', 'simpleflow' ),
 		];
 	}
@@ -93,9 +94,10 @@ class CustomersListTable extends \WP_List_Table {
 		$base    = admin_url( 'admin.php?page=sfa-customers' );
 
 		$tabs = [
-			'active'   => __( 'Active', 'simpleflow' ),
-			'inactive' => __( 'Inactive', 'simpleflow' ),
-			'all'      => __( 'All', 'simpleflow' ),
+			'active'       => __( 'Active', 'simpleflow' ),
+			'needs_review' => __( 'Needs Review', 'simpleflow' ),
+			'inactive'     => __( 'Inactive', 'simpleflow' ),
+			'all'          => __( 'All', 'simpleflow' ),
 		];
 
 		echo '<ul class="subsubsub">';
@@ -128,8 +130,9 @@ class CustomersListTable extends \WP_List_Table {
 	 */
 	public function column_status( $item ): string {
 		$labels = [
-			'active'   => __( 'Active', 'simpleflow' ),
-			'inactive' => __( 'Inactive', 'simpleflow' ),
+			'active'       => __( 'Active', 'simpleflow' ),
+			'inactive'     => __( 'Inactive', 'simpleflow' ),
+			'needs_review' => __( 'Needs Review', 'simpleflow' ),
 		];
 		$status = esc_attr( $item->status );
 		$label  = esc_html( $labels[ $item->status ] ?? $item->status );
