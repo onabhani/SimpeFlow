@@ -15,14 +15,15 @@ class CustomerRepository {
 	/**
 	 * Load module settings once per request.
 	 *
-	 * @return array{form_id: int, field_map: array, use_wpdb: bool}
+	 * @return array{form_id: int, field_map: array, use_wpdb: bool, use_sf_table: bool}
 	 */
-	private static function get_settings(): array {
+	public static function get_settings(): array {
 		if ( null === self::$settings ) {
 			self::$settings = [
-				'form_id'   => (int) get_option( 'sfa_cl_source_form_id', 0 ),
-				'field_map' => get_option( 'sfa_cl_field_map', [] ),
-				'use_wpdb'  => (bool) get_option( 'sfa_cl_use_direct_db', false ),
+				'form_id'      => (int) get_option( 'sfa_cl_source_form_id', 0 ),
+				'field_map'    => get_option( 'sfa_cl_field_map', [] ),
+				'use_wpdb'     => (bool) get_option( 'sfa_cl_use_direct_db', false ),
+				'use_sf_table' => (bool) get_option( 'sfa_cl_use_sf_table', false ),
 			];
 		}
 		return self::$settings;
@@ -108,7 +109,9 @@ class CustomerRepository {
 			return $cached;
 		}
 
-		if ( $settings['use_wpdb'] ) {
+		if ( $settings['use_sf_table'] ) {
+			$result = self::query_sf_table( $phone );
+		} elseif ( $settings['use_wpdb'] ) {
 			$result = self::query_wpdb( $phone, $form_id, $field_map );
 		} else {
 			$result = self::query_gfapi( $phone, $form_id, $field_map );
@@ -118,6 +121,35 @@ class CustomerRepository {
 		set_transient( $t_key, $result ?? [ '__null' => true ], 300 );
 
 		return $result;
+	}
+
+	/**
+	 * SF Customers table lookup (fastest path).
+	 * Data is normalized on write, so no +prefix variant handling needed.
+	 *
+	 * @param string $phone Digits-only phone from AJAX handler.
+	 * @return array|null
+	 */
+	private static function query_sf_table( string $phone ): ?array {
+		$customer = CustomerTable::get_by_phone( $phone );
+
+		if ( ! $customer ) {
+			return null;
+		}
+
+		$allowed = [
+			'name_arabic', 'name_english', 'phone_alt',
+			'email', 'address', 'customer_type', 'branch', 'file_number',
+		];
+
+		$mapped = [];
+		foreach ( $allowed as $key ) {
+			if ( isset( $customer->$key ) && '' !== $customer->$key ) {
+				$mapped[ $key ] = esc_html( $customer->$key );
+			}
+		}
+
+		return ! empty( $mapped ) ? $mapped : null;
 	}
 
 	/**

@@ -52,7 +52,8 @@ class SettingsPage {
 		$forms     = class_exists( 'GFAPI' ) ? \GFAPI::get_forms() : [];
 		$form_id   = (int) get_option( 'sfa_cl_source_form_id', 0 );
 		$field_map = get_option( 'sfa_cl_field_map', [] );
-		$use_wpdb  = (bool) get_option( 'sfa_cl_use_direct_db', false );
+		$use_wpdb     = (bool) get_option( 'sfa_cl_use_direct_db', false );
+		$use_sf_table = (bool) get_option( 'sfa_cl_use_sf_table', false );
 
 		// Get fields for selected form
 		$form_fields = [];
@@ -144,6 +145,18 @@ class SettingsPage {
 				<h2><?php esc_html_e( 'Advanced', 'simpleflow' ); ?></h2>
 				<table class="form-table">
 					<tr>
+						<th><label for="sfa_cl_use_sf_table"><?php esc_html_e( 'Use SF Customers Table', 'simpleflow' ); ?></label></th>
+						<td>
+							<label>
+								<input type="checkbox" name="sfa_cl_use_sf_table" id="sfa_cl_use_sf_table" value="1" <?php checked( $use_sf_table ); ?>>
+								<?php esc_html_e( 'Query wp_sf_customers directly (fastest — enable after migration is complete)', 'simpleflow' ); ?>
+							</label>
+							<p class="description">
+								<?php esc_html_e( 'Bypasses Gravity Forms entirely. Requires migration to have run successfully. Once enabled, new customers must be created via the Customers admin page.', 'simpleflow' ); ?>
+							</p>
+						</td>
+					</tr>
+					<tr>
 						<th><label for="sfa_cl_use_direct_db"><?php esc_html_e( 'Use Direct DB Queries', 'simpleflow' ); ?></label></th>
 						<td>
 							<label>
@@ -228,6 +241,10 @@ class SettingsPage {
 		}
 
 		update_option( 'sfa_cl_field_map', $field_map );
+
+		// SF Customers table toggle
+		$use_sf_table = ! empty( $_POST['sfa_cl_use_sf_table'] );
+		update_option( 'sfa_cl_use_sf_table', $use_sf_table );
 
 		// Direct DB toggle
 		$use_wpdb = ! empty( $_POST['sfa_cl_use_direct_db'] );

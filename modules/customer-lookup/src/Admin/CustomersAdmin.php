@@ -1,0 +1,516 @@
+<?php
+namespace SFA\CustomerLookup\Admin;
+
+use SFA\CustomerLookup\Database\CustomerTable;
+
+/**
+ * Customers Admin
+ *
+ * Menu registration, view routing, create/edit/profile forms,
+ * deactivate/reactivate actions, and AJAX phone duplicate check.
+ */
+class CustomersAdmin {
+
+	const MENU_SLUG = 'sfa-customers';
+
+	public function __construct() {
+		add_action( 'admin_menu', [ $this, 'add_menu_page' ], 99 );
+		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
+		add_action( 'wp_ajax_sfa_cl_check_phone_exists', [ $this, 'ajax_check_phone' ] );
+	}
+
+	/**
+	 * Add submenu page under SimpleFlow.
+	 */
+	public function add_menu_page(): void {
+		add_submenu_page(
+			'simpleflow',
+			__( 'Customers', 'simpleflow' ),
+			__( 'العملاء', 'simpleflow' ),
+			'gform_full_access',
+			self::MENU_SLUG,
+			[ $this, 'render_page' ]
+		);
+	}
+
+	/**
+	 * Enqueue CSS/JS only on our admin page.
+	 */
+	public function enqueue_assets( $hook ): void {
+		if ( false === strpos( $hook, self::MENU_SLUG ) ) {
+			return;
+		}
+
+		wp_enqueue_style(
+			'sfa-customers-admin',
+			SFA_CL_URL . 'assets/sf-customers-admin.css',
+			[],
+			SFA_CL_VER
+		);
+
+		wp_enqueue_script(
+			'sfa-customers-admin',
+			SFA_CL_URL . 'assets/sf-customers-admin.js',
+			[ 'jquery' ],
+			SFA_CL_VER,
+			true
+		);
+
+		wp_localize_script( 'sfa-customers-admin', 'sfaCustomers', [
+			'ajax_url' => admin_url( 'admin-ajax.php' ),
+			'nonce'    => wp_create_nonce( 'sfa_cl_admin' ),
+			'i18n'     => [
+				'phone_exists' => __( 'This phone number is already registered.', 'simpleflow' ),
+			],
+		] );
+	}
+
+	/**
+	 * Main page router.
+	 */
+	public function render_page(): void {
+		// Handle deactivate/reactivate actions first
+		$this->handle_status_action();
+
+		$view = sanitize_text_field( $_GET['view'] ?? 'list' );
+
+		echo '<div class="wrap sfa-customers-wrap">';
+
+		switch ( $view ) {
+			case 'create':
+				$this->render_create();
+				break;
+			case 'edit':
+				$this->render_edit();
+				break;
+			case 'profile':
+				$this->render_profile();
+				break;
+			default:
+				$this->render_list();
+				break;
+		}
+
+		echo '</div>';
+	}
+
+	/**
+	 * Handle deactivate/reactivate URL actions.
+	 */
+	private function handle_status_action(): void {
+		$action = sanitize_text_field( $_GET['action'] ?? '' );
+
+		if ( ! in_array( $action, [ 'deactivate', 'reactivate' ], true ) ) {
+			return;
+		}
+
+		$id = absint( $_GET['id'] ?? 0 );
+
+		if ( ! $id ) {
+			return;
+		}
+
+		// Verify nonce with action-specific string (includes record ID)
+		$nonce_action = 'sfa_' . $action . '_' . $id;
+		if ( ! wp_verify_nonce( $_GET['_wpnonce'] ?? '', $nonce_action ) ) {
+			wp_die( __( 'Security check failed.', 'simpleflow' ) );
+		}
+
+		if ( ! current_user_can( 'gform_full_access' ) ) {
+			wp_die( __( 'Insufficient permissions.', 'simpleflow' ) );
+		}
+
+		if ( 'deactivate' === $action ) {
+			CustomerTable::deactivate( $id );
+			$notice = 'deactivated';
+		} else {
+			CustomerTable::reactivate( $id );
+			$notice = 'reactivated';
+		}
+
+		wp_safe_redirect( add_query_arg(
+			[ 'page' => self::MENU_SLUG, 'notice' => $notice ],
+			admin_url( 'admin.php' )
+		) );
+		exit;
+	}
+
+	/**
+	 * Render the list view.
+	 */
+	private function render_list(): void {
+		$notice = sanitize_text_field( $_GET['notice'] ?? '' );
+
+		if ( $notice ) {
+			$messages = [
+				'created'     => __( 'Customer created successfully.', 'simpleflow' ),
+				'updated'     => __( 'Customer updated successfully.', 'simpleflow' ),
+				'deactivated' => __( 'Customer deactivated.', 'simpleflow' ),
+				'reactivated' => __( 'Customer reactivated.', 'simpleflow' ),
+			];
+			if ( isset( $messages[ $notice ] ) ) {
+				printf(
+					'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+					esc_html( $messages[ $notice ] )
+				);
+			}
+		}
+
+		echo '<h1 class="wp-heading-inline">' . esc_html__( 'Customers', 'simpleflow' ) . '</h1>';
+		printf(
+			' <a href="%s" class="page-title-action">%s</a>',
+			esc_url( add_query_arg( [ 'page' => self::MENU_SLUG, 'view' => 'create' ], admin_url( 'admin.php' ) ) ),
+			esc_html__( 'Add Customer', 'simpleflow' )
+		);
+
+		echo '<hr class="wp-header-end">';
+
+		$table = new CustomersListTable();
+		$table->render_filter_tabs();
+		echo '<form method="get">';
+		echo '<input type="hidden" name="page" value="' . esc_attr( self::MENU_SLUG ) . '">';
+		if ( ! empty( $_REQUEST['status'] ) ) {
+			echo '<input type="hidden" name="status" value="' . esc_attr( sanitize_text_field( $_REQUEST['status'] ) ) . '">';
+		}
+		$table->search_box( __( 'Search Customers', 'simpleflow' ), 'sfa-customer-search' );
+		$table->prepare_items();
+		$table->display();
+		echo '</form>';
+	}
+
+	/**
+	 * Render the create form.
+	 */
+	private function render_create(): void {
+		$errors = [];
+		$data   = [];
+
+		if ( 'POST' === $_SERVER['REQUEST_METHOD'] ) {
+			check_admin_referer( 'sfa_cl_create_customer' );
+
+			$data = $this->sanitize_form_input();
+			$errors = $this->validate_form_input( $data );
+
+			if ( empty( $errors ) ) {
+				$id = CustomerTable::insert( $data );
+				if ( false !== $id ) {
+					wp_safe_redirect( add_query_arg(
+						[ 'page' => self::MENU_SLUG, 'notice' => 'created' ],
+						admin_url( 'admin.php' )
+					) );
+					exit;
+				}
+				$errors[] = __( 'Failed to create customer. Please try again.', 'simpleflow' );
+			}
+		}
+
+		echo '<h1>' . esc_html__( 'Add Customer', 'simpleflow' ) . '</h1>';
+		$this->render_form( $data, $errors, 'create' );
+	}
+
+	/**
+	 * Render the edit form.
+	 */
+	private function render_edit(): void {
+		$id       = absint( $_GET['id'] ?? 0 );
+		$customer = $id ? CustomerTable::get_by_id( $id ) : null;
+
+		if ( ! $customer ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'Customer not found.', 'simpleflow' ) . '</p></div>';
+			return;
+		}
+
+		$errors = [];
+		$data   = (array) $customer;
+
+		if ( 'POST' === $_SERVER['REQUEST_METHOD'] ) {
+			check_admin_referer( 'sfa_cl_edit_customer_' . $id );
+
+			$data   = $this->sanitize_form_input();
+			$errors = $this->validate_form_input( $data, $id );
+
+			if ( empty( $errors ) ) {
+				$success = CustomerTable::update( $id, $data );
+				if ( $success ) {
+					wp_safe_redirect( add_query_arg(
+						[ 'page' => self::MENU_SLUG, 'notice' => 'updated' ],
+						admin_url( 'admin.php' )
+					) );
+					exit;
+				}
+				$errors[] = __( 'Failed to update customer. Please try again.', 'simpleflow' );
+			}
+		}
+
+		echo '<h1>' . esc_html__( 'Edit Customer', 'simpleflow' ) . '</h1>';
+		$this->render_form( $data, $errors, 'edit', $id );
+	}
+
+	/**
+	 * Render the read-only profile view.
+	 */
+	private function render_profile(): void {
+		$id       = absint( $_GET['id'] ?? 0 );
+		$customer = $id ? CustomerTable::get_by_id( $id ) : null;
+
+		if ( ! $customer ) {
+			echo '<div class="notice notice-error"><p>' . esc_html__( 'Customer not found.', 'simpleflow' ) . '</p></div>';
+			return;
+		}
+
+		$base = admin_url( 'admin.php?page=' . self::MENU_SLUG );
+
+		echo '<h1>' . esc_html__( 'Customer Profile', 'simpleflow' ) . '</h1>';
+
+		echo '<div class="sfa-profile-card">';
+		echo '<table class="form-table">';
+
+		$fields = [
+			'id'            => __( 'ID', 'simpleflow' ),
+			'name_arabic'   => __( 'Name (Arabic)', 'simpleflow' ),
+			'name_english'  => __( 'Name (English)', 'simpleflow' ),
+			'phone'         => __( 'Phone', 'simpleflow' ),
+			'phone_alt'     => __( 'Phone (Alt)', 'simpleflow' ),
+			'email'         => __( 'Email', 'simpleflow' ),
+			'address'       => __( 'Address', 'simpleflow' ),
+			'customer_type' => __( 'Type', 'simpleflow' ),
+			'branch'        => __( 'Branch', 'simpleflow' ),
+			'file_number'   => __( 'File Number', 'simpleflow' ),
+			'source'        => __( 'Source', 'simpleflow' ),
+			'status'        => __( 'Status', 'simpleflow' ),
+			'created_at'    => __( 'Created', 'simpleflow' ),
+			'updated_at'    => __( 'Updated', 'simpleflow' ),
+		];
+
+		if ( ! empty( $customer->odoo_id ) ) {
+			$fields['odoo_id'] = __( 'Odoo ID', 'simpleflow' );
+		}
+
+		foreach ( $fields as $key => $label ) {
+			$value = $customer->$key ?? '';
+			printf(
+				'<tr><th>%s</th><td>%s</td></tr>',
+				esc_html( $label ),
+				( 'status' === $key )
+					? sprintf( '<span class="sfa-badge sfa-badge--%s">%s</span>', esc_attr( $value ), esc_html( ucfirst( $value ) ) )
+					: ( ( 'source' === $key )
+						? sprintf( '<span class="sfa-badge sfa-badge--source-%s">%s</span>', esc_attr( $value ), esc_html( $value ) )
+						: esc_html( $value ?: '—' ) )
+			);
+		}
+
+		echo '</table>';
+
+		echo '<p class="sfa-profile-actions">';
+		printf(
+			'<a href="%s" class="button button-primary">%s</a> ',
+			esc_url( add_query_arg( [ 'view' => 'edit', 'id' => $id ], $base ) ),
+			esc_html__( 'Edit', 'simpleflow' )
+		);
+
+		if ( 'active' === $customer->status ) {
+			printf(
+				'<a href="%s" class="button" onclick="return confirm(\'%s\');">%s</a>',
+				esc_url( wp_nonce_url(
+					add_query_arg( [ 'action' => 'deactivate', 'id' => $id ], $base ),
+					'sfa_deactivate_' . $id
+				) ),
+				esc_js( __( 'Deactivate this customer?', 'simpleflow' ) ),
+				esc_html__( 'Deactivate', 'simpleflow' )
+			);
+		} else {
+			printf(
+				'<a href="%s" class="button">%s</a>',
+				esc_url( wp_nonce_url(
+					add_query_arg( [ 'action' => 'reactivate', 'id' => $id ], $base ),
+					'sfa_reactivate_' . $id
+				) ),
+				esc_html__( 'Reactivate', 'simpleflow' )
+			);
+		}
+
+		printf(
+			' <a href="%s" class="button">%s</a>',
+			esc_url( add_query_arg( 'page', self::MENU_SLUG, $base ) ),
+			esc_html__( 'Back to List', 'simpleflow' )
+		);
+
+		echo '</p>';
+		echo '</div>';
+	}
+
+	/**
+	 * Render the create/edit form.
+	 */
+	private function render_form( array $data, array $errors, string $mode, int $id = 0 ): void {
+		$base = admin_url( 'admin.php?page=' . self::MENU_SLUG );
+
+		if ( ! empty( $errors ) ) {
+			echo '<div class="notice notice-error"><ul>';
+			foreach ( $errors as $err ) {
+				echo '<li>' . esc_html( $err ) . '</li>';
+			}
+			echo '</ul></div>';
+		}
+
+		$action_url = ( 'edit' === $mode )
+			? add_query_arg( [ 'page' => self::MENU_SLUG, 'view' => 'edit', 'id' => $id ], $base )
+			: add_query_arg( [ 'page' => self::MENU_SLUG, 'view' => 'create' ], $base );
+
+		$nonce_action = ( 'edit' === $mode )
+			? 'sfa_cl_edit_customer_' . $id
+			: 'sfa_cl_create_customer';
+
+		echo '<form method="post" action="' . esc_url( $action_url ) . '" id="sfa-customer-form" style="max-width:700px;">';
+		wp_nonce_field( $nonce_action );
+
+		if ( $id ) {
+			echo '<input type="hidden" name="exclude_id" value="' . esc_attr( $id ) . '">';
+		}
+
+		echo '<table class="form-table">';
+
+		// Name Arabic (required)
+		$this->render_field( 'name_arabic', __( 'Name (Arabic)', 'simpleflow' ), $data, true );
+
+		// Name English
+		$this->render_field( 'name_english', __( 'Name (English)', 'simpleflow' ), $data );
+
+		// Phone (required)
+		$this->render_field( 'phone', __( 'Phone', 'simpleflow' ), $data, true, 'tel' );
+
+		// Phone Alt
+		$this->render_field( 'phone_alt', __( 'Phone (Alt)', 'simpleflow' ), $data, false, 'tel' );
+
+		// Email
+		$this->render_field( 'email', __( 'Email', 'simpleflow' ), $data, false, 'email' );
+
+		// Address
+		echo '<tr>';
+		echo '<th><label for="sfa_address">' . esc_html__( 'Address', 'simpleflow' ) . '</label></th>';
+		echo '<td><textarea name="address" id="sfa_address" class="large-text" rows="3">' . esc_textarea( $data['address'] ?? '' ) . '</textarea></td>';
+		echo '</tr>';
+
+		// Customer Type (radio)
+		echo '<tr>';
+		echo '<th>' . esc_html__( 'Customer Type', 'simpleflow' ) . '</th>';
+		echo '<td>';
+		$current_type = $data['customer_type'] ?? 'individual';
+		foreach ( CustomerTable::VALID_CUSTOMER_TYPES as $type ) {
+			printf(
+				'<label style="margin-inline-end:16px;"><input type="radio" name="customer_type" value="%s" %s> %s</label>',
+				esc_attr( $type ),
+				checked( $current_type, $type, false ),
+				esc_html( ucfirst( $type ) )
+			);
+		}
+		echo '</td>';
+		echo '</tr>';
+
+		// Branch
+		$this->render_field( 'branch', __( 'Branch', 'simpleflow' ), $data );
+
+		// File Number
+		$this->render_field( 'file_number', __( 'File Number', 'simpleflow' ), $data );
+
+		echo '</table>';
+
+		echo '<p class="submit">';
+		printf(
+			'<button type="submit" class="button button-primary" id="sfa-submit-btn">%s</button> ',
+			( 'edit' === $mode ) ? esc_html__( 'Update Customer', 'simpleflow' ) : esc_html__( 'Create Customer', 'simpleflow' )
+		);
+		printf(
+			'<a href="%s" class="button">%s</a>',
+			esc_url( add_query_arg( 'page', self::MENU_SLUG, $base ) ),
+			esc_html__( 'Cancel', 'simpleflow' )
+		);
+		echo '</p>';
+
+		echo '</form>';
+	}
+
+	/**
+	 * Render a single text/email/tel form field row.
+	 */
+	private function render_field( string $name, string $label, array $data, bool $required = false, string $type = 'text' ): void {
+		$id    = 'sfa_' . $name;
+		$value = $data[ $name ] ?? '';
+
+		echo '<tr>';
+		printf(
+			'<th><label for="%s">%s%s</label></th>',
+			esc_attr( $id ),
+			esc_html( $label ),
+			$required ? ' <span style="color:#d63638;">*</span>' : ''
+		);
+		printf(
+			'<td><input type="%s" name="%s" id="%s" value="%s" class="regular-text"%s></td>',
+			esc_attr( $type ),
+			esc_attr( $name ),
+			esc_attr( $id ),
+			esc_attr( $value ),
+			$required ? ' required' : ''
+		);
+		echo '</tr>';
+	}
+
+	/**
+	 * Sanitize form POST data.
+	 */
+	private function sanitize_form_input(): array {
+		return [
+			'name_arabic'   => sanitize_text_field( $_POST['name_arabic'] ?? '' ),
+			'name_english'  => sanitize_text_field( $_POST['name_english'] ?? '' ),
+			'phone'         => sanitize_text_field( $_POST['phone'] ?? '' ),
+			'phone_alt'     => sanitize_text_field( $_POST['phone_alt'] ?? '' ),
+			'email'         => sanitize_email( $_POST['email'] ?? '' ),
+			'address'       => sanitize_textarea_field( $_POST['address'] ?? '' ),
+			'customer_type' => sanitize_text_field( $_POST['customer_type'] ?? 'individual' ),
+			'branch'        => sanitize_text_field( $_POST['branch'] ?? '' ),
+			'file_number'   => sanitize_text_field( $_POST['file_number'] ?? '' ),
+		];
+	}
+
+	/**
+	 * Validate form input. Returns array of error messages (empty = valid).
+	 */
+	private function validate_form_input( array $data, int $exclude_id = 0 ): array {
+		$errors = [];
+
+		if ( empty( $data['name_arabic'] ) ) {
+			$errors[] = __( 'Name (Arabic) is required.', 'simpleflow' );
+		}
+
+		if ( empty( $data['phone'] ) ) {
+			$errors[] = __( 'Phone is required.', 'simpleflow' );
+		} elseif ( CustomerTable::phone_exists( $data['phone'], $exclude_id ) ) {
+			$errors[] = __( 'This phone number is already registered.', 'simpleflow' );
+		}
+
+		if ( ! empty( $data['customer_type'] ) && ! in_array( $data['customer_type'], CustomerTable::VALID_CUSTOMER_TYPES, true ) ) {
+			$errors[] = __( 'Invalid customer type.', 'simpleflow' );
+		}
+
+		return $errors;
+	}
+
+	/**
+	 * AJAX handler: check if a phone number already exists.
+	 */
+	public function ajax_check_phone(): void {
+		check_ajax_referer( 'sfa_cl_admin', '_wpnonce' );
+
+		if ( ! current_user_can( 'gform_full_access' ) ) {
+			wp_send_json_error( 'Unauthorized', 403 );
+			return;
+		}
+
+		$phone      = sanitize_text_field( $_POST['phone'] ?? '' );
+		$exclude_id = absint( $_POST['exclude_id'] ?? 0 );
+
+		$exists = CustomerTable::phone_exists( $phone, $exclude_id );
+
+		wp_send_json_success( [ 'exists' => $exists ] );
+	}
+}

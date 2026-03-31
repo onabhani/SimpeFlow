@@ -1,0 +1,113 @@
+/**
+ * SF Customers Admin Styles
+ * Scoped under .sfa-customers-wrap
+ */
+
+/* Filter tabs */
+.sfa-customers-wrap .subsubsub {
+	margin-bottom: 8px;
+}
+.sfa-customers-wrap .subsubsub a.current {
+	font-weight: 600;
+	color: #1d2327;
+}
+
+/* Status badges */
+.sfa-badge {
+	display: inline-block;
+	padding: 2px 10px;
+	border-radius: 12px;
+	font-size: 12px;
+	font-weight: 500;
+	line-height: 1.6;
+}
+.sfa-badge--active {
+	background: #d1fadf;
+	color: #065f46;
+}
+.sfa-badge--inactive {
+	background: #e5e7eb;
+	color: #6b7280;
+}
+
+/* Source badges */
+.sfa-badge--source-manual {
+	background: #dbeafe;
+	color: #1e40af;
+}
+.sfa-badge--source-odoo {
+	background: #fef3c7;
+	color: #92400e;
+}
+.sfa-badge--source-migration {
+	background: #ede9fe;
+	color: #5b21b6;
+}
+
+/* List table tweaks */
+.sfa-customers-wrap .wp-list-table .column-file_number {
+	width: 100px;
+}
+.sfa-customers-wrap .wp-list-table .column-customer_type,
+.sfa-customers-wrap .wp-list-table .column-status {
+	width: 100px;
+}
+.sfa-customers-wrap .wp-list-table .column-actions {
+	width: 180px;
+}
+.sfa-customers-wrap .wp-list-table .column-branch {
+	width: 120px;
+}
+
+/* Deactivate link */
+.sfa-customers-wrap a.sfa-deactivate {
+	color: #b32d2e;
+}
+.sfa-customers-wrap a.sfa-deactivate:hover {
+	color: #a00;
+}
+
+/* Profile card */
+.sfa-profile-card {
+	background: #fff;
+	border: 1px solid #c3c4c7;
+	border-radius: 4px;
+	padding: 16px 24px;
+	margin-top: 16px;
+	max-width: 700px;
+}
+.sfa-profile-card .form-table th {
+	width: 160px;
+	padding: 10px 0;
+	font-weight: 600;
+}
+.sfa-profile-card .form-table td {
+	padding: 10px 0;
+}
+.sfa-profile-actions {
+	margin-top: 16px;
+	padding-top: 16px;
+	border-top: 1px solid #e5e7eb;
+}
+.sfa-profile-actions .button {
+	margin-inline-end: 8px;
+}
+
+/* Form styles */
+#sfa-customer-form .form-table th {
+	width: 160px;
+}
+
+/* Phone duplicate error */
+.sfa-phone-error {
+	color: #d63638;
+	font-size: 13px;
+	margin-top: 4px;
+	display: block;
+}
+
+/* Submit button disabled state */
+#sfa-submit-btn:disabled {
+	opacity: 0.5;
+	cursor: not-allowed;
+}
