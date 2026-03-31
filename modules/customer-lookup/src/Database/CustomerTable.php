@@ -245,7 +245,7 @@ class CustomerTable {
 			[ '%d' ]
 		);
 
-		if ( false !== $result ) {
+		if ( $result > 0 ) {
 			do_action( 'sf_customer_deactivated', $id );
 			return true;
 		}
@@ -270,7 +270,7 @@ class CustomerTable {
 			[ '%d' ]
 		);
 
-		return false !== $result;
+		return $result > 0;
 	}
 
 	/**

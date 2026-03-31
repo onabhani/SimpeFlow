@@ -350,10 +350,11 @@ private static function query_sf_table( string $phone ): ?array {
         'email', 'address', 'customer_type', 'branch', 'file_number'
     ];
 
+    // Return raw values — escaping is done at render time by the caller
     $mapped = [];
     foreach ( $allowed as $key ) {
         if ( isset( $customer->$key ) && '' !== $customer->$key ) {
-            $mapped[ $key ] = esc_html( $customer->$key );
+            $mapped[ $key ] = $customer->$key;
         }
     }
 
