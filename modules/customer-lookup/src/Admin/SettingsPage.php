@@ -52,8 +52,9 @@ class SettingsPage {
 		$forms     = class_exists( 'GFAPI' ) ? \GFAPI::get_forms() : [];
 		$form_id   = (int) get_option( 'sfa_cl_source_form_id', 0 );
 		$field_map = get_option( 'sfa_cl_field_map', [] );
-		$use_wpdb     = (bool) get_option( 'sfa_cl_use_direct_db', false );
-		$use_sf_table = (bool) get_option( 'sfa_cl_use_sf_table', false );
+		$use_wpdb        = (bool) get_option( 'sfa_cl_use_direct_db', false );
+		$use_sf_table    = (bool) get_option( 'sfa_cl_use_sf_table', false );
+		$legacy_phone_id = get_option( 'sfa_cl_legacy_phone_field', '' );
 
 		// Get fields for selected form
 		$form_fields = [];
@@ -140,6 +141,32 @@ class SettingsPage {
 					<p class="description" style="margin-top:16px;">
 						<?php esc_html_e( 'Select a source form above and save to configure field mapping.', 'simpleflow' ); ?>
 					</p>
+				<?php endif; ?>
+
+				<?php if ( $form_id && ! empty( $form_fields ) ): ?>
+					<h2><?php esc_html_e( 'Migration', 'simpleflow' ); ?></h2>
+					<p class="description">
+						<?php esc_html_e( 'Optional — configure legacy fields used by older entries. Clear after migration is complete.', 'simpleflow' ); ?>
+					</p>
+					<table class="form-table">
+						<tr>
+							<th><label for="sfa_cl_legacy_phone_field"><?php esc_html_e( 'Legacy Phone Field', 'simpleflow' ); ?></label></th>
+							<td>
+								<select name="sfa_cl_legacy_phone_field" id="sfa_cl_legacy_phone_field">
+									<option value=""><?php esc_html_e( '-- None --', 'simpleflow' ); ?></option>
+									<?php foreach ( $form_fields as $ff ): ?>
+										<option value="<?php echo esc_attr( $ff['id'] ); ?>"
+											<?php selected( $legacy_phone_id, $ff['id'] ); ?>>
+											<?php echo esc_html( $ff['label'] ); ?> (ID: <?php echo esc_html( $ff['id'] ); ?>, <?php echo esc_html( $ff['type'] ); ?>)
+										</option>
+									<?php endforeach; ?>
+								</select>
+								<p class="description">
+									<?php esc_html_e( 'If older entries used a different field for phone numbers, select it here. The migration will check this field when the primary phone field is empty.', 'simpleflow' ); ?>
+								</p>
+							</td>
+						</tr>
+					</table>
 				<?php endif; ?>
 
 				<h2><?php esc_html_e( 'Advanced', 'simpleflow' ); ?></h2>
@@ -241,6 +268,10 @@ class SettingsPage {
 		}
 
 		update_option( 'sfa_cl_field_map', $field_map );
+
+		// Legacy phone field for migration
+		$legacy_phone = (string) absint( $_POST['sfa_cl_legacy_phone_field'] ?? '' );
+		update_option( 'sfa_cl_legacy_phone_field', $legacy_phone );
 
 		// SF Customers table toggle
 		$use_sf_table = ! empty( $_POST['sfa_cl_use_sf_table'] );

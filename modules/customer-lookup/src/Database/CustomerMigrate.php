@@ -49,12 +49,20 @@ class CustomerMigrate {
 
 		global $wpdb;
 
+		// Legacy phone field — fallback when primary phone is empty on older entries
+		$legacy_phone_fid = (string) get_option( 'sfa_cl_legacy_phone_field', '' );
+
 		// Flip field_map: GF field ID => semantic key
 		$flipped = [];
 		foreach ( $field_map as $semantic => $fid ) {
 			if ( $fid ) {
 				$flipped[ (string) $fid ] = $semantic;
 			}
+		}
+
+		// Include legacy phone field in meta fetch (mapped to a temporary key)
+		if ( $legacy_phone_fid && ! isset( $flipped[ $legacy_phone_fid ] ) ) {
+			$flipped[ $legacy_phone_fid ] = '_legacy_phone';
 		}
 
 		// Get all active entry IDs for the source form
@@ -116,6 +124,11 @@ class CustomerMigrate {
 
 				$phone       = $fields['phone'] ?? '';
 				$name_arabic = $fields['name_arabic'] ?? '';
+
+				// Fallback to legacy phone field if primary is empty
+				if ( '' === trim( $phone ) && ! empty( $fields['_legacy_phone'] ) ) {
+					$phone = $fields['_legacy_phone'];
+				}
 
 				// Validate required fields
 				if ( '' === trim( $phone ) || '' === trim( $name_arabic ) ) {
