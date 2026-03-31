@@ -18,7 +18,7 @@ class CustomerTable {
 	const ALLOWED_COLUMNS = [
 		'phone', 'phone_alt', 'name_arabic', 'name_english',
 		'email', 'address', 'customer_type', 'branch',
-		'file_number', 'odoo_id', 'source', 'status',
+		'file_number', 'odoo_id', 'gf_entry_id', 'source', 'status',
 	];
 
 	const SORTABLE_COLUMNS = [
@@ -55,6 +55,7 @@ class CustomerTable {
 			branch        VARCHAR(100) DEFAULT NULL,
 			file_number   VARCHAR(100) DEFAULT NULL,
 			odoo_id       BIGINT UNSIGNED DEFAULT NULL,
+			gf_entry_id   BIGINT UNSIGNED DEFAULT NULL,
 			source        VARCHAR(20)  NOT NULL DEFAULT 'manual',
 			status        VARCHAR(10)  NOT NULL DEFAULT 'active',
 			created_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -63,6 +64,7 @@ class CustomerTable {
 			UNIQUE KEY    uq_phone (phone),
 			UNIQUE KEY    uq_phone_alt (phone_alt),
 			KEY           idx_status_created (status, created_at),
+			UNIQUE KEY    uq_gf_entry_id (gf_entry_id),
 			KEY           idx_odoo_id (odoo_id),
 			KEY           idx_file_number (file_number)
 		) {$charset};";
@@ -166,6 +168,26 @@ class CustomerTable {
 			"SELECT * FROM {$table} WHERE (phone = %s OR phone_alt = %s) AND status = 'active' LIMIT 1",
 			$normalized,
 			$normalized
+		) );
+
+		return $row ?: null;
+	}
+
+	/**
+	 * Get a customer by their original GF entry ID.
+	 *
+	 * @param int $gf_entry_id GF entry ID.
+	 * @return object|null
+	 */
+	public static function get_by_gf_entry_id( int $gf_entry_id ): ?object {
+		global $wpdb;
+
+		$table = self::table_name();
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
+		$row = $wpdb->get_row( $wpdb->prepare(
+			"SELECT * FROM {$table} WHERE gf_entry_id = %d LIMIT 1",
+			$gf_entry_id
 		) );
 
 		return $row ?: null;
@@ -447,11 +469,12 @@ class CustomerTable {
 	/**
 	 * Sanitize and validate data for insert/update.
 	 * Strips unknown keys, normalizes phones, validates enum-like fields.
+	 * Public so callers (e.g. migration dry-run) can validate without inserting.
 	 *
 	 * @param array $data Raw input.
 	 * @return array|false Sanitized data or false if validation fails.
 	 */
-	private static function sanitize_data( array $data ) {
+	public static function sanitize_data( array $data ) {
 		// Strip unknown keys
 		$data = array_intersect_key( $data, array_flip( self::ALLOWED_COLUMNS ) );
 
@@ -468,7 +491,7 @@ class CustomerTable {
 			$data['phone_alt'] = '' !== $normalized_alt ? $normalized_alt : null;
 		}
 
-		// Validate enum-like fields
+		// Validate enum-like fields — fail-fast to surface upstream bugs
 		if ( isset( $data['customer_type'] ) && ! in_array( $data['customer_type'], self::VALID_CUSTOMER_TYPES, true ) ) {
 			return false;
 		}
@@ -499,6 +522,10 @@ class CustomerTable {
 
 		if ( isset( $data['odoo_id'] ) ) {
 			$data['odoo_id'] = absint( $data['odoo_id'] ) ?: null;
+		}
+
+		if ( isset( $data['gf_entry_id'] ) ) {
+			$data['gf_entry_id'] = absint( $data['gf_entry_id'] ) ?: null;
 		}
 
 		return $data;
