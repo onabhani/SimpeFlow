@@ -12,7 +12,7 @@
 
 ## Current File Structure
 
-```
+```text
 simple-flow/
 └── modules/
     └── customer-lookup/
@@ -34,7 +34,7 @@ simple-flow/
 
 ## Target File Structure (after this build)
 
-```
+```text
 simple-flow/
 └── modules/
     └── customer-lookup/
@@ -49,7 +49,7 @@ simple-flow/
             ├── Database/
             │   ├── CustomerRepository.php   🔨 add query_sf_table()
             │   ├── CustomerTable.php        🆕 schema + CRUD
-            │   └── CustomerMigrate.php      🆕 GF → wp_sf_customers
+            │   └── CustomerMigrate.php      🆕 GF → wp_sfa_cl_customers
         └── assets/
             ├── customer-lookup.js           ✅ no changes
             ├── sf-customers-admin.css       🆕
@@ -107,10 +107,10 @@ public static function normalize_phone( string $phone ): string {
 Namespace: `SFA\CustomerLookup\Database`
 Class: `CustomerTable`
 
-### Table: `wp_sf_customers`
+### Table: `wp_sfa_cl_customers`
 
 ```sql
-CREATE TABLE wp_sf_customers (
+CREATE TABLE wp_sfa_cl_customers (
     id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
     phone         VARCHAR(20)  NOT NULL,
     phone_alt     VARCHAR(20)  DEFAULT NULL,
@@ -338,7 +338,7 @@ if ( $settings['use_sf_table'] ) {
 ```php
 private static function query_sf_table( string $phone ): ?array {
     // Phone is already digits-only from the AJAX handler.
-    // Data in wp_sf_customers is normalized on write, so no +prefix handling needed.
+    // Data in wp_sfa_cl_customers is normalized on write, so no +prefix handling needed.
     $customer = CustomerTable::get_by_phone( $phone );
 
     if ( ! $customer ) {
@@ -362,10 +362,10 @@ private static function query_sf_table( string $phone ): ?array {
 ```
 
 **Query priority after change:**
-```
+```text
 find_by_phone()
     ↓ transient cache hit → return
-    ↓ use_sf_table = true  → query_sf_table()   ← normalized wp_sf_customers lookup
+    ↓ use_sf_table = true  → query_sf_table()   ← normalized wp_sfa_cl_customers lookup
     ↓ use_wpdb = true      → query_wpdb()        ← existing GF meta fallback
     ↓ default              → query_gfapi()       ← existing GFAPI fallback
 ```
@@ -389,7 +389,7 @@ $use_sf_table = (bool) get_option( 'sfa_cl_use_sf_table', false );
         <label>
             <input type="checkbox" name="sfa_cl_use_sf_table"
                    id="sfa_cl_use_sf_table" value="1" <?php checked( $use_sf_table ); ?>>
-            <?php esc_html_e( 'Query wp_sf_customers directly (fastest — enable after migration is complete)', 'simpleflow' ); ?>
+            <?php esc_html_e( 'Query wp_sfa_cl_customers directly (fastest — enable after migration is complete)', 'simpleflow' ); ?>
         </label>
         <p class="description">
             <?php esc_html_e( 'Bypasses Gravity Forms entirely. Requires migration to have run successfully. Once enabled, new customers must be created via the Customers admin page.', 'simpleflow' ); ?>
@@ -551,7 +551,7 @@ Odoo sync (n8n) will hook into these actions:
 - [ ] Verify field map: `wp option get sfa_cl_field_map`
 - [ ] Confirm `customer_type` values in GF match allowed values: `individual / company / project`
 - [ ] Run migration: `wp eval 'SFA\CustomerLookup\Database\CustomerMigrate::run_cli();'`
-- [ ] Verify row count: `wp db query "SELECT COUNT(*) FROM wp_sf_customers;"`
+- [ ] Verify row count: `wp db query "SELECT COUNT(*) FROM wp_sfa_cl_customers;"`
 - [ ] Enable SF Table toggle in Settings → Advanced
 - [ ] Test lookup on order form with known phone
 - [ ] Disable Populate Anything on order forms
@@ -582,7 +582,7 @@ Odoo sync (n8n) will hook into these actions:
 
 ## Out of Scope (this build)
 
-- Odoo → `wp_sf_customers` sync (Phase 2, separate plan)
+- Odoo → `wp_sfa_cl_customers` sync (Phase 2, separate plan)
 - Bulk CSV import
 - Customer merge UI
 - Activity log per customer

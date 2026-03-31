@@ -13,6 +13,32 @@ class CustomersAdmin {
 
 	const MENU_SLUG = 'sfa-customers';
 
+	/**
+	 * Translatable label maps for stored enum-like values.
+	 */
+	private static function status_labels(): array {
+		return [
+			'active'   => __( 'Active', 'simpleflow' ),
+			'inactive' => __( 'Inactive', 'simpleflow' ),
+		];
+	}
+
+	private static function source_labels(): array {
+		return [
+			'manual'    => __( 'Manual', 'simpleflow' ),
+			'odoo'      => __( 'Odoo', 'simpleflow' ),
+			'migration' => __( 'Migration', 'simpleflow' ),
+		];
+	}
+
+	private static function type_labels(): array {
+		return [
+			'individual' => __( 'Individual', 'simpleflow' ),
+			'company'    => __( 'Company', 'simpleflow' ),
+			'project'    => __( 'Project', 'simpleflow' ),
+		];
+	}
+
 	public function __construct() {
 		add_action( 'admin_menu', [ $this, 'add_menu_page' ], 99 );
 		add_action( 'admin_enqueue_scripts', [ $this, 'enqueue_assets' ] );
@@ -121,11 +147,11 @@ class CustomersAdmin {
 		}
 
 		if ( 'deactivate' === $action ) {
-			CustomerTable::deactivate( $id );
-			$notice = 'deactivated';
+			$success = CustomerTable::deactivate( $id );
+			$notice  = $success ? 'deactivated' : 'status_update_failed';
 		} else {
-			CustomerTable::reactivate( $id );
-			$notice = 'reactivated';
+			$success = CustomerTable::reactivate( $id );
+			$notice  = $success ? 'reactivated' : 'status_update_failed';
 		}
 
 		wp_safe_redirect( add_query_arg(
@@ -143,14 +169,17 @@ class CustomersAdmin {
 
 		if ( $notice ) {
 			$messages = [
-				'created'     => __( 'Customer created successfully.', 'simpleflow' ),
-				'updated'     => __( 'Customer updated successfully.', 'simpleflow' ),
-				'deactivated' => __( 'Customer deactivated.', 'simpleflow' ),
-				'reactivated' => __( 'Customer reactivated.', 'simpleflow' ),
+				'created'              => __( 'Customer created successfully.', 'simpleflow' ),
+				'updated'              => __( 'Customer updated successfully.', 'simpleflow' ),
+				'deactivated'          => __( 'Customer deactivated.', 'simpleflow' ),
+				'reactivated'          => __( 'Customer reactivated.', 'simpleflow' ),
+				'status_update_failed' => __( 'Failed to update customer status. Please try again.', 'simpleflow' ),
 			];
 			if ( isset( $messages[ $notice ] ) ) {
+				$notice_type = ( 'status_update_failed' === $notice ) ? 'error' : 'success';
 				printf(
-					'<div class="notice notice-success is-dismissible"><p>%s</p></div>',
+					'<div class="notice notice-%s is-dismissible"><p>%s</p></div>',
+					esc_attr( $notice_type ),
 					esc_html( $messages[ $notice ] )
 				);
 			}
@@ -286,17 +315,26 @@ class CustomersAdmin {
 			$fields['odoo_id'] = __( 'Odoo ID', 'simpleflow' );
 		}
 
+		$status_labels = self::status_labels();
+		$source_labels = self::source_labels();
+		$type_labels   = self::type_labels();
+
 		foreach ( $fields as $key => $label ) {
 			$value = $customer->$key ?? '';
-			printf(
-				'<tr><th>%s</th><td>%s</td></tr>',
-				esc_html( $label ),
-				( 'status' === $key )
-					? sprintf( '<span class="sfa-badge sfa-badge--%s">%s</span>', esc_attr( $value ), esc_html( ucfirst( $value ) ) )
-					: ( ( 'source' === $key )
-						? sprintf( '<span class="sfa-badge sfa-badge--source-%s">%s</span>', esc_attr( $value ), esc_html( $value ) )
-						: esc_html( $value ?: '—' ) )
-			);
+
+			if ( 'status' === $key ) {
+				$display = $status_labels[ $value ] ?? esc_html( $value );
+				$cell = sprintf( '<span class="sfa-badge sfa-badge--%s">%s</span>', esc_attr( $value ), esc_html( $display ) );
+			} elseif ( 'source' === $key ) {
+				$display = $source_labels[ $value ] ?? esc_html( $value );
+				$cell = sprintf( '<span class="sfa-badge sfa-badge--source-%s">%s</span>', esc_attr( $value ), esc_html( $display ) );
+			} elseif ( 'customer_type' === $key ) {
+				$cell = esc_html( $type_labels[ $value ] ?? $value ?: '—' );
+			} else {
+				$cell = esc_html( $value ?: '—' );
+			}
+
+			printf( '<tr><th>%s</th><td>%s</td></tr>', esc_html( $label ), $cell );
 		}
 
 		echo '</table>';
@@ -396,12 +434,13 @@ class CustomersAdmin {
 		echo '<th>' . esc_html__( 'Customer Type', 'simpleflow' ) . '</th>';
 		echo '<td>';
 		$current_type = $data['customer_type'] ?? 'individual';
+		$type_labels  = self::type_labels();
 		foreach ( CustomerTable::VALID_CUSTOMER_TYPES as $type ) {
 			printf(
 				'<label style="margin-inline-end:16px;"><input type="radio" name="customer_type" value="%s" %s> %s</label>',
 				esc_attr( $type ),
 				checked( $current_type, $type, false ),
-				esc_html( ucfirst( $type ) )
+				esc_html( $type_labels[ $type ] ?? $type )
 			);
 		}
 		echo '</td>';
@@ -502,7 +541,7 @@ class CustomersAdmin {
 		check_ajax_referer( 'sfa_cl_admin', '_wpnonce' );
 
 		if ( ! current_user_can( 'gform_full_access' ) ) {
-			wp_send_json_error( 'Unauthorized', 403 );
+			wp_send_json_error( __( 'Unauthorized', 'simpleflow' ), 403 );
 			return;
 		}
 

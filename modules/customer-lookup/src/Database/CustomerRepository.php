@@ -145,7 +145,7 @@ class CustomerRepository {
 		$mapped = [];
 		foreach ( $allowed as $key ) {
 			if ( isset( $customer->$key ) && '' !== $customer->$key ) {
-				$mapped[ $key ] = esc_html( $customer->$key );
+				$mapped[ $key ] = $customer->$key;
 			}
 		}
 
@@ -282,7 +282,7 @@ class CustomerRepository {
 		foreach ( $results as $row ) {
 			$key = (string) $row['meta_key'];
 			if ( isset( $flipped[ $key ] ) ) {
-				$mapped[ $flipped[ $key ] ] = esc_html( $row['meta_value'] );
+				$mapped[ $flipped[ $key ] ] = $row['meta_value'];
 			}
 		}
 
@@ -307,7 +307,7 @@ class CustomerRepository {
 			$fid_str = (string) $fid;
 
 			if ( isset( $entry[ $fid_str ] ) && '' !== $entry[ $fid_str ] ) {
-				$mapped[ $semantic ] = esc_html( $entry[ $fid_str ] );
+				$mapped[ $semantic ] = $entry[ $fid_str ];
 			}
 		}
 

@@ -127,8 +127,12 @@ class CustomersListTable extends \WP_List_Table {
 	 * Status column with badge.
 	 */
 	public function column_status( $item ): string {
+		$labels = [
+			'active'   => __( 'Active', 'simpleflow' ),
+			'inactive' => __( 'Inactive', 'simpleflow' ),
+		];
 		$status = esc_attr( $item->status );
-		$label  = esc_html( ucfirst( $item->status ) );
+		$label  = esc_html( $labels[ $item->status ] ?? $item->status );
 		return sprintf( '<span class="sfa-badge sfa-badge--%s">%s</span>', $status, $label );
 	}
 

@@ -31,7 +31,7 @@ class CustomerTable {
 	 */
 	public static function table_name(): string {
 		global $wpdb;
-		return $wpdb->prefix . 'sf_customers';
+		return $wpdb->prefix . 'sfa_cl_customers';
 	}
 
 	/**
@@ -61,7 +61,7 @@ class CustomerTable {
 			updated_at    DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY   (id),
 			UNIQUE KEY    uq_phone (phone),
-			KEY           idx_phone_alt (phone_alt),
+			UNIQUE KEY    uq_phone_alt (phone_alt),
 			KEY           idx_status_created (status, created_at),
 			KEY           idx_odoo_id (odoo_id),
 			KEY           idx_file_number (file_number)
@@ -293,28 +293,34 @@ class CustomerTable {
 		$table   = self::table_name();
 		$escaped = $wpdb->esc_like( $term );
 
+		// Phone columns store digits-only — strip non-digits for phone patterns
+		$digits       = preg_replace( '/\D+/', '', $term );
+		$phone_prefix = ( '' !== $digits ) ? $wpdb->esc_like( $digits ) . '%' : '';
+
 		$prefix   = $escaped . '%';
 		$contains = '%' . $escaped . '%';
+
+		// Build phone conditions only if digits are present
+		$phone_conditions = '';
+		$phone_values     = [];
+		if ( '' !== $phone_prefix ) {
+			$phone_conditions = 'phone LIKE %s OR phone_alt LIKE %s OR';
+			$phone_values     = [ $phone_prefix, $phone_prefix ];
+		}
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$results = $wpdb->get_results( $wpdb->prepare(
 			"SELECT * FROM {$table}
 			 WHERE status = 'active'
 			   AND (
-			       phone LIKE %s
-			    OR phone_alt LIKE %s
-			    OR file_number LIKE %s
+			       {$phone_conditions}
+			       file_number LIKE %s
 			    OR name_arabic LIKE %s
 			    OR name_english LIKE %s
 			   )
 			 ORDER BY name_arabic ASC
 			 LIMIT %d",
-			$prefix,
-			$prefix,
-			$prefix,
-			$contains,
-			$contains,
-			$limit
+			array_merge( $phone_values, [ $prefix, $contains, $contains, $limit ] )
 		) );
 
 		return $results ?: [];
@@ -344,6 +350,11 @@ class CustomerTable {
 		$order    = $args['order'] ?? 'DESC';
 		$search   = $args['search'] ?? '';
 
+		// Normalize status — invalid values default to 'active'
+		if ( 'all' !== $status && ! in_array( $status, self::VALID_STATUSES, true ) ) {
+			$status = 'active';
+		}
+
 		// Whitelist orderby to prevent SQL injection
 		if ( ! in_array( $orderby, self::SORTABLE_COLUMNS, true ) ) {
 			$orderby = 'created_at';
@@ -359,7 +370,7 @@ class CustomerTable {
 		$values = [];
 
 		// Status filter
-		if ( 'all' !== $status && in_array( $status, self::VALID_STATUSES, true ) ) {
+		if ( 'all' !== $status ) {
 			$where[]  = 'status = %s';
 			$values[] = $status;
 		}
@@ -367,11 +378,18 @@ class CustomerTable {
 		// Search filter
 		if ( '' !== $search ) {
 			$escaped  = $wpdb->esc_like( $search );
+			$digits   = preg_replace( '/\D+/', '', $search );
 			$prefix   = $escaped . '%';
 			$contains = '%' . $escaped . '%';
 
-			$where[] = '(phone LIKE %s OR phone_alt LIKE %s OR file_number LIKE %s OR name_arabic LIKE %s OR name_english LIKE %s)';
-			array_push( $values, $prefix, $prefix, $prefix, $contains, $contains );
+			if ( '' !== $digits ) {
+				$phone_prefix = $wpdb->esc_like( $digits ) . '%';
+				$where[] = '(phone LIKE %s OR phone_alt LIKE %s OR file_number LIKE %s OR name_arabic LIKE %s OR name_english LIKE %s)';
+				array_push( $values, $phone_prefix, $phone_prefix, $prefix, $contains, $contains );
+			} else {
+				$where[] = '(file_number LIKE %s OR name_arabic LIKE %s OR name_english LIKE %s)';
+				array_push( $values, $prefix, $contains, $contains );
+			}
 		}
 
 		$where_sql = ! empty( $where ) ? 'WHERE ' . implode( ' AND ', $where ) : '';
