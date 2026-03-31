@@ -2,7 +2,7 @@
 /**
  * Customer Lookup Module for SimpleFlow
  * AJAX-based customer lookup by phone number for Gravity Forms order forms
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -12,7 +12,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Module constants
 if ( ! defined( 'SFA_CL_VER' ) ) {
-	define( 'SFA_CL_VER', '1.0.2' );
+	define( 'SFA_CL_VER', '1.0.3' );
 }
 if ( ! defined( 'SFA_CL_DIR' ) ) {
 	define( 'SFA_CL_DIR', plugin_dir_path( __FILE__ ) );
