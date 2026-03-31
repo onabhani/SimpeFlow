@@ -103,6 +103,7 @@ class LookupHandler {
 				error_log( 'SFA Customer Lookup: nonce verification failed for user ' . get_current_user_id() );
 			}
 			wp_send_json_success( [ 'found' => false ] );
+			return;
 		}
 
 		// 2. Capability check
@@ -111,6 +112,7 @@ class LookupHandler {
 				error_log( 'SFA Customer Lookup: capability check failed for user ' . get_current_user_id() );
 			}
 			wp_send_json_success( [ 'found' => false ] );
+			return;
 		}
 
 		// 3. Sanitize phone

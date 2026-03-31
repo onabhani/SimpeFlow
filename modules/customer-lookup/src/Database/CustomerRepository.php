@@ -153,6 +153,11 @@ class CustomerRepository {
 	 * @return array|null
 	 */
 	private static function query_wpdb( string $phone, int $form_id, array $field_map ): ?array {
+		// Direct DB query against gf_entry/gf_entry_meta is an intentional performance
+		// fallback gated by: (1) GFCommon::$version >= 2.5 check below, (2) the admin
+		// toggle sfa_cl_use_direct_db, and (3) $wpdb->prepare() for parameterisation.
+		// See CUSTOMER_LOOKUP_PLAN.md for full rationale on why GFAPI is not used here.
+
 		// GF version guard
 		if ( ! class_exists( 'GFCommon' ) || version_compare( \GFCommon::$version, '2.5', '<' ) ) {
 			return null;

@@ -222,7 +222,7 @@ class SettingsPage {
 		$field_map = [];
 
 		if ( is_array( $raw_map ) ) {
-			foreach ( self::FIELD_KEYS as $key => $label ) {
+			foreach ( array_keys( self::FIELD_KEYS ) as $key ) {
 				$field_map[ $key ] = isset( $raw_map[ $key ] ) ? (string) absint( $raw_map[ $key ] ) : '';
 			}
 		}
