@@ -49,12 +49,20 @@ class CustomerMigrate {
 
 		global $wpdb;
 
+		// Legacy phone field — fallback when primary phone is empty on older entries
+		$legacy_phone_fid = (string) get_option( 'sfa_cl_legacy_phone_field', '' );
+
 		// Flip field_map: GF field ID => semantic key
 		$flipped = [];
 		foreach ( $field_map as $semantic => $fid ) {
 			if ( $fid ) {
 				$flipped[ (string) $fid ] = $semantic;
 			}
+		}
+
+		// Include legacy phone field in meta fetch (mapped to a temporary key)
+		if ( $legacy_phone_fid && ! isset( $flipped[ $legacy_phone_fid ] ) ) {
+			$flipped[ $legacy_phone_fid ] = '_legacy_phone';
 		}
 
 		// Get all active entry IDs for the source form
@@ -74,6 +82,7 @@ class CustomerMigrate {
 			'skipped_incomplete' => 0,
 			'would_insert'       => 0,
 			'total_entries'      => count( $entry_ids ),
+			'skipped_details'    => [],
 			'errors'             => [],
 		];
 
@@ -117,9 +126,25 @@ class CustomerMigrate {
 				$phone       = $fields['phone'] ?? '';
 				$name_arabic = $fields['name_arabic'] ?? '';
 
+				// Fallback to legacy phone field if primary is empty
+				if ( '' === trim( $phone ) && ! empty( $fields['_legacy_phone'] ) ) {
+					$phone = $fields['_legacy_phone'];
+				}
+
 				// Validate required fields
-				if ( '' === trim( $phone ) || '' === trim( $name_arabic ) ) {
+				if ( '' === trim( $phone ) && '' === trim( $name_arabic ) ) {
 					$result['skipped_incomplete']++;
+					$result['skipped_details'][ $entry_id ] = 'Missing phone and name';
+					continue;
+				}
+				if ( '' === trim( $phone ) ) {
+					$result['skipped_incomplete']++;
+					$result['skipped_details'][ $entry_id ] = 'Missing phone — name: "' . mb_substr( trim( $name_arabic ), 0, 30 ) . '"';
+					continue;
+				}
+				if ( '' === trim( $name_arabic ) ) {
+					$result['skipped_incomplete']++;
+					$result['skipped_details'][ $entry_id ] = 'Missing name — phone: "' . trim( $phone ) . '"';
 					continue;
 				}
 
@@ -127,6 +152,7 @@ class CustomerMigrate {
 				$normalized = CustomerTable::normalize_phone( $phone );
 				if ( '' === $normalized ) {
 					$result['skipped_incomplete']++;
+					$result['skipped_details'][ $entry_id ] = 'Phone too short after normalization: "' . trim( $phone ) . '"';
 					continue;
 				}
 
@@ -311,6 +337,9 @@ class CustomerMigrate {
 			echo "\n";
 			self::print_verify();
 		}
+
+		// Print skipped details
+		self::print_skipped( $result['skipped_details'] ?? [] );
 	}
 
 	/**
@@ -344,6 +373,33 @@ class CustomerMigrate {
 	}
 
 	/**
+	 * Print skipped entry details grouped by reason.
+	 */
+	private static function print_skipped( array $details ): void {
+		if ( empty( $details ) ) {
+			return;
+		}
+
+		echo "\n=== SKIPPED DETAILS ===\n";
+
+		// Group by reason
+		$by_reason = [];
+		foreach ( $details as $eid => $reason ) {
+			$by_reason[ $reason ][] = $eid;
+		}
+
+		foreach ( $by_reason as $reason => $eids ) {
+			echo "\n" . $reason . " (" . count( $eids ) . " entries):\n";
+			$sample = array_slice( $eids, 0, 10 );
+			echo "  Entry IDs: " . implode( ', ', $sample );
+			if ( count( $eids ) > 10 ) {
+				echo " ... and " . ( count( $eids ) - 10 ) . " more";
+			}
+			echo "\n";
+		}
+	}
+
+	/**
 	 * Build an error result array.
 	 */
 	private static function error_result( string $message ): array {
@@ -353,6 +409,7 @@ class CustomerMigrate {
 			'skipped_incomplete' => 0,
 			'would_insert'       => 0,
 			'total_entries'      => 0,
+			'skipped_details'    => [],
 			'errors'             => [ 0 => $message ],
 		];
 	}
