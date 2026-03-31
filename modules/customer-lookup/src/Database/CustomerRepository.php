@@ -111,20 +111,23 @@ class CustomerRepository {
 			return null;
 		}
 
-		$filters = [
-			'mode' => 'any',
-			[
-				'key'   => $field_map['phone'],
-				'value' => $phone,
-			],
-		];
+		// Search both digits-only and +prefixed to handle stored formats like +966...
+		$variants = [ $phone, '+' . $phone ];
 
-		// Include alternate phone if configured
-		if ( ! empty( $field_map['phone_alt'] ) ) {
+		$filters = [ 'mode' => 'any' ];
+
+		foreach ( $variants as $variant ) {
 			$filters[] = [
-				'key'   => $field_map['phone_alt'],
-				'value' => $phone,
+				'key'   => $field_map['phone'],
+				'value' => $variant,
 			];
+
+			if ( ! empty( $field_map['phone_alt'] ) ) {
+				$filters[] = [
+					'key'   => $field_map['phone_alt'],
+					'value' => $variant,
+				];
+			}
 		}
 
 		$entries = \GFAPI::get_entries( $form_id, [
@@ -170,8 +173,10 @@ class CustomerRepository {
 			$meta_keys[] = $field_map['phone_alt'];
 		}
 
-		// Query 1: Find entry_id by phone (both fields in one query)
-		$placeholders = implode( ', ', array_fill( 0, count( $meta_keys ), '%s' ) );
+		// Query 1: Find entry_id by phone (both fields, both +prefixed and digits-only)
+		$key_placeholders   = implode( ', ', array_fill( 0, count( $meta_keys ), '%s' ) );
+		$phone_variants     = [ $phone, '+' . $phone ];
+		$value_placeholders = implode( ', ', array_fill( 0, count( $phone_variants ), '%s' ) );
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery
 		$entry_id = $wpdb->get_var( $wpdb->prepare(
@@ -179,12 +184,12 @@ class CustomerRepository {
 			 FROM {$wpdb->prefix}gf_entry_meta em
 			 INNER JOIN {$wpdb->prefix}gf_entry e ON e.id = em.entry_id
 			 WHERE em.form_id = %d
-			   AND em.meta_key IN ({$placeholders})
-			   AND em.meta_value = %s
+			   AND em.meta_key IN ({$key_placeholders})
+			   AND em.meta_value IN ({$value_placeholders})
 			   AND e.status = 'active'
 			 ORDER BY em.entry_id DESC
 			 LIMIT 1",
-			array_merge( [ $form_id ], $meta_keys, [ $phone ] )
+			array_merge( [ $form_id ], $meta_keys, $phone_variants )
 		) );
 
 		if ( ! $entry_id ) {
