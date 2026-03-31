@@ -2,7 +2,7 @@
 /**
  * Customer Lookup Module for SimpleFlow
  * AJAX-based customer lookup by phone number for Gravity Forms order forms
- * Version: 1.0.3
+ * Version: 2.0.0
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -12,7 +12,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 // Module constants
 if ( ! defined( 'SFA_CL_VER' ) ) {
-	define( 'SFA_CL_VER', '1.0.3' );
+	define( 'SFA_CL_VER', '2.0.0' );
+}
+if ( ! defined( 'SFA_CL_DB_VER' ) ) {
+	define( 'SFA_CL_DB_VER', '1.0.0' );
 }
 if ( ! defined( 'SFA_CL_DIR' ) ) {
 	define( 'SFA_CL_DIR', plugin_dir_path( __FILE__ ) );
@@ -41,9 +44,17 @@ spl_autoload_register( function ( $class ) {
  * Initialize module on plugins loaded
  */
 add_action( 'plugins_loaded', function () {
+	// Version-gated DB table install — uses SFA_CL_DB_VER so only schema changes trigger dbDelta
+	$installed_ver = get_option( 'sfa_cl_db_version', '0' );
+	if ( version_compare( $installed_ver, SFA_CL_DB_VER, '<' ) ) {
+		\SFA\CustomerLookup\Database\CustomerTable::create_table();
+		update_option( 'sfa_cl_db_version', SFA_CL_DB_VER );
+	}
+
 	new SFA\CustomerLookup\Ajax\LookupHandler();
 
 	if ( is_admin() ) {
 		new SFA\CustomerLookup\Admin\SettingsPage();
+		new SFA\CustomerLookup\Admin\CustomersAdmin();
 	}
 }, 20 );
