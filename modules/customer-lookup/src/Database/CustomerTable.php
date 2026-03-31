@@ -469,11 +469,12 @@ class CustomerTable {
 	/**
 	 * Sanitize and validate data for insert/update.
 	 * Strips unknown keys, normalizes phones, validates enum-like fields.
+	 * Public so callers (e.g. migration dry-run) can validate without inserting.
 	 *
 	 * @param array $data Raw input.
 	 * @return array|false Sanitized data or false if validation fails.
 	 */
-	private static function sanitize_data( array $data ) {
+	public static function sanitize_data( array $data ) {
 		// Strip unknown keys
 		$data = array_intersect_key( $data, array_flip( self::ALLOWED_COLUMNS ) );
 

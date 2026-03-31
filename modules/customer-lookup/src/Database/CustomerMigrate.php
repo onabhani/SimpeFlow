@@ -163,7 +163,13 @@ class CustomerMigrate {
 				}
 
 				if ( $dry_run ) {
-					$result['would_insert']++;
+					// Run the same validation as insert() to get accurate counts
+					$validated = CustomerTable::sanitize_data( $insert_data );
+					if ( false === $validated ) {
+						$result['errors'][ $entry_id ] = 'Validation failed — phone: "' . ( $insert_data['phone'] ?? '' ) . '", type: "' . ( $insert_data['customer_type'] ?? '' ) . '"';
+					} else {
+						$result['would_insert']++;
+					}
 					continue;
 				}
 
