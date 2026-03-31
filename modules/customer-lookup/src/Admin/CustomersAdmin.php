@@ -196,6 +196,7 @@ class CustomersAdmin {
 		echo '<hr class="wp-header-end">';
 
 		$table = new CustomersListTable();
+		$table->prepare_items();
 		$table->render_filter_tabs();
 		echo '<form method="get">';
 		echo '<input type="hidden" name="page" value="' . esc_attr( self::MENU_SLUG ) . '">';
@@ -203,7 +204,6 @@ class CustomersAdmin {
 			echo '<input type="hidden" name="status" value="' . esc_attr( sanitize_text_field( $_REQUEST['status'] ) ) . '">';
 		}
 		$table->search_box( __( 'Search Customers', 'simpleflow' ), 'sfa-customer-search' );
-		$table->prepare_items();
 		$table->display();
 		echo '</form>';
 	}
