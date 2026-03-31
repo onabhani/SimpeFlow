@@ -7,7 +7,7 @@
 
 	var debounceTimer = null;
 	var currentXhr    = null;
-	var DEBOUNCE_MS   = 600;
+	var DEBOUNCE_MS   = 300;
 	var MIN_DIGITS    = 9;
 
 	/**
