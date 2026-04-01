@@ -59,6 +59,7 @@ class SettingsPage {
 		if ( ! is_array( $order_form_ids ) ) {
 			$order_form_ids = [];
 		}
+		$order_form_ids = array_map( 'intval', $order_form_ids );
 
 		// Get fields for selected form
 		$form_fields = [];
@@ -108,7 +109,7 @@ class SettingsPage {
 					<tr>
 						<th><label for="sfa_cl_order_form_ids"><?php esc_html_e( 'Order Forms', 'simpleflow' ); ?></label></th>
 						<td>
-							<select name="sfa_cl_order_form_ids[]" id="sfa_cl_order_form_ids" multiple size="<?php echo esc_attr( min( count( $forms ), 8 ) ); ?>" style="min-width:300px;">
+							<select name="sfa_cl_order_form_ids[]" id="sfa_cl_order_form_ids" multiple size="<?php echo esc_attr( max( 1, min( count( $forms ), 8 ) ) ); ?>" style="min-width:300px;">
 								<?php foreach ( $forms as $f ): ?>
 									<option value="<?php echo esc_attr( $f['id'] ); ?>" <?php echo in_array( (int) $f['id'], $order_form_ids, true ) ? 'selected' : ''; ?>>
 										<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo esc_html( $f['id'] ); ?>)
@@ -279,6 +280,9 @@ class SettingsPage {
 		$order_form_ids = is_array( $raw_order_ids ) ? array_map( 'absint', $raw_order_ids ) : [];
 		$order_form_ids = array_filter( $order_form_ids );
 		update_option( 'sfa_cl_order_form_ids', $order_form_ids );
+
+		// Clean up legacy single-form option
+		delete_option( 'sfa_cl_order_form_id' );
 
 		// Save field map (sanitize each value as absint)
 		$raw_map   = $_POST['sfa_cl_field_map'] ?? [];

@@ -395,6 +395,9 @@ class CustomersAdmin {
 	 */
 	private function render_orders_panel( object $customer ): void {
 		$order_form_ids = get_option( 'sfa_cl_order_form_ids', [] );
+		if ( ! is_array( $order_form_ids ) ) {
+			$order_form_ids = [];
+		}
 		$source_form_id = (int) get_option( 'sfa_cl_source_form_id', 0 );
 		$gf_entry_id    = (int) ( $customer->gf_entry_id ?? 0 );
 
@@ -423,23 +426,25 @@ class CustomersAdmin {
 				continue;
 			}
 
+			$form_total = 0;
 			$entries = \GFAPI::get_entries( $fid, [
 				'status'        => 'active',
 				'field_filters' => [
 					[ 'key' => $meta_key, 'value' => (string) $gf_entry_id ],
 				],
-			], [ 'key' => 'date_created', 'direction' => 'DESC' ], [ 'offset' => 0, 'page_size' => 100 ] );
+			], [ 'key' => 'date_created', 'direction' => 'DESC' ], [ 'offset' => 0, 'page_size' => 100 ], $form_total );
 
 			if ( is_wp_error( $entries ) || empty( $entries ) ) {
 				continue;
 			}
 
 			$form_groups[] = [
-				'form_id'   => $fid,
+				'form_id'    => $fid,
+				'form_total' => $form_total,
 				'form_name' => $form['title'],
 				'entries'   => $entries,
 			];
-			$total_count += count( $entries );
+			$total_count += (int) $form_total;
 		}
 
 		echo '<div class="sfa-profile-card" style="margin-top:16px;">';
@@ -455,8 +460,16 @@ class CustomersAdmin {
 			$fid           = $group['form_id'];
 			$entry_url_base = admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $fid . '&lid=' );
 
+			$showing   = count( $group['entries'] );
+			$form_total = (int) $group['form_total'];
+			$count_label = ( $form_total > $showing )
+				? sprintf( __( 'showing %d of %d', 'simpleflow' ), $showing, $form_total )
+				: (string) $showing;
+
 			if ( count( $form_groups ) > 1 ) {
-				echo '<h3 style="margin-top:12px;">' . esc_html( $group['form_name'] ) . ' <span class="count">(' . count( $group['entries'] ) . ')</span></h3>';
+				echo '<h3 style="margin-top:12px;">' . esc_html( $group['form_name'] ) . ' <span class="count">(' . esc_html( $count_label ) . ')</span></h3>';
+			} elseif ( $form_total > $showing ) {
+				echo '<p class="description">' . sprintf( esc_html__( 'Showing %d of %d orders', 'simpleflow' ), $showing, $form_total ) . '</p>';
 			}
 
 			echo '<table class="widefat striped" style="margin-top:8px;">';
