@@ -391,91 +391,128 @@ class CustomersAdmin {
 
 	/**
 	 * Render the linked orders panel on the profile page.
+	 * Queries all configured order forms grouped by form name.
 	 */
 	private function render_orders_panel( object $customer ): void {
-		$order_form_id  = (int) get_option( 'sfa_cl_order_form_id', 0 );
+		$order_form_ids = get_option( 'sfa_cl_order_form_ids', [] );
+		if ( ! is_array( $order_form_ids ) ) {
+			$order_form_ids = [];
+		}
 		$source_form_id = (int) get_option( 'sfa_cl_source_form_id', 0 );
 		$gf_entry_id    = (int) ( $customer->gf_entry_id ?? 0 );
 
-		if ( ! $order_form_id || ! $gf_entry_id || ! $source_form_id || ! class_exists( 'GFAPI' ) ) {
+		// Backward compat: migrate old single-form setting
+		if ( empty( $order_form_ids ) ) {
+			$legacy = (int) get_option( 'sfa_cl_order_form_id', 0 );
+			if ( $legacy ) {
+				$order_form_ids = [ $legacy ];
+			}
+		}
+
+		if ( empty( $order_form_ids ) || ! $gf_entry_id || ! $source_form_id || ! class_exists( 'GFAPI' ) ) {
 			return;
 		}
 
-		// GravityFlow Parent Entry Connector stores the link as:
-		// meta_key: workflow_parent_form_id_{parent_form_id}_entry_id
-		// meta_value: {parent_entry_id}
-		$meta_key = 'workflow_parent_form_id_' . $source_form_id . '_entry_id';
+		// GravityFlow Parent Entry Connector meta key format
+		$meta_key    = 'workflow_parent_form_id_' . $source_form_id . '_entry_id';
+		$total_count = 0;
 
-		$entries = \GFAPI::get_entries( $order_form_id, [
-			'status'        => 'active',
-			'field_filters' => [
-				[ 'key' => $meta_key, 'value' => (string) $gf_entry_id ],
-			],
-		], [ 'key' => 'date_created', 'direction' => 'DESC' ], [ 'offset' => 0, 'page_size' => 100 ] );
+		// Collect entries grouped by form
+		$form_groups = [];
+		foreach ( $order_form_ids as $fid ) {
+			$fid  = (int) $fid;
+			$form = \GFAPI::get_form( $fid );
+			if ( ! $form || is_wp_error( $form ) ) {
+				continue;
+			}
 
-		if ( is_wp_error( $entries ) ) {
-			return;
+			$form_total = 0;
+			$entries = \GFAPI::get_entries( $fid, [
+				'status'        => 'active',
+				'field_filters' => [
+					[ 'key' => $meta_key, 'value' => (string) $gf_entry_id ],
+				],
+			], [ 'key' => 'date_created', 'direction' => 'DESC' ], [ 'offset' => 0, 'page_size' => 100 ], $form_total );
+
+			if ( is_wp_error( $entries ) || empty( $entries ) ) {
+				continue;
+			}
+
+			$form_groups[] = [
+				'form_id'    => $fid,
+				'form_total' => $form_total,
+				'form_name' => $form['title'],
+				'entries'   => $entries,
+			];
+			$total_count += (int) $form_total;
 		}
-
-		$entry_url_base = admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $order_form_id . '&lid=' );
 
 		echo '<div class="sfa-profile-card" style="margin-top:16px;">';
-		echo '<h2>' . esc_html__( 'Orders', 'simpleflow' ) . ' <span class="count">(' . count( $entries ) . ')</span></h2>';
+		echo '<h2>' . esc_html__( 'Orders', 'simpleflow' ) . ' <span class="count">(' . $total_count . ')</span></h2>';
 
-		if ( empty( $entries ) ) {
+		if ( empty( $form_groups ) ) {
 			echo '<p>' . esc_html__( 'No orders linked to this customer.', 'simpleflow' ) . '</p>';
 			echo '</div>';
 			return;
 		}
 
-		// Get form to resolve field labels
-		$form   = \GFAPI::get_form( $order_form_id );
-		$fields = [];
-		if ( $form && ! empty( $form['fields'] ) ) {
-			foreach ( $form['fields'] as $field ) {
-				$fields[ $field->id ] = $field;
+		foreach ( $form_groups as $group ) {
+			$fid           = $group['form_id'];
+			$entry_url_base = admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $fid . '&lid=' );
+
+			$showing   = count( $group['entries'] );
+			$form_total = (int) $group['form_total'];
+			$count_label = ( $form_total > $showing )
+				? sprintf( __( 'showing %d of %d', 'simpleflow' ), $showing, $form_total )
+				: (string) $showing;
+
+			$multi_forms = count( $order_form_ids ) > 1;
+			if ( $multi_forms ) {
+				echo '<h3 style="margin-top:12px;">' . esc_html( $group['form_name'] ) . ' <span class="count">(' . esc_html( $count_label ) . ')</span></h3>';
+			} elseif ( $form_total > $showing ) {
+				echo '<p class="description">' . sprintf( esc_html__( 'Showing %d of %d orders', 'simpleflow' ), $showing, $form_total ) . '</p>';
 			}
+
+			echo '<table class="widefat striped" style="margin-top:8px;">';
+			echo '<thead><tr>';
+			echo '<th>' . esc_html__( 'Entry ID', 'simpleflow' ) . '</th>';
+			echo '<th>' . esc_html__( 'Date', 'simpleflow' ) . '</th>';
+			echo '<th>' . esc_html__( 'Created By', 'simpleflow' ) . '</th>';
+			echo '<th>' . esc_html__( 'Status', 'simpleflow' ) . '</th>';
+			echo '<th>' . esc_html__( 'Actions', 'simpleflow' ) . '</th>';
+			echo '</tr></thead><tbody>';
+
+			foreach ( $group['entries'] as $entry ) {
+				$eid     = (int) $entry['id'];
+				$date    = esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $entry['date_created'] ) ) );
+				$user    = '';
+				$user_id = (int) ( $entry['created_by'] ?? 0 );
+				if ( $user_id ) {
+					$u = get_userdata( $user_id );
+					$user = $u ? esc_html( $u->display_name ) : '#' . $user_id;
+				}
+
+				$wf_status = gform_get_meta( $eid, 'workflow_final_status' );
+				if ( ! $wf_status ) {
+					$wf_status = gform_get_meta( $eid, 'workflow_current_status_timestamp' ) ? __( 'In Progress', 'simpleflow' ) : '—';
+				}
+
+				echo '<tr>';
+				printf( '<td><a href="%s">%d</a></td>', esc_url( $entry_url_base . $eid ), $eid );
+				echo '<td>' . $date . '</td>';
+				echo '<td>' . $user . '</td>';
+				echo '<td>' . esc_html( ucfirst( str_replace( '_', ' ', $wf_status ) ) ) . '</td>';
+				printf(
+					'<td><a href="%s">%s</a></td>',
+					esc_url( $entry_url_base . $eid ),
+					esc_html__( 'View', 'simpleflow' )
+				);
+				echo '</tr>';
+			}
+
+			echo '</tbody></table>';
 		}
 
-		echo '<table class="widefat striped" style="margin-top:8px;">';
-		echo '<thead><tr>';
-		echo '<th>' . esc_html__( 'Entry ID', 'simpleflow' ) . '</th>';
-		echo '<th>' . esc_html__( 'Date', 'simpleflow' ) . '</th>';
-		echo '<th>' . esc_html__( 'Created By', 'simpleflow' ) . '</th>';
-		echo '<th>' . esc_html__( 'Status', 'simpleflow' ) . '</th>';
-		echo '<th>' . esc_html__( 'Actions', 'simpleflow' ) . '</th>';
-		echo '</tr></thead><tbody>';
-
-		foreach ( $entries as $entry ) {
-			$eid     = (int) $entry['id'];
-			$date    = esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $entry['date_created'] ) ) );
-			$user    = '';
-			$user_id = (int) ( $entry['created_by'] ?? 0 );
-			if ( $user_id ) {
-				$u = get_userdata( $user_id );
-				$user = $u ? esc_html( $u->display_name ) : '#' . $user_id;
-			}
-
-			// Workflow status from GravityFlow
-			$wf_status = gform_get_meta( $eid, 'workflow_final_status' );
-			if ( ! $wf_status ) {
-				$wf_status = gform_get_meta( $eid, 'workflow_current_status_timestamp' ) ? __( 'In Progress', 'simpleflow' ) : '—';
-			}
-
-			echo '<tr>';
-			printf( '<td><a href="%s">%d</a></td>', esc_url( $entry_url_base . $eid ), $eid );
-			echo '<td>' . $date . '</td>';
-			echo '<td>' . $user . '</td>';
-			echo '<td>' . esc_html( ucfirst( str_replace( '_', ' ', $wf_status ) ) ) . '</td>';
-			printf(
-				'<td><a href="%s">%s</a></td>',
-				esc_url( $entry_url_base . $eid ),
-				esc_html__( 'View', 'simpleflow' )
-			);
-			echo '</tr>';
-		}
-
-		echo '</tbody></table>';
 		echo '</div>';
 	}
 

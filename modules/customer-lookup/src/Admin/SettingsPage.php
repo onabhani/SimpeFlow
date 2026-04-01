@@ -55,7 +55,11 @@ class SettingsPage {
 		$use_wpdb        = (bool) get_option( 'sfa_cl_use_direct_db', false );
 		$use_sf_table    = (bool) get_option( 'sfa_cl_use_sf_table', false );
 		$legacy_phone_id = get_option( 'sfa_cl_legacy_phone_field', '' );
-		$order_form_id   = (int) get_option( 'sfa_cl_order_form_id', 0 );
+		$order_form_ids  = get_option( 'sfa_cl_order_form_ids', [] );
+		if ( ! is_array( $order_form_ids ) ) {
+			$order_form_ids = [];
+		}
+		$order_form_ids = array_map( 'intval', $order_form_ids );
 
 		// Get fields for selected form
 		$form_fields = [];
@@ -103,17 +107,16 @@ class SettingsPage {
 						</td>
 					</tr>
 					<tr>
-						<th><label for="sfa_cl_order_form_id"><?php esc_html_e( 'Order Form', 'simpleflow' ); ?></label></th>
+						<th><label for="sfa_cl_order_form_ids"><?php esc_html_e( 'Order Forms', 'simpleflow' ); ?></label></th>
 						<td>
-							<select name="sfa_cl_order_form_id" id="sfa_cl_order_form_id">
-								<option value=""><?php esc_html_e( '-- Select Form --', 'simpleflow' ); ?></option>
+							<select name="sfa_cl_order_form_ids[]" id="sfa_cl_order_form_ids" multiple size="<?php echo esc_attr( max( 1, min( count( $forms ), 8 ) ) ); ?>" style="min-width:300px;">
 								<?php foreach ( $forms as $f ): ?>
-									<option value="<?php echo esc_attr( $f['id'] ); ?>" <?php selected( $order_form_id, (int) $f['id'] ); ?>>
+									<option value="<?php echo esc_attr( $f['id'] ); ?>" <?php echo in_array( (int) $f['id'], $order_form_ids, true ) ? 'selected' : ''; ?>>
 										<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo esc_html( $f['id'] ); ?>)
 									</option>
 								<?php endforeach; ?>
 							</select>
-							<p class="description"><?php esc_html_e( 'The orders form linked via GravityFlow Parent Entry Connector. Used to show orders on the customer profile.', 'simpleflow' ); ?></p>
+							<p class="description"><?php esc_html_e( 'Select one or more forms linked via GravityFlow Parent Entry Connector. Hold Ctrl/Cmd to select multiple. Used to show orders on the customer profile.', 'simpleflow' ); ?></p>
 						</td>
 					</tr>
 				</table>
@@ -272,9 +275,14 @@ class SettingsPage {
 
 		update_option( 'sfa_cl_source_form_id', $form_id );
 
-		// Order form ID
-		$order_form_id = absint( $_POST['sfa_cl_order_form_id'] ?? 0 );
-		update_option( 'sfa_cl_order_form_id', $order_form_id );
+		// Order form IDs (multi-select)
+		$raw_order_ids  = $_POST['sfa_cl_order_form_ids'] ?? [];
+		$order_form_ids = is_array( $raw_order_ids ) ? array_map( 'absint', $raw_order_ids ) : [];
+		$order_form_ids = array_filter( $order_form_ids );
+		update_option( 'sfa_cl_order_form_ids', $order_form_ids );
+
+		// Clean up legacy single-form option
+		delete_option( 'sfa_cl_order_form_id' );
 
 		// Save field map (sanitize each value as absint)
 		$raw_map   = $_POST['sfa_cl_field_map'] ?? [];
