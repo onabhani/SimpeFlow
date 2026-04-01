@@ -466,7 +466,8 @@ class CustomersAdmin {
 				? sprintf( __( 'showing %d of %d', 'simpleflow' ), $showing, $form_total )
 				: (string) $showing;
 
-			if ( count( $form_groups ) > 1 ) {
+			$multi_forms = count( $order_form_ids ) > 1;
+			if ( $multi_forms ) {
 				echo '<h3 style="margin-top:12px;">' . esc_html( $group['form_name'] ) . ' <span class="count">(' . esc_html( $count_label ) . ')</span></h3>';
 			} elseif ( $form_total > $showing ) {
 				echo '<p class="description">' . sprintf( esc_html__( 'Showing %d of %d orders', 'simpleflow' ), $showing, $form_total ) . '</p>';
