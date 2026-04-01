@@ -384,6 +384,94 @@ class CustomersAdmin {
 
 		echo '</p>';
 		echo '</div>';
+
+		// Orders panel — linked via GravityFlow Parent Entry Connector
+		$this->render_orders_panel( $customer );
+	}
+
+	/**
+	 * Render the linked orders panel on the profile page.
+	 */
+	private function render_orders_panel( object $customer ): void {
+		$order_form_id = (int) get_option( 'sfa_cl_order_form_id', 0 );
+		$gf_entry_id   = (int) ( $customer->gf_entry_id ?? 0 );
+
+		if ( ! $order_form_id || ! $gf_entry_id || ! class_exists( 'GFAPI' ) ) {
+			return;
+		}
+
+		// Query orders linked to this customer via workflow_parent_entry_id
+		$entries = \GFAPI::get_entries( $order_form_id, [
+			'status'        => 'active',
+			'field_filters' => [
+				[ 'key' => 'workflow_parent_entry_id', 'value' => (string) $gf_entry_id ],
+			],
+		], [ 'key' => 'date_created', 'direction' => 'DESC' ], [ 'offset' => 0, 'page_size' => 100 ] );
+
+		if ( is_wp_error( $entries ) ) {
+			return;
+		}
+
+		$entry_url_base = admin_url( 'admin.php?page=gf_entries&view=entry&id=' . $order_form_id . '&lid=' );
+
+		echo '<div class="sfa-profile-card" style="margin-top:16px;">';
+		echo '<h2>' . esc_html__( 'Orders', 'simpleflow' ) . ' <span class="count">(' . count( $entries ) . ')</span></h2>';
+
+		if ( empty( $entries ) ) {
+			echo '<p>' . esc_html__( 'No orders linked to this customer.', 'simpleflow' ) . '</p>';
+			echo '</div>';
+			return;
+		}
+
+		// Get form to resolve field labels
+		$form   = \GFAPI::get_form( $order_form_id );
+		$fields = [];
+		if ( $form && ! empty( $form['fields'] ) ) {
+			foreach ( $form['fields'] as $field ) {
+				$fields[ $field->id ] = $field;
+			}
+		}
+
+		echo '<table class="widefat striped" style="margin-top:8px;">';
+		echo '<thead><tr>';
+		echo '<th>' . esc_html__( 'Entry ID', 'simpleflow' ) . '</th>';
+		echo '<th>' . esc_html__( 'Date', 'simpleflow' ) . '</th>';
+		echo '<th>' . esc_html__( 'Created By', 'simpleflow' ) . '</th>';
+		echo '<th>' . esc_html__( 'Status', 'simpleflow' ) . '</th>';
+		echo '<th>' . esc_html__( 'Actions', 'simpleflow' ) . '</th>';
+		echo '</tr></thead><tbody>';
+
+		foreach ( $entries as $entry ) {
+			$eid     = (int) $entry['id'];
+			$date    = esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), strtotime( $entry['date_created'] ) ) );
+			$user    = '';
+			$user_id = (int) ( $entry['created_by'] ?? 0 );
+			if ( $user_id ) {
+				$u = get_userdata( $user_id );
+				$user = $u ? esc_html( $u->display_name ) : '#' . $user_id;
+			}
+
+			// Workflow status from GravityFlow
+			$wf_status = gform_get_meta( $eid, 'workflow_final_status' );
+			if ( ! $wf_status ) {
+				$wf_status = gform_get_meta( $eid, 'workflow_current_status_timestamp' ) ? __( 'In Progress', 'simpleflow' ) : '—';
+			}
+
+			echo '<tr>';
+			printf( '<td><a href="%s">%d</a></td>', esc_url( $entry_url_base . $eid ), $eid );
+			echo '<td>' . $date . '</td>';
+			echo '<td>' . $user . '</td>';
+			echo '<td>' . esc_html( ucfirst( str_replace( '_', ' ', $wf_status ) ) ) . '</td>';
+			printf(
+				'<td><a href="%s">%s</a></td>',
+				esc_url( $entry_url_base . $eid ),
+				esc_html__( 'View', 'simpleflow' )
+			);
+			echo '</tr>';
+		}
+
+		echo '</tbody></table>';
+		echo '</div>';
 	}
 
 	/**
