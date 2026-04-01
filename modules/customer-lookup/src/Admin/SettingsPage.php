@@ -55,6 +55,7 @@ class SettingsPage {
 		$use_wpdb        = (bool) get_option( 'sfa_cl_use_direct_db', false );
 		$use_sf_table    = (bool) get_option( 'sfa_cl_use_sf_table', false );
 		$legacy_phone_id = get_option( 'sfa_cl_legacy_phone_field', '' );
+		$order_form_id   = (int) get_option( 'sfa_cl_order_form_id', 0 );
 
 		// Get fields for selected form
 		$form_fields = [];
@@ -99,6 +100,20 @@ class SettingsPage {
 								<?php endforeach; ?>
 							</select>
 							<p class="description"><?php esc_html_e( 'The Gravity Forms form that stores customer records.', 'simpleflow' ); ?></p>
+						</td>
+					</tr>
+					<tr>
+						<th><label for="sfa_cl_order_form_id"><?php esc_html_e( 'Order Form', 'simpleflow' ); ?></label></th>
+						<td>
+							<select name="sfa_cl_order_form_id" id="sfa_cl_order_form_id">
+								<option value=""><?php esc_html_e( '-- Select Form --', 'simpleflow' ); ?></option>
+								<?php foreach ( $forms as $f ): ?>
+									<option value="<?php echo esc_attr( $f['id'] ); ?>" <?php selected( $order_form_id, (int) $f['id'] ); ?>>
+										<?php echo esc_html( $f['title'] ); ?> (ID: <?php echo esc_html( $f['id'] ); ?>)
+									</option>
+								<?php endforeach; ?>
+							</select>
+							<p class="description"><?php esc_html_e( 'The orders form linked via GravityFlow Parent Entry Connector. Used to show orders on the customer profile.', 'simpleflow' ); ?></p>
 						</td>
 					</tr>
 				</table>
@@ -256,6 +271,10 @@ class SettingsPage {
 		}
 
 		update_option( 'sfa_cl_source_form_id', $form_id );
+
+		// Order form ID
+		$order_form_id = absint( $_POST['sfa_cl_order_form_id'] ?? 0 );
+		update_option( 'sfa_cl_order_form_id', $order_form_id );
 
 		// Save field map (sanitize each value as absint)
 		$raw_map   = $_POST['sfa_cl_field_map'] ?? [];
