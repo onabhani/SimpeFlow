@@ -393,18 +393,23 @@ class CustomersAdmin {
 	 * Render the linked orders panel on the profile page.
 	 */
 	private function render_orders_panel( object $customer ): void {
-		$order_form_id = (int) get_option( 'sfa_cl_order_form_id', 0 );
-		$gf_entry_id   = (int) ( $customer->gf_entry_id ?? 0 );
+		$order_form_id  = (int) get_option( 'sfa_cl_order_form_id', 0 );
+		$source_form_id = (int) get_option( 'sfa_cl_source_form_id', 0 );
+		$gf_entry_id    = (int) ( $customer->gf_entry_id ?? 0 );
 
-		if ( ! $order_form_id || ! $gf_entry_id || ! class_exists( 'GFAPI' ) ) {
+		if ( ! $order_form_id || ! $gf_entry_id || ! $source_form_id || ! class_exists( 'GFAPI' ) ) {
 			return;
 		}
 
-		// Query orders linked to this customer via workflow_parent_entry_id
+		// GravityFlow Parent Entry Connector stores the link as:
+		// meta_key: workflow_parent_form_id_{parent_form_id}_entry_id
+		// meta_value: {parent_entry_id}
+		$meta_key = 'workflow_parent_form_id_' . $source_form_id . '_entry_id';
+
 		$entries = \GFAPI::get_entries( $order_form_id, [
 			'status'        => 'active',
 			'field_filters' => [
-				[ 'key' => 'workflow_parent_entry_id', 'value' => (string) $gf_entry_id ],
+				[ 'key' => $meta_key, 'value' => (string) $gf_entry_id ],
 			],
 		], [ 'key' => 'date_created', 'direction' => 'DESC' ], [ 'offset' => 0, 'page_size' => 100 ] );
 
