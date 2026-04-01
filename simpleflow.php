@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       SimpleFlow
  * Description:       Core loader for SimpleFlow modules (Simple Flow Attachment, etc.).
- * Version:           0.4.4
+ * Version:           0.4.5
  * Author:            Omar Alnabhani
  * Author URI:        https://hdqah.com
  * Requires at least: 6.0
@@ -21,7 +21,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 /**
  * Basic plugin constants
  */
-define( 'SIMPLEFLOW_VER',  '0.4.4' );
+define( 'SIMPLEFLOW_VER',  '0.4.5' );
 define( 'SIMPLEFLOW_FILE', __FILE__ );
 define( 'SIMPLEFLOW_PATH', plugin_dir_path( __FILE__ ) );
 define( 'SIMPLEFLOW_URL',  plugin_dir_url( __FILE__ ) );
