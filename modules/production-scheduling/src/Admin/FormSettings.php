@@ -67,6 +67,11 @@ class FormSettings {
 			SFA_PROD_VER,
 			true
 		);
+		wp_localize_script( 'sfa-prod-form-settings-stages', 'sfaProdStagesI18n', [
+			'unnamed' => __( '(unnamed)', 'simpleflow' ),
+			// %s is the owning stage's name.
+			'usedBy'  => __( '(used by: %s)', 'simpleflow' ),
+		] );
 
 		// Get current settings
 		$enabled = (bool) rgar( $form, 'sfa_prod_enabled' );
@@ -508,16 +513,16 @@ class FormSettings {
 		<tr>
 			<td colspan="2">
 				<hr style="margin: 20px 0;">
-				<h4 style="margin: 10px 0;">Workflow Stages</h4>
+				<h4 style="margin: 10px 0;"><?php esc_html_e( 'Workflow Stages', 'simpleflow' ); ?></h4>
 				<p class="description">
-					Group workflow steps into colored stages. Each stage shows a colored pill next to the entry number on the production bookings table. A step can only belong to one stage.
+					<?php esc_html_e( 'Group workflow steps into colored stages. Each stage shows a colored pill next to the entry number on the production bookings table. A step can only belong to one stage.', 'simpleflow' ); ?>
 				</p>
 			</td>
 		</tr>
 		<tr>
 			<td colspan="2">
 				<?php if ( ! $has_steps ): ?>
-					<p style="color: #666; font-style: italic;">Add workflow steps to this form to configure stages.</p>
+					<p style="color: #666; font-style: italic;"><?php esc_html_e( 'Add workflow steps to this form to configure stages.', 'simpleflow' ); ?></p>
 				<?php else: ?>
 					<div id="sfa-prod-stages-list">
 						<?php foreach ( $stages as $index => $stage ): ?>
@@ -525,7 +530,7 @@ class FormSettings {
 						<?php endforeach; ?>
 					</div>
 					<p style="margin-top: 10px;">
-						<button type="button" class="button" id="sfa-prod-add-stage">+ Add Stage</button>
+						<button type="button" class="button" id="sfa-prod-add-stage"><?php esc_html_e( '+ Add Stage', 'simpleflow' ); ?></button>
 					</p>
 
 					<template id="sfa-prod-stage-row-template">
@@ -574,19 +579,19 @@ class FormSettings {
 			<input type="hidden" name="<?php echo $name_prefix; ?>[id]" value="<?php echo esc_attr( $stage_id ); ?>" class="sfa-prod-stage-id">
 			<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;">
 				<div style="flex:2;min-width:220px;">
-					<label style="display:block;font-weight:bold;margin-bottom:5px;">Stage Name</label>
+					<label style="display:block;font-weight:bold;margin-bottom:5px;"><?php esc_html_e( 'Stage Name', 'simpleflow' ); ?></label>
 					<input type="text" name="<?php echo $name_prefix; ?>[name]" value="<?php echo esc_attr( $name ); ?>" maxlength="60" class="widefat">
 				</div>
 				<div style="flex:1;min-width:140px;">
-					<label style="display:block;font-weight:bold;margin-bottom:5px;">Color</label>
+					<label style="display:block;font-weight:bold;margin-bottom:5px;"><?php esc_html_e( 'Color', 'simpleflow' ); ?></label>
 					<input type="text" name="<?php echo $name_prefix; ?>[color]" value="<?php echo esc_attr( $color ); ?>" class="sfa-prod-stage-color" data-default-color="<?php echo esc_attr( $color ); ?>">
 				</div>
 				<div style="padding-top:25px;">
-					<button type="button" class="button sfa-prod-remove-stage" style="color:#dc3232;">Remove</button>
+					<button type="button" class="button sfa-prod-remove-stage" style="color:#dc3232;"><?php esc_html_e( 'Remove', 'simpleflow' ); ?></button>
 				</div>
 			</div>
 			<div style="margin-top:12px;">
-				<label style="display:block;font-weight:bold;margin-bottom:5px;">Workflow Steps</label>
+				<label style="display:block;font-weight:bold;margin-bottom:5px;"><?php esc_html_e( 'Workflow Steps', 'simpleflow' ); ?></label>
 				<div class="sfa-prod-stage-steps" style="display:flex;flex-wrap:wrap;gap:8px 20px;">
 					<?php foreach ( $workflow_steps as $step ):
 						$sid        = (int) $step['id'];
@@ -604,7 +609,10 @@ class FormSettings {
 							       <?php disabled( $is_owned ); ?>>
 							<?php echo esc_html( $step['name'] ); ?>
 							<?php if ( $is_owned ): ?>
-								<em style="font-size:11px;color:#999;">(used by: <?php echo esc_html( $owned_by ); ?>)</em>
+								<em style="font-size:11px;color:#999;"><?php
+									/* translators: %s is the owning stage's name. */
+									printf( esc_html__( '(used by: %s)', 'simpleflow' ), esc_html( $owned_by ) );
+								?></em>
 							<?php endif; ?>
 						</label>
 					<?php endforeach; ?>
