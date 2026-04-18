@@ -2,6 +2,8 @@
 namespace SFA\ProductionScheduling\Frontend;
 
 use SFA\ProductionScheduling\Database\CapacityRepository;
+use SFA\ProductionScheduling\Stages\StageResolver;
+use SFA\ProductionScheduling\Stages\StageBadge;
 
 /**
  * Frontend Calendar View
@@ -855,6 +857,13 @@ class FrontendCalendar {
 			return strcmp( $a['install_date'], $b['install_date'] );
 		} );
 
+		// Resolve the current workflow stage (if any) for each entry.
+		$entry_form_map = [];
+		foreach ( $entries_list as $eid => $edata ) {
+			$entry_form_map[ (int) $eid ] = (int) $edata['form_id'];
+		}
+		$stages_by_entry = ( new StageResolver() )->resolve_for_entries( $entry_form_map );
+
 		?>
 		<div class="sfa-prod-bookings-list">
 			<h3 style="margin-bottom: 20px;">Production Bookings (<?php echo $date->format( 'F Y' ); ?>)</h3>
@@ -884,6 +893,7 @@ class FrontendCalendar {
 						background: #f9f9f9;
 					}
 				</style>
+				<?php echo StageBadge::css(); ?>
 				<div class="sfa-bookings-table-wrap">
 				<table class="sfa-bookings-table">
 					<thead>
@@ -903,8 +913,14 @@ class FrontendCalendar {
 								<td>
 									<?php $workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id']; ?>
 									<a href="<?php echo esc_url( $workflow_url ); ?>" target="_blank" style="color: #0073aa;">
-										<strong>#<?php echo $entry_data['entry_id']; ?></strong>
+										<strong>#<?php echo (int) $entry_data['entry_id']; ?></strong>
 									</a>
+									<?php
+									$stage = isset( $stages_by_entry[ (int) $entry_data['entry_id'] ] ) ? $stages_by_entry[ (int) $entry_data['entry_id'] ] : null;
+									if ( $stage ) {
+										echo StageBadge::render( $stage );
+									}
+									?>
 								</td>
 								<td><?php echo esc_html( $entry_data['form_name'] ); ?></td>
 								<td><?php echo esc_html( $entry_data['lm_required'] ); ?> LM</td>
