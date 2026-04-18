@@ -10,9 +10,11 @@ namespace SFA\ProductionScheduling\Stages;
  * Invariants enforced by sanitize_stages():
  *  - `name` required, trimmed, 1..60 chars
  *  - `color` matches /^#[0-9a-f]{6}$/i, normalized to lowercase
- *  - `step_ids` is a non-empty int list, each ID present in the form's
- *    GravityFlow workflow, and unique across the whole stage list
- *    (exclusivity: a step can belong to at most one stage).
+ *  - `step_ids` is a non-empty int list, and unique across the whole stage
+ *    list (exclusivity: a step can belong to at most one stage). When
+ *    Gravity Flow is available, each ID must belong to this form's
+ *    workflow; when Gravity Flow is temporarily unavailable, membership is
+ *    not checked so the admin can still edit stages.
  */
 class StageRepository {
 
@@ -53,6 +55,7 @@ class StageRepository {
 
 		$valid_step_ids = self::collect_workflow_step_ids( $form );
 		$used_step_ids  = [];
+		$used_stage_ids = [];
 		$clean          = [];
 
 		foreach ( $raw as $row ) {
@@ -60,15 +63,9 @@ class StageRepository {
 				continue;
 			}
 
-			$name = isset( $row['name'] ) ? trim( (string) $row['name'] ) : '';
-			$name = sanitize_text_field( $name );
+			$name = self::normalize_name( isset( $row['name'] ) ? $row['name'] : '' );
 			if ( $name === '' ) {
 				continue;
-			}
-			if ( function_exists( 'mb_substr' ) ) {
-				$name = mb_substr( $name, 0, 60 );
-			} else {
-				$name = substr( $name, 0, 60 );
 			}
 
 			$color = isset( $row['color'] ) ? strtolower( trim( (string) $row['color'] ) ) : '';
@@ -83,6 +80,9 @@ class StageRepository {
 				if ( $sid_int <= 0 ) {
 					continue;
 				}
+				// Intentional: when Gravity Flow is unavailable, $valid_step_ids is empty
+				// and we skip the workflow-membership check rather than fail closed.
+				// Admins must still be able to edit stages when GF is briefly deactivated.
 				if ( ! empty( $valid_step_ids ) && ! in_array( $sid_int, $valid_step_ids, true ) ) {
 					continue;
 				}
@@ -101,6 +101,11 @@ class StageRepository {
 			if ( $id === '' || strpos( $id, 'stg_' ) !== 0 ) {
 				$id = self::generate_id();
 			}
+			// Regenerate on collision (e.g. client-side row duplication).
+			while ( isset( $used_stage_ids[ $id ] ) ) {
+				$id = self::generate_id();
+			}
+			$used_stage_ids[ $id ] = true;
 
 			$clean[] = [
 				'id'       => $id,
@@ -164,6 +169,29 @@ class StageRepository {
 	}
 
 	/**
+	 * Apply the canonical name pipeline: trim, strip tags/entities, cap at 60 chars.
+	 * Used by both sanitize_stages() (write path) and normalize_for_read() (read
+	 * path) so hand-edited or legacy form meta can't bypass the length cap or
+	 * tag-stripping that the write path enforces.
+	 *
+	 * @param mixed $raw
+	 * @return string '' when the result would be empty after cleaning.
+	 */
+	private static function normalize_name( $raw ) {
+		$name = is_scalar( $raw ) ? trim( (string) $raw ) : '';
+		$name = sanitize_text_field( $name );
+		if ( $name === '' ) {
+			return '';
+		}
+		if ( function_exists( 'mb_substr' ) ) {
+			$name = mb_substr( $name, 0, 60 );
+		} else {
+			$name = substr( $name, 0, 60 );
+		}
+		return $name;
+	}
+
+	/**
 	 * Normalize already-stored data for read callers. Re-runs shape checks
 	 * defensively — form meta has been edited by hand before in this codebase.
 	 */
@@ -174,7 +202,7 @@ class StageRepository {
 			if ( ! is_array( $row ) ) {
 				continue;
 			}
-			$name  = isset( $row['name'] ) ? (string) $row['name'] : '';
+			$name  = self::normalize_name( isset( $row['name'] ) ? $row['name'] : '' );
 			$color = isset( $row['color'] ) ? strtolower( (string) $row['color'] ) : '';
 			if ( $name === '' || ! preg_match( '/^#[0-9a-f]{6}$/', $color ) ) {
 				continue;
