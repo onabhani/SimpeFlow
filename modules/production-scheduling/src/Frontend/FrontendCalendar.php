@@ -857,20 +857,21 @@ class FrontendCalendar {
 			return strcmp( $a['install_date'], $b['install_date'] );
 		} );
 
-		// Resolve the current workflow stage (if any) for each entry.
-		$entry_form_map = [];
-		foreach ( $entries_list as $eid => $edata ) {
-			$entry_form_map[ (int) $eid ] = (int) $edata['form_id'];
-		}
-		$stages_by_entry = ( new StageResolver() )->resolve_for_entries( $entry_form_map );
-
 		?>
 		<div class="sfa-prod-bookings-list">
 			<h3 style="margin-bottom: 20px;">Production Bookings (<?php echo $date->format( 'F Y' ); ?>)</h3>
 
 			<?php if ( empty( $entries_list ) ): ?>
 				<p style="color: #666; font-style: italic;">No production bookings for this month.</p>
-			<?php else: ?>
+			<?php else:
+				// Resolve the current workflow stage (if any) for each entry —
+				// only when the list is non-empty, to avoid a wasted resolver call.
+				$entry_form_map = [];
+				foreach ( $entries_list as $eid => $edata ) {
+					$entry_form_map[ (int) $eid ] = (int) $edata['form_id'];
+				}
+				$stages_by_entry = ( new StageResolver() )->resolve_for_entries( $entry_form_map );
+			?>
 				<style>
 					.sfa-bookings-table {
 						width: 100%;
