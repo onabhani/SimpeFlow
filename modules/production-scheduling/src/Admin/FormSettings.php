@@ -1,6 +1,8 @@
 <?php
 namespace SFA\ProductionScheduling\Admin;
 
+use SFA\ProductionScheduling\Stages\StageRepository;
+
 /**
  * Gravity Forms Settings Integration
  *
@@ -525,6 +527,10 @@ class FormSettings {
 			}
 		}
 		$form['sfa_prod_fields'] = $production_fields;
+
+		// Save workflow stages configuration.
+		$stages_raw              = isset( $_POST['sfa_prod_stages'] ) ? wp_unslash( $_POST['sfa_prod_stages'] ) : [];
+		$form['sfa_prod_stages'] = StageRepository::sanitize_stages( $stages_raw, $form );
 
 		// Save form
 		\GFAPI::update_form( $form );
