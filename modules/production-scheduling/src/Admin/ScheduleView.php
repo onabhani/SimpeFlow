@@ -575,6 +575,28 @@ class ScheduleView {
 		<?php if ( empty( $bookings ) ): ?>
 			<p>No bookings for this month.</p>
 		<?php else: ?>
+			<?php
+			// Flatten bookings into a unique entries list and resolve stages
+			// BEFORE the <table> opens, so the StageBadge <style> tag lives
+			// outside the table — valid HTML and available to all rows.
+			$all_entries = [];
+			foreach ( $bookings as $date => $day_data ) {
+				foreach ( $day_data['entries'] as $entry_data ) {
+					$entry_id = $entry_data['entry_id'];
+					if ( ! isset( $all_entries[ $entry_id ] ) ) {
+						$all_entries[ $entry_id ] = $entry_data;
+					}
+				}
+			}
+
+			$entry_form_map = [];
+			foreach ( $all_entries as $eid => $edata ) {
+				$entry_form_map[ (int) $eid ] = (int) $edata['form_id'];
+			}
+			$stages_by_entry = ( new StageResolver() )->resolve_for_entries( $entry_form_map );
+
+			echo StageBadge::css();
+			?>
 			<table class="widefat striped">
 				<thead>
 					<tr>
@@ -589,26 +611,6 @@ class ScheduleView {
 				</thead>
 				<tbody>
 					<?php
-					$all_entries = [];
-
-					foreach ( $bookings as $date => $day_data ) {
-						foreach ( $day_data['entries'] as $entry_data ) {
-							$entry_id = $entry_data['entry_id'];
-							if ( ! isset( $all_entries[ $entry_id ] ) ) {
-								$all_entries[ $entry_id ] = $entry_data;
-							}
-						}
-					}
-
-					// Resolve the current workflow stage (if any) for each entry.
-					$entry_form_map = [];
-					foreach ( $all_entries as $eid => $edata ) {
-						$entry_form_map[ (int) $eid ] = (int) $edata['form_id'];
-					}
-					$stages_by_entry = ( new StageResolver() )->resolve_for_entries( $entry_form_map );
-
-					echo StageBadge::css();
-
 					foreach ( $all_entries as $entry_data ):
 						$user = get_userdata( $entry_data['booked_by'] );
 						$username = $user ? $user->display_name : 'Unknown';
