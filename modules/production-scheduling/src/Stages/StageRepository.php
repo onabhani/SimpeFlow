@@ -80,10 +80,10 @@ class StageRepository {
 				if ( $sid_int <= 0 ) {
 					continue;
 				}
-				// Intentional: when Gravity Flow is unavailable, $valid_step_ids is empty
-				// and we skip the workflow-membership check rather than fail closed.
-				// Admins must still be able to edit stages when GF is briefly deactivated.
-				if ( ! empty( $valid_step_ids ) && ! in_array( $sid_int, $valid_step_ids, true ) ) {
+				// Skip workflow-membership enforcement only when Gravity Flow is
+				// unavailable (null). When GF is present and reports zero steps, an
+				// empty array is returned, and any positive step ID is rejected.
+				if ( $valid_step_ids !== null && ! in_array( $sid_int, $valid_step_ids, true ) ) {
 					continue;
 				}
 				if ( isset( $used_step_ids[ $sid_int ] ) ) {
@@ -147,13 +147,19 @@ class StageRepository {
 	/**
 	 * Collect every GravityFlow step ID on this form's workflow.
 	 *
-	 * @return int[] (empty if Gravity Flow is unavailable)
+	 * Returns `null` when Gravity Flow is unavailable (so the caller can
+	 * skip the membership check and keep the stages editable during brief
+	 * GF downtime). Returns an array — possibly empty — when GF is present;
+	 * an empty array then means "this form has no workflow steps", and any
+	 * incoming step ID must be rejected.
+	 *
+	 * @return int[]|null
 	 */
 	private static function collect_workflow_step_ids( $form ) {
-		if ( ! is_array( $form ) || empty( $form['id'] ) ) {
-			return [];
-		}
 		if ( ! class_exists( 'Gravity_Flow_API' ) ) {
+			return null;
+		}
+		if ( ! is_array( $form ) || empty( $form['id'] ) ) {
 			return [];
 		}
 		$api   = new \Gravity_Flow_API( (int) $form['id'] );
