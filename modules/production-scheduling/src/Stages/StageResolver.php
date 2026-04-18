@@ -23,11 +23,14 @@ class StageResolver {
 	/** @var array<int, int|null> entry_id => current_step_id|null (per-request memo) */
 	private $step_cache = [];
 
+	/** @var array<int, array|false> form_id => GF form array (or false when missing). Memoized to avoid a second GFAPI::get_form() call when the workflow_step fallback runs. */
+	private $form_cache = [];
+
 	/**
 	 * @param array<int,int> $entry_form_map [ entry_id => form_id ]
 	 * @return array<int, ?array>            [ entry_id => stage|null ]
 	 */
-	public function resolve_for_entries( array $entry_form_map ) {
+	public function resolve_for_entries( array $entry_form_map ): array {
 		$out = [];
 		if ( empty( $entry_form_map ) ) {
 			return $out;
@@ -39,9 +42,9 @@ class StageResolver {
 			if ( isset( $this->index_by_form[ $form_id ] ) ) {
 				continue;
 			}
-			$form                              = \GFAPI::get_form( $form_id );
-			$stages                            = $form ? StageRepository::get_stages( $form ) : [];
-			$this->index_by_form[ $form_id ]   = StageRepository::index_by_step( $stages );
+			$form                            = $this->get_form_cached( $form_id );
+			$stages                          = $form ? StageRepository::get_stages( $form ) : [];
+			$this->index_by_form[ $form_id ] = StageRepository::index_by_step( $stages );
 		}
 
 		// 2. Resolve each entry.
@@ -73,7 +76,7 @@ class StageResolver {
 
 		if ( ! $step_id && class_exists( 'Gravity_Flow_API' ) ) {
 			// Fallback: only used when the meta key is missing/zero.
-			$form  = \GFAPI::get_form( $form_id );
+			$form  = $this->get_form_cached( $form_id );
 			$entry = \GFAPI::get_entry( $entry_id );
 			if ( $form && ! is_wp_error( $entry ) ) {
 				$api  = new \Gravity_Flow_API( $form_id );
@@ -86,5 +89,19 @@ class StageResolver {
 
 		$this->step_cache[ $entry_id ] = $step_id ?: null;
 		return $this->step_cache[ $entry_id ];
+	}
+
+	/**
+	 * Return the GF form array for a form ID, cached on this instance.
+	 * GF's own form cache also memoizes, but keeping a local reference
+	 * lets us avoid any repeated calls into GFAPI when the fallback in
+	 * get_current_step_id() runs.
+	 */
+	private function get_form_cached( $form_id ) {
+		$form_id = (int) $form_id;
+		if ( ! array_key_exists( $form_id, $this->form_cache ) ) {
+			$this->form_cache[ $form_id ] = \GFAPI::get_form( $form_id );
+		}
+		return $this->form_cache[ $form_id ];
 	}
 }
