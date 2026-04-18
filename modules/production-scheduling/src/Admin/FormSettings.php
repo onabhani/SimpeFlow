@@ -58,6 +58,16 @@ class FormSettings {
 			return;
 		}
 
+		wp_enqueue_style( 'wp-color-picker' );
+		wp_enqueue_script( 'wp-color-picker' );
+		wp_enqueue_script(
+			'sfa-prod-form-settings-stages',
+			SFA_PROD_URL . 'assets/js/form-settings-stages.js',
+			[ 'jquery', 'wp-color-picker' ],
+			SFA_PROD_VER,
+			true
+		);
+
 		// Get current settings
 		$enabled = (bool) rgar( $form, 'sfa_prod_enabled' );
 		$lm_field_id = (int) rgar( $form, 'sfa_prod_lm_field' );
@@ -87,6 +97,9 @@ class FormSettings {
 				];
 			}
 		}
+
+		// Load saved workflow stages for this form.
+		$stages = StageRepository::get_stages( $form );
 
 		// Get skip booking field setting
 		$skip_booking_field_id = (int) rgar( $form, 'sfa_prod_skip_booking_field' );
@@ -404,7 +417,8 @@ class FormSettings {
 						</td>
 					</tr>
 					<?php endif; ?>
-				</table>
+						<?php $this->render_stages_section( $workflow_steps, $stages ); ?>
+					</table>
 
 				<?php submit_button( 'Save Production Scheduling Settings' ); ?>
 			</form>
@@ -479,6 +493,124 @@ class FormSettings {
 			});
 		});
 		</script>
+		<?php
+	}
+
+	/**
+	 * Render the "Workflow Stages" section on the form-settings page.
+	 *
+	 * @param array $workflow_steps List of [id, name, type] from this form's workflow.
+	 * @param array $stages         Currently-configured stages (sanitized shape).
+	 */
+	private function render_stages_section( array $workflow_steps, array $stages ) {
+		$has_steps = ! empty( $workflow_steps );
+		?>
+		<tr>
+			<td colspan="2">
+				<hr style="margin: 20px 0;">
+				<h4 style="margin: 10px 0;">Workflow Stages</h4>
+				<p class="description">
+					Group workflow steps into colored stages. Each stage shows a colored pill next to the entry number on the production bookings table. A step can only belong to one stage.
+				</p>
+			</td>
+		</tr>
+		<tr>
+			<td colspan="2">
+				<?php if ( ! $has_steps ): ?>
+					<p style="color: #666; font-style: italic;">Add workflow steps to this form to configure stages.</p>
+				<?php else: ?>
+					<div id="sfa-prod-stages-list">
+						<?php foreach ( $stages as $index => $stage ): ?>
+							<?php $this->render_stage_row( $workflow_steps, $stages, $index, $stage ); ?>
+						<?php endforeach; ?>
+					</div>
+					<p style="margin-top: 10px;">
+						<button type="button" class="button" id="sfa-prod-add-stage">+ Add Stage</button>
+					</p>
+
+					<template id="sfa-prod-stage-row-template">
+						<?php $this->render_stage_row( $workflow_steps, $stages, '__INDEX__', null ); ?>
+					</template>
+				<?php endif; ?>
+			</td>
+		</tr>
+		<?php
+	}
+
+	/**
+	 * Render one stage row. Used both for existing stages and as the
+	 * cloneable <template> body for newly-added rows.
+	 *
+	 * @param array       $workflow_steps
+	 * @param array       $all_stages
+	 * @param int|string  $index           Numeric index for saved rows, '__INDEX__' for the template.
+	 * @param array|null  $stage           Existing stage data, or null when rendering the template.
+	 */
+	private function render_stage_row( array $workflow_steps, array $all_stages, $index, $stage ) {
+		$is_template = ( $index === '__INDEX__' );
+		$stage_id    = $is_template ? '' : ( isset( $stage['id'] ) ? $stage['id'] : '' );
+		$name        = $is_template ? '' : ( isset( $stage['name'] ) ? $stage['name'] : '' );
+		$color       = $is_template ? '#ff9900' : ( isset( $stage['color'] ) ? $stage['color'] : '#ff9900' );
+		$step_ids    = $is_template ? [] : ( isset( $stage['step_ids'] ) ? array_map( 'intval', $stage['step_ids'] ) : [] );
+
+		// Build a step->owner-stage-name map for exclusivity display.
+		$owner_of_step = [];
+		foreach ( $all_stages as $other ) {
+			if ( ! is_array( $other ) || empty( $other['step_ids'] ) ) {
+				continue;
+			}
+			$other_id = isset( $other['id'] ) ? $other['id'] : '';
+			if ( $other_id === $stage_id ) {
+				continue;
+			}
+			foreach ( $other['step_ids'] as $sid ) {
+				$owner_of_step[ (int) $sid ] = isset( $other['name'] ) ? $other['name'] : '';
+			}
+		}
+
+		$name_prefix = 'sfa_prod_stages[' . esc_attr( $index ) . ']';
+		?>
+		<div class="sfa-prod-stage-row" style="margin:15px 0;padding:15px;background:#f9f9f9;border-left:3px solid #0073aa;">
+			<input type="hidden" name="<?php echo $name_prefix; ?>[id]" value="<?php echo esc_attr( $stage_id ); ?>" class="sfa-prod-stage-id">
+			<div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap;">
+				<div style="flex:2;min-width:220px;">
+					<label style="display:block;font-weight:bold;margin-bottom:5px;">Stage Name</label>
+					<input type="text" name="<?php echo $name_prefix; ?>[name]" value="<?php echo esc_attr( $name ); ?>" maxlength="60" class="widefat">
+				</div>
+				<div style="flex:1;min-width:140px;">
+					<label style="display:block;font-weight:bold;margin-bottom:5px;">Color</label>
+					<input type="text" name="<?php echo $name_prefix; ?>[color]" value="<?php echo esc_attr( $color ); ?>" class="sfa-prod-stage-color" data-default-color="<?php echo esc_attr( $color ); ?>">
+				</div>
+				<div style="padding-top:25px;">
+					<button type="button" class="button sfa-prod-remove-stage" style="color:#dc3232;">Remove</button>
+				</div>
+			</div>
+			<div style="margin-top:12px;">
+				<label style="display:block;font-weight:bold;margin-bottom:5px;">Workflow Steps</label>
+				<div class="sfa-prod-stage-steps" style="display:flex;flex-wrap:wrap;gap:8px 20px;">
+					<?php foreach ( $workflow_steps as $step ):
+						$sid        = (int) $step['id'];
+						$checked    = in_array( $sid, $step_ids, true );
+						$owned_by   = isset( $owner_of_step[ $sid ] ) ? $owner_of_step[ $sid ] : '';
+						$is_owned   = $owned_by !== '' && ! $checked;
+						?>
+						<label style="<?php echo $is_owned ? 'color:#999;' : ''; ?>">
+							<input type="checkbox"
+							       class="sfa-prod-stage-step-checkbox"
+							       name="<?php echo $name_prefix; ?>[step_ids][]"
+							       value="<?php echo esc_attr( $sid ); ?>"
+							       data-step-id="<?php echo esc_attr( $sid ); ?>"
+							       <?php checked( $checked ); ?>
+							       <?php disabled( $is_owned ); ?>>
+							<?php echo esc_html( $step['name'] ); ?>
+							<?php if ( $is_owned ): ?>
+								<em style="font-size:11px;color:#999;">(used by: <?php echo esc_html( $owned_by ); ?>)</em>
+							<?php endif; ?>
+						</label>
+					<?php endforeach; ?>
+				</div>
+			</div>
+		</div>
 		<?php
 	}
 
