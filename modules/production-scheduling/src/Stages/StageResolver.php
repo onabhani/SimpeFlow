@@ -26,6 +26,12 @@ class StageResolver {
 	/** @var array<int, array|false> form_id => GF form array (or false when missing). Memoized to avoid a second GFAPI::get_form() call when the workflow_step fallback runs. */
 	private $form_cache = [];
 
+	/** @var bool Whether the "missing workflow_step meta" fallback has been logged this request. */
+	private $fallback_logged = false;
+
+	/** @var int Fallback invocations in this request (observability; the fallback runs per-entry). */
+	private $fallback_calls = 0;
+
 	/**
 	 * @param array<int,int> $entry_form_map [ entry_id => form_id ]
 	 * @return array<int, ?array>            [ entry_id => stage|null ]
@@ -75,7 +81,23 @@ class StageResolver {
 		$step_id = (int) $raw;
 
 		if ( ! $step_id && class_exists( 'Gravity_Flow_API' ) ) {
-			// Fallback: only used when the meta key is missing/zero.
+			// Fallback: the `workflow_step` entry meta is normally written by
+			// Gravity Flow during step processing. If it's missing we fall back
+			// to Gravity_Flow_API::get_current_step(), which needs the full
+			// entry — that's a DB read per miss, and this path can go O(N) if
+			// meta is globally absent. Log the first occurrence per request so
+			// the operational cost is visible; $step_cache still memoizes per
+			// entry so we don't re-pay within a single resolve_for_entries call.
+			$this->fallback_calls++;
+			if ( ! $this->fallback_logged && defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+				error_log( sprintf(
+					'SFA StageResolver: "workflow_step" meta missing for entry #%d (form %d); using Gravity_Flow_API fallback. Subsequent fallback calls this request will not be logged.',
+					$entry_id,
+					$form_id
+				) );
+				$this->fallback_logged = true;
+			}
+
 			$form  = $this->get_form_cached( $form_id );
 			$entry = \GFAPI::get_entry( $entry_id );
 			if ( $form && ! is_wp_error( $entry ) ) {
