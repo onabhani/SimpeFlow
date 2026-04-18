@@ -1,0 +1,90 @@
+<?php
+namespace SFA\ProductionScheduling\Stages;
+
+/**
+ * StageResolver
+ *
+ * Maps [entry_id => form_id] to [entry_id => stage|null] for one request.
+ *
+ * Per project rules (see CLAUDE.md) we never query gf_entry_meta directly.
+ * We use gform_get_meta(), which is backed by Gravity Forms' in-request
+ * entry-meta cache — once the rendering code has loaded any meta for an
+ * entry, the `workflow_step` lookup is an array hit, not a DB query.
+ *
+ * If `workflow_step` is absent (some GF versions may not write it), we
+ * fall back to Gravity_Flow_API::get_current_step(), but only once per
+ * entry; the result is memoized in $this->step_cache.
+ */
+class StageResolver {
+
+	/** @var array<int, array<int, array>> form_id => (step_id => stage) */
+	private $index_by_form = [];
+
+	/** @var array<int, int|null> entry_id => current_step_id|null (per-request memo) */
+	private $step_cache = [];
+
+	/**
+	 * @param array<int,int> $entry_form_map [ entry_id => form_id ]
+	 * @return array<int, ?array>            [ entry_id => stage|null ]
+	 */
+	public function resolve_for_entries( array $entry_form_map ) {
+		$out = [];
+		if ( empty( $entry_form_map ) ) {
+			return $out;
+		}
+
+		// 1. Build per-form step->stage index (cached across calls on this instance).
+		$form_ids = array_unique( array_map( 'intval', array_values( $entry_form_map ) ) );
+		foreach ( $form_ids as $form_id ) {
+			if ( isset( $this->index_by_form[ $form_id ] ) ) {
+				continue;
+			}
+			$form                              = \GFAPI::get_form( $form_id );
+			$stages                            = $form ? StageRepository::get_stages( $form ) : [];
+			$this->index_by_form[ $form_id ]   = StageRepository::index_by_step( $stages );
+		}
+
+		// 2. Resolve each entry.
+		foreach ( $entry_form_map as $entry_id => $form_id ) {
+			$entry_id = (int) $entry_id;
+			$form_id  = (int) $form_id;
+			$index    = isset( $this->index_by_form[ $form_id ] ) ? $this->index_by_form[ $form_id ] : [];
+			if ( empty( $index ) ) {
+				$out[ $entry_id ] = null;
+				continue;
+			}
+			$step_id = $this->get_current_step_id( $entry_id, $form_id );
+			$out[ $entry_id ] = ( $step_id && isset( $index[ $step_id ] ) ) ? $index[ $step_id ] : null;
+		}
+
+		return $out;
+	}
+
+	/**
+	 * Resolve the entry's current GravityFlow step ID, or null if none.
+	 */
+	private function get_current_step_id( $entry_id, $form_id ) {
+		if ( array_key_exists( $entry_id, $this->step_cache ) ) {
+			return $this->step_cache[ $entry_id ];
+		}
+
+		$raw = gform_get_meta( $entry_id, 'workflow_step' );
+		$step_id = (int) $raw;
+
+		if ( ! $step_id && class_exists( 'Gravity_Flow_API' ) ) {
+			// Fallback: only used when the meta key is missing/zero.
+			$form  = \GFAPI::get_form( $form_id );
+			$entry = \GFAPI::get_entry( $entry_id );
+			if ( $form && ! is_wp_error( $entry ) ) {
+				$api  = new \Gravity_Flow_API( $form_id );
+				$step = $api->get_current_step( $form, $entry );
+				if ( $step ) {
+					$step_id = (int) $step->get_id();
+				}
+			}
+		}
+
+		$this->step_cache[ $entry_id ] = $step_id ?: null;
+		return $this->step_cache[ $entry_id ];
+	}
+}
