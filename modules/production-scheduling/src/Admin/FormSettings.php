@@ -552,26 +552,46 @@ class FormSettings {
 	 * @param array|null  $stage           Existing stage data, or null when rendering the template.
 	 */
 	private function render_stage_row( array $workflow_steps, array $all_stages, $index, $stage ) {
-		$is_template = ( $index === '__INDEX__' );
-		$stage_id    = $is_template ? '' : ( isset( $stage['id'] ) ? $stage['id'] : '' );
-		$name        = $is_template ? '' : ( isset( $stage['name'] ) ? $stage['name'] : '' );
-		$color       = $is_template ? '#ff9900' : ( isset( $stage['color'] ) ? $stage['color'] : '#ff9900' );
-		$step_ids    = $is_template ? [] : ( isset( $stage['step_ids'] ) ? array_map( 'intval', $stage['step_ids'] ) : [] );
+		$is_template    = ( $index === '__INDEX__' );
+		$stage_id       = $is_template ? '' : ( isset( $stage['id'] ) ? $stage['id'] : '' );
+		$name           = $is_template ? '' : ( isset( $stage['name'] ) ? $stage['name'] : '' );
+		$color          = $is_template ? '#ff9900' : ( isset( $stage['color'] ) ? $stage['color'] : '#ff9900' );
+		$step_ids       = $is_template ? [] : ( isset( $stage['step_ids'] ) ? array_map( 'intval', $stage['step_ids'] ) : [] );
+		$final_statuses = $is_template ? [] : ( isset( $stage['final_statuses'] ) && is_array( $stage['final_statuses'] ) ? $stage['final_statuses'] : [] );
 
-		// Build a step->owner-stage-name map for exclusivity display.
-		$owner_of_step = [];
+		// Build step->owner-name and status->owner-name maps for exclusivity display.
+		$owner_of_step   = [];
+		$owner_of_status = [];
 		foreach ( $all_stages as $other ) {
-			if ( ! is_array( $other ) || empty( $other['step_ids'] ) ) {
+			if ( ! is_array( $other ) ) {
 				continue;
 			}
 			$other_id = isset( $other['id'] ) ? $other['id'] : '';
 			if ( $other_id === $stage_id ) {
 				continue;
 			}
-			foreach ( $other['step_ids'] as $sid ) {
-				$owner_of_step[ (int) $sid ] = isset( $other['name'] ) ? $other['name'] : '';
+			$other_name = isset( $other['name'] ) ? $other['name'] : '';
+			if ( ! empty( $other['step_ids'] ) ) {
+				foreach ( $other['step_ids'] as $sid ) {
+					$owner_of_step[ (int) $sid ] = $other_name;
+				}
+			}
+			if ( ! empty( $other['final_statuses'] ) && is_array( $other['final_statuses'] ) ) {
+				foreach ( $other['final_statuses'] as $st ) {
+					$st = \SFA\ProductionScheduling\Stages\StageRepository::canonical_final_status( $st );
+					if ( $st !== '' ) {
+						$owner_of_status[ $st ] = $other_name;
+					}
+				}
 			}
 		}
+
+		$final_status_labels = [
+			'complete'  => __( 'Completed', 'simpleflow' ),
+			'approved'  => __( 'Approved', 'simpleflow' ),
+			'rejected'  => __( 'Rejected', 'simpleflow' ),
+			'cancelled' => __( 'Cancelled', 'simpleflow' ),
+		];
 
 		$name_prefix = 'sfa_prod_stages[' . esc_attr( $index ) . ']';
 		?>
@@ -608,6 +628,36 @@ class FormSettings {
 							       <?php checked( $checked ); ?>
 							       <?php disabled( $is_owned ); ?>>
 							<?php echo esc_html( $step['name'] ); ?>
+							<?php if ( $is_owned ): ?>
+								<em style="font-size:11px;color:#999;"><?php
+									/* translators: %s is the owning stage's name. */
+									printf( esc_html__( '(used by: %s)', 'simpleflow' ), esc_html( $owned_by ) );
+								?></em>
+							<?php endif; ?>
+						</label>
+					<?php endforeach; ?>
+				</div>
+			</div>
+			<div style="margin-top:12px;">
+				<label style="display:block;font-weight:bold;margin-bottom:5px;"><?php esc_html_e( 'Entry Status', 'simpleflow' ); ?></label>
+				<p class="description" style="margin:0 0 6px;">
+					<?php esc_html_e( 'Also highlight entries whose workflow has reached one of these terminal statuses.', 'simpleflow' ); ?>
+				</p>
+				<div class="sfa-prod-stage-statuses" style="display:flex;flex-wrap:wrap;gap:8px 20px;">
+					<?php foreach ( $final_status_labels as $status_key => $status_label ):
+						$checked  = in_array( $status_key, $final_statuses, true );
+						$owned_by = isset( $owner_of_status[ $status_key ] ) ? $owner_of_status[ $status_key ] : '';
+						$is_owned = $owned_by !== '' && ! $checked;
+						?>
+						<label style="<?php echo $is_owned ? 'color:#999;' : ''; ?>">
+							<input type="checkbox"
+							       class="sfa-prod-stage-status-checkbox"
+							       name="<?php echo $name_prefix; ?>[final_statuses][]"
+							       value="<?php echo esc_attr( $status_key ); ?>"
+							       data-status="<?php echo esc_attr( $status_key ); ?>"
+							       <?php checked( $checked ); ?>
+							       <?php disabled( $is_owned ); ?>>
+							<?php echo esc_html( $status_label ); ?>
 							<?php if ( $is_owned ): ?>
 								<em style="font-size:11px;color:#999;"><?php
 									/* translators: %s is the owning stage's name. */
