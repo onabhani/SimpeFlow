@@ -2,6 +2,8 @@
 namespace SFA\ProductionScheduling\Admin;
 
 use SFA\ProductionScheduling\Database\CapacityRepository;
+use SFA\ProductionScheduling\Stages\StageResolver;
+use SFA\ProductionScheduling\Stages\StageBadge;
 
 /**
  * Schedule View Page
@@ -573,6 +575,28 @@ class ScheduleView {
 		<?php if ( empty( $bookings ) ): ?>
 			<p>No bookings for this month.</p>
 		<?php else: ?>
+			<?php
+			// Flatten bookings into a unique entries list and resolve stages
+			// BEFORE the <table> opens, so the StageBadge <style> tag lives
+			// outside the table — valid HTML and available to all rows.
+			$all_entries = [];
+			foreach ( $bookings as $date => $day_data ) {
+				foreach ( $day_data['entries'] as $entry_data ) {
+					$entry_id = $entry_data['entry_id'];
+					if ( ! isset( $all_entries[ $entry_id ] ) ) {
+						$all_entries[ $entry_id ] = $entry_data;
+					}
+				}
+			}
+
+			$entry_form_map = [];
+			foreach ( $all_entries as $eid => $edata ) {
+				$entry_form_map[ (int) $eid ] = (int) $edata['form_id'];
+			}
+			$stages_by_entry = ( new StageResolver() )->resolve_for_entries( $entry_form_map );
+
+			echo StageBadge::css();
+			?>
 			<table class="widefat striped">
 				<thead>
 					<tr>
@@ -587,17 +611,6 @@ class ScheduleView {
 				</thead>
 				<tbody>
 					<?php
-					$all_entries = [];
-
-					foreach ( $bookings as $date => $day_data ) {
-						foreach ( $day_data['entries'] as $entry_data ) {
-							$entry_id = $entry_data['entry_id'];
-							if ( ! isset( $all_entries[ $entry_id ] ) ) {
-								$all_entries[ $entry_id ] = $entry_data;
-							}
-						}
-					}
-
 					foreach ( $all_entries as $entry_data ):
 						$user = get_userdata( $entry_data['booked_by'] );
 						$username = $user ? $user->display_name : 'Unknown';
@@ -607,9 +620,17 @@ class ScheduleView {
 						$workflow_url = home_url( '/workflow-inbox/' ) . '?page=gravityflow-inbox&view=entry&id=' . $entry_data['form_id'] . '&lid=' . $entry_data['entry_id'];
 						?>
 						<tr>
-							<td><a href="<?php echo esc_url( $workflow_url ); ?>" target="_blank">
-								#<?php echo $entry_data['entry_id']; ?>
-							</a></td>
+							<td>
+								<a href="<?php echo esc_url( $workflow_url ); ?>" target="_blank">
+									#<?php echo (int) $entry_data['entry_id']; ?>
+								</a>
+								<?php
+								$stage = isset( $stages_by_entry[ (int) $entry_data['entry_id'] ] ) ? $stages_by_entry[ (int) $entry_data['entry_id'] ] : null;
+								if ( $stage ) {
+									echo StageBadge::render( $stage );
+								}
+								?>
+							</td>
 							<td>
 								<?php if ( $is_date_only ): ?>
 									<em style="color: #666;">Install only</em>
