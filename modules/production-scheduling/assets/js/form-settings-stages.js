@@ -66,34 +66,37 @@
 		return name || UNNAMED_LABEL;
 	}
 
-	function collectOwnedSteps() {
-		// Map of step_id -> { ownerId, ownerName } based on current checked boxes.
-		// First-checked-wins per step.
+	// Exclusivity is applied to two disjoint sets: step checkboxes keyed by
+	// step-id, and final-status checkboxes keyed by status string. The
+	// algorithm is identical for both — this helper runs it once per selector.
+	function collectOwners(checkboxSelector, dataAttr) {
 		var owners = {};
 		$list.find('.sfa-prod-stage-row').each(function () {
-			var $row   = $(this);
+			var $row      = $(this);
 			var ownerId   = rowIdentity($row);
 			var ownerName = rowDisplayName($row);
-			$row.find('.sfa-prod-stage-step-checkbox:checked').each(function () {
-				var sid = $(this).data('step-id');
-				if (!Object.prototype.hasOwnProperty.call(owners, sid)) {
-					owners[sid] = { id: ownerId, name: ownerName };
+			$row.find(checkboxSelector + ':checked').each(function () {
+				var key = $(this).data(dataAttr);
+				if (key === undefined || key === null || key === '') {
+					return;
+				}
+				if (!Object.prototype.hasOwnProperty.call(owners, key)) {
+					owners[key] = { id: ownerId, name: ownerName };
 				}
 			});
 		});
 		return owners;
 	}
 
-	function refreshExclusivity() {
-		var owners = collectOwnedSteps();
-
+	function applyOwnership(checkboxSelector, dataAttr) {
+		var owners = collectOwners(checkboxSelector, dataAttr);
 		$list.find('.sfa-prod-stage-row').each(function () {
-			var $row        = $(this);
-			var currentId   = rowIdentity($row);
-			$row.find('.sfa-prod-stage-step-checkbox').each(function () {
+			var $row      = $(this);
+			var currentId = rowIdentity($row);
+			$row.find(checkboxSelector).each(function () {
 				var $cb     = $(this);
-				var sid     = $cb.data('step-id');
-				var owner   = owners[sid];
+				var key     = $cb.data(dataAttr);
+				var owner   = owners[key];
 				var checked = $cb.is(':checked');
 				var isOwnedElsewhere = !checked && owner && owner.id !== currentId;
 				$cb.prop('disabled', isOwnedElsewhere);
@@ -110,6 +113,11 @@
 				}
 			});
 		});
+	}
+
+	function refreshExclusivity() {
+		applyOwnership('.sfa-prod-stage-step-checkbox', 'step-id');
+		applyOwnership('.sfa-prod-stage-status-checkbox', 'status');
 	}
 
 	function addStageRow() {
@@ -155,7 +163,7 @@
 			removeStageRow($(this).closest('.sfa-prod-stage-row'));
 		});
 
-		$list.on('change', '.sfa-prod-stage-step-checkbox', function () {
+		$list.on('change', '.sfa-prod-stage-step-checkbox, .sfa-prod-stage-status-checkbox', function () {
 			refreshExclusivity();
 		});
 
