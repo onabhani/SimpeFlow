@@ -96,10 +96,11 @@ class MetaBoxRenderer {
 				</select>
 				<small style="color:#666;">
 					<?php
+					$user_count = count( $users );
 					printf(
 						/* translators: %d: number of selectable users */
-						esc_html__( '%d users available.', 'simpleflow' ),
-						count( $users )
+						esc_html( _n( '%d user available.', '%d users available.', $user_count, 'simpleflow' ) ),
+						$user_count
 					);
 					?>
 				</small>
@@ -123,6 +124,10 @@ class MetaBoxRenderer {
 			if (!filter || !select || filter.dataset.sfaEcBound) { return; }
 			filter.dataset.sfaEcBound = '1';
 
+			// Captured once at init. Always kept in the rebuilt list so the
+			// original creator can never silently disappear while filtering.
+			var originalSelected = select.value;
+
 			var master = Array.prototype.map.call(select.options, function (opt) {
 				return {
 					value: opt.value,
@@ -133,27 +138,25 @@ class MetaBoxRenderer {
 
 			filter.addEventListener('input', function () {
 				var q = filter.value.trim().toLowerCase();
-				var current = select.value;
-				var matchedCurrent = false;
+				var userChoice = select.value;
 
 				while (select.firstChild) { select.removeChild(select.firstChild); }
 
 				master.forEach(function (o) {
-					if (!q || o.search.indexOf(q) !== -1) {
+					var matchesQuery = !q || o.search.indexOf(q) !== -1;
+					var isOriginal   = o.value === originalSelected;
+					var isUserChoice = o.value === userChoice;
+
+					if (matchesQuery || isOriginal || isUserChoice) {
 						var opt = document.createElement('option');
 						opt.value = o.value;
 						opt.textContent = o.label;
-						if (o.value === current) {
+						if (o.value === userChoice) {
 							opt.selected = true;
-							matchedCurrent = true;
 						}
 						select.appendChild(opt);
 					}
 				});
-
-				if (!matchedCurrent && select.options.length > 0) {
-					select.options[0].selected = true;
-				}
 			});
 		})();
 		</script>
@@ -228,7 +231,14 @@ class MetaBoxRenderer {
 	}
 
 	public static function search_token_for_none(): string {
-		return 'no user system none empty 0';
+		// Mirror the translated label rendered in render_callback() so localized
+		// admin searches hit the same option, then append language-agnostic
+		// hints ("0", "none", "empty") so the row stays searchable even when the
+		// translated label does not contain them.
+		$label  = __( '— No user (system) —', 'simpleflow' );
+		$tokens = array( $label, '0', 'none', 'empty' );
+
+		return strtolower( trim( implode( ' ', $tokens ) ) );
 	}
 
 	public static function format_user_label( int $user_id ): string {
