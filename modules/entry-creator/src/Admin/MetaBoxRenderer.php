@@ -72,21 +72,37 @@ class MetaBoxRenderer {
 			</p>
 
 			<p style="margin:0 0 6px;">
+				<label for="sfa_ec_filter" style="display:block; margin-bottom:4px;">
+					<?php esc_html_e( 'Search users:', 'simpleflow' ); ?>
+				</label>
+				<input type="search" id="sfa_ec_filter" placeholder="<?php esc_attr_e( 'Type a name, login, or email…', 'simpleflow' ); ?>" style="width:100%;" autocomplete="off" />
+			</p>
+
+			<p style="margin:0 0 6px;">
 				<label for="sfa_ec_user_id" style="display:block; margin-bottom:4px;">
 					<?php esc_html_e( 'Reassign to:', 'simpleflow' ); ?>
 				</label>
-				<select name="created_by" id="sfa_ec_user_id" style="width:100%;">
+				<select name="created_by" id="sfa_ec_user_id" size="8" style="width:100%;">
 					<?php if ( $allow_none ) : ?>
-						<option value="0" <?php selected( 0, $current_id ); ?>>
+						<option value="0" data-search="<?php echo esc_attr( self::search_token_for_none() ); ?>" <?php selected( 0, $current_id ); ?>>
 							<?php esc_html_e( '— No user (system) —', 'simpleflow' ); ?>
 						</option>
 					<?php endif; ?>
 					<?php foreach ( $users as $user ) : ?>
-						<option value="<?php echo esc_attr( (int) $user->ID ); ?>" <?php selected( (int) $user->ID, $current_id ); ?>>
+						<option value="<?php echo esc_attr( (int) $user->ID ); ?>" data-search="<?php echo esc_attr( self::search_token_for_user( $user ) ); ?>" <?php selected( (int) $user->ID, $current_id ); ?>>
 							<?php echo esc_html( self::format_user_option( $user ) ); ?>
 						</option>
 					<?php endforeach; ?>
 				</select>
+				<small style="color:#666;">
+					<?php
+					printf(
+						/* translators: %d: number of selectable users */
+						esc_html__( '%d users available.', 'simpleflow' ),
+						count( $users )
+					);
+					?>
+				</small>
 			</p>
 
 			<p style="margin:0 0 6px;">
@@ -100,6 +116,47 @@ class MetaBoxRenderer {
 				<?php submit_button( __( 'Save Creator', 'simpleflow' ), 'primary small', 'submit', false ); ?>
 			</p>
 		</form>
+		<script>
+		(function () {
+			var filter = document.getElementById('sfa_ec_filter');
+			var select = document.getElementById('sfa_ec_user_id');
+			if (!filter || !select || filter.dataset.sfaEcBound) { return; }
+			filter.dataset.sfaEcBound = '1';
+
+			var master = Array.prototype.map.call(select.options, function (opt) {
+				return {
+					value: opt.value,
+					label: opt.textContent,
+					search: (opt.getAttribute('data-search') || opt.textContent).toLowerCase()
+				};
+			});
+
+			filter.addEventListener('input', function () {
+				var q = filter.value.trim().toLowerCase();
+				var current = select.value;
+				var matchedCurrent = false;
+
+				while (select.firstChild) { select.removeChild(select.firstChild); }
+
+				master.forEach(function (o) {
+					if (!q || o.search.indexOf(q) !== -1) {
+						var opt = document.createElement('option');
+						opt.value = o.value;
+						opt.textContent = o.label;
+						if (o.value === current) {
+							opt.selected = true;
+							matchedCurrent = true;
+						}
+						select.appendChild(opt);
+					}
+				});
+
+				if (!matchedCurrent && select.options.length > 0) {
+					select.options[0].selected = true;
+				}
+			});
+		})();
+		</script>
 		<?php
 	}
 
@@ -147,10 +204,9 @@ class MetaBoxRenderer {
 	 */
 	public static function get_selectable_users(): array {
 		$default_args = array(
-			'capability' => 'gravityforms_edit_entries',
-			'orderby'    => 'display_name',
-			'order'      => 'ASC',
-			'number'     => 500,
+			'orderby' => 'display_name',
+			'order'   => 'ASC',
+			'number'  => 1000,
 		);
 
 		$args = apply_filters( 'sfa_entry_creator_selectable_users', $default_args );
@@ -158,6 +214,21 @@ class MetaBoxRenderer {
 		$users = get_users( is_array( $args ) ? $args : $default_args );
 
 		return is_array( $users ) ? $users : array();
+	}
+
+	public static function search_token_for_user( \WP_User $user ): string {
+		$parts = array(
+			$user->display_name,
+			$user->user_login,
+			$user->user_email,
+			'#' . (int) $user->ID,
+		);
+
+		return strtolower( trim( implode( ' ', array_filter( array_map( 'strval', $parts ) ) ) ) );
+	}
+
+	public static function search_token_for_none(): string {
+		return 'no user system none empty 0';
 	}
 
 	public static function format_user_label( int $user_id ): string {
