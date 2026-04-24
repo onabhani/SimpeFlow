@@ -204,10 +204,28 @@ class MetaBoxRenderer {
 
 		list( $type, $message ) = $map[ $code ];
 
+		$why = isset( $_GET['sfa_ec_why'] ) ? sanitize_key( wp_unslash( $_GET['sfa_ec_why'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		$why_map = array(
+			'entry_not_found'       => __( 'Reason: entry could not be loaded (GFAPI::get_entry returned a WP_Error or empty payload).', 'simpleflow' ),
+			'update_returned_false' => __( 'Reason: GFAPI::update_entry_property() reported failure. Check wp-content/debug.log with WP_DEBUG_LOG enabled for the underlying $wpdb error.', 'simpleflow' ),
+			'verify_read_error'     => __( 'Reason: could not read the entry row back from wp_gf_entry after the write.', 'simpleflow' ),
+			'verify_mismatch'       => __( 'Reason: the value stored in wp_gf_entry did not match what we tried to write. Likely a plugin filtering gform_get_entry, a conflicting UPDATE, or aggressive object caching.', 'simpleflow' ),
+		);
+
+		$extra = '';
+		if ( $why && isset( $why_map[ $why ] ) ) {
+			$extra = ' ' . $why_map[ $why ];
+		}
+
+		if ( 'save_failed' === $code && ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) ) {
+			$extra .= ' ' . __( 'Enable WP_DEBUG and WP_DEBUG_LOG in wp-config.php, retry once, then share the [SFA EntryCreator] lines from wp-content/debug.log.', 'simpleflow' );
+		}
+
 		printf(
-			'<div class="notice notice-%1$s is-dismissible"><p>%2$s</p></div>',
+			'<div class="notice notice-%1$s is-dismissible"><p>%2$s%3$s</p></div>',
 			esc_attr( $type ),
-			esc_html( $message )
+			esc_html( $message ),
+			esc_html( $extra )
 		);
 	}
 
