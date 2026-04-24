@@ -67,7 +67,69 @@ After submit the user is redirected back to the entry page with `?sfa_ec=<code>`
 | `invalid_nonce` | Nonce verification failed. |
 | `no_permission` | User lacks required capabilities (including the `manage_options` requirement for `created_by = 0`). |
 | `invalid_user` | Target user does not exist, or entry could not be loaded. |
-| `save_failed` | `GFAPI::update_entry_property()` returned a non-true result. |
+| `save_failed` | The write failed **or** could not be verified. See [Troubleshooting → Partial state after save_failed](#partial-state-after-save_failed). |
+
+## Troubleshooting
+
+### Partial state after `save_failed`
+
+There is a narrow window where the save path can leave an entry in a partial state: the `created_by` property is written to the DB, but no audit row is inserted, no entry note is written, and the `sfa_entry_creator_changed` action never fires. The user sees a red "Could not save the new entry creator" notice.
+
+**When it happens**
+
+- **1.1.2 installs (historic).** The strict `true !== $result` check redirected every successful write to `save_failed`. Every 1.1.2 save that "failed" visually actually landed in the DB without an audit trail. Fixed in 1.1.3.
+- **1.1.3+ installs (edge case).** `SaveHandler` now verifies by re-reading the entry via `GFAPI::get_entry()`. If that re-read returns `WP_Error` or a stale `created_by` (aggressive object cache, a plugin filtering `gform_get_entry`, or the row being modified by a concurrent request), we redirect to `save_failed` even though the write may have landed.
+
+Affected code paths: `SaveHandler::handle()` → `GFAPI::update_entry_property()` → `GFAPI::get_entry()` verification → `LogRepository::insert()` / `GFAPI::add_note()` / `do_action( 'sfa_entry_creator_changed' )` (all three skipped on `save_failed`).
+
+**How to detect affected entries**
+
+For entries that the operator *believes* were reassigned, look for the absence of an audit row:
+
+```sql
+-- Entries whose current created_by has no matching 'new_user_id' row in the audit log
+SELECT e.id AS entry_id, e.form_id, e.created_by
+FROM wp_gf_entry e
+LEFT JOIN wp_sfa_entry_creator_log l
+       ON l.entry_id = e.id
+      AND l.new_user_id = e.created_by
+WHERE e.status = 'active'
+  AND l.id IS NULL
+  AND e.form_id IN (<forms you use this module on>);
+```
+
+Absence does not prove a partial save — it just means either the creator was never changed via this module, or the change happened under a partial-state window. Cross-check against GF entry notes (a healthy change leaves a note starting with `Entry creator changed from`).
+
+**How to heal**
+
+Pick one of:
+
+1. **Back-fill audit + note manually** (preserves the real created-by timeline):
+   ```php
+   use SFA\EntryCreator\Database\LogRepository;
+
+   LogRepository::insert( array(
+       'entry_id'    => $entry_id,
+       'form_id'     => $form_id,
+       'old_user_id' => $old_user_id_you_remember,
+       'new_user_id' => (int) GFAPI::get_entry( $entry_id )['created_by'],
+       'changed_by'  => get_current_user_id(),
+       'ip_address'  => '',
+       'reason'      => 'Retroactive backfill after 1.1.2/1.1.3 save_failed partial state',
+   ) );
+
+   GFAPI::add_note( $entry_id, get_current_user_id(), wp_get_current_user()->display_name,
+       'Retroactive: entry creator was reassigned during a save_failed partial state. Audit row backfilled.' );
+
+   do_action( 'sfa_entry_creator_changed', $entry_id, $old_user_id_you_remember, (int) GFAPI::get_entry( $entry_id )['created_by'], get_current_user_id() );
+   ```
+
+2. **Double-save trick** (simpler, but produces two extra audit rows with a throwaway intermediate user):
+   1. Reassign the entry to any throwaway user that is *not* the target.
+   2. Reassign it back to the intended target.
+   3. You now have two healthy audit rows; the intermediate row documents the workaround.
+
+3. **Ignore.** If the correct `created_by` is already in place and you do not need the audit trail or downstream `sfa_entry_creator_changed` side-effects for the historic change, do nothing.
 
 ## Constraints
 
