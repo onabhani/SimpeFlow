@@ -72,11 +72,10 @@ class MetaBoxRenderer {
 
 		$allow_none = current_user_can( 'manage_options' );
 		?>
-		<form method="post" action="<?php echo esc_url( $action_url ); ?>" style="margin:0;">
-			<input type="hidden" name="action" value="<?php echo esc_attr( self::POST_ACTION ); ?>" />
-			<input type="hidden" name="entry_id" value="<?php echo esc_attr( $entry_id ); ?>" />
-			<input type="hidden" name="form_id" value="<?php echo esc_attr( $form_id ); ?>" />
-			<input type="hidden" name="<?php echo esc_attr( self::NONCE_FIELD ); ?>" value="<?php echo esc_attr( $nonce ); ?>" />
+		<div id="sfa_ec_panel" style="margin:0;">
+			<input type="hidden" id="sfa_ec_entry_id_field" value="<?php echo esc_attr( $entry_id ); ?>" />
+			<input type="hidden" id="sfa_ec_form_id_field" value="<?php echo esc_attr( $form_id ); ?>" />
+			<input type="hidden" id="sfa_ec_nonce_field" value="<?php echo esc_attr( $nonce ); ?>" />
 
 			<p style="margin:0 0 6px;">
 				<strong><?php esc_html_e( 'Current creator:', 'simpleflow' ); ?></strong>
@@ -94,7 +93,7 @@ class MetaBoxRenderer {
 				<label for="sfa_ec_user_id" style="display:block; margin-bottom:4px;">
 					<?php esc_html_e( 'Reassign to:', 'simpleflow' ); ?>
 				</label>
-				<select name="created_by" id="sfa_ec_user_id" size="8" style="width:100%;">
+				<select id="sfa_ec_user_id" size="8" style="width:100%;">
 					<?php if ( $allow_none ) : ?>
 						<option value="0" data-search="<?php echo esc_attr( self::search_token_for_none() ); ?>" <?php selected( 0, $current_id ); ?>>
 							<?php esc_html_e( '— No user (system) —', 'simpleflow' ); ?>
@@ -133,54 +132,101 @@ class MetaBoxRenderer {
 				<label for="sfa_ec_reason" style="display:block; margin-bottom:4px;">
 					<?php esc_html_e( 'Reason (optional):', 'simpleflow' ); ?>
 				</label>
-				<input type="text" name="reason" id="sfa_ec_reason" maxlength="255" style="width:100%;" />
+				<input type="text" id="sfa_ec_reason" maxlength="255" style="width:100%;" />
 			</p>
 
 			<p style="margin:0;">
-				<?php submit_button( __( 'Save Creator', 'simpleflow' ), 'primary small', 'submit', false ); ?>
+				<button type="button" id="sfa_ec_submit" class="button button-primary"><?php esc_html_e( 'Save Creator', 'simpleflow' ); ?></button>
+				<span id="sfa_ec_submit_status" style="margin-left:8px; font-size:11px; color:#666;"></span>
 			</p>
-		</form>
+		</div>
 		<script>
 		(function () {
 			var filter = document.getElementById('sfa_ec_filter');
 			var select = document.getElementById('sfa_ec_user_id');
-			if (!filter || !select || filter.dataset.sfaEcBound) { return; }
-			filter.dataset.sfaEcBound = '1';
+			if (filter && select && !filter.dataset.sfaEcBound) {
+				filter.dataset.sfaEcBound = '1';
 
-			// Captured once at init. Always kept in the rebuilt list so the
-			// original creator can never silently disappear while filtering.
-			var originalSelected = select.value;
+				// Captured once at init. Always kept in the rebuilt list so the
+				// original creator can never silently disappear while filtering.
+				var originalSelected = select.value;
 
-			var master = Array.prototype.map.call(select.options, function (opt) {
-				return {
-					value: opt.value,
-					label: opt.textContent,
-					search: (opt.getAttribute('data-search') || opt.textContent).toLowerCase()
-				};
-			});
-
-			filter.addEventListener('input', function () {
-				var q = filter.value.trim().toLowerCase();
-				var userChoice = select.value;
-
-				while (select.firstChild) { select.removeChild(select.firstChild); }
-
-				master.forEach(function (o) {
-					var matchesQuery = !q || o.search.indexOf(q) !== -1;
-					var isOriginal   = o.value === originalSelected;
-					var isUserChoice = o.value === userChoice;
-
-					if (matchesQuery || isOriginal || isUserChoice) {
-						var opt = document.createElement('option');
-						opt.value = o.value;
-						opt.textContent = o.label;
-						if (o.value === userChoice) {
-							opt.selected = true;
-						}
-						select.appendChild(opt);
-					}
+				var master = Array.prototype.map.call(select.options, function (opt) {
+					return {
+						value: opt.value,
+						label: opt.textContent,
+						search: (opt.getAttribute('data-search') || opt.textContent).toLowerCase()
+					};
 				});
-			});
+
+				filter.addEventListener('input', function () {
+					var q = filter.value.trim().toLowerCase();
+					var userChoice = select.value;
+
+					while (select.firstChild) { select.removeChild(select.firstChild); }
+
+					master.forEach(function (o) {
+						var matchesQuery = !q || o.search.indexOf(q) !== -1;
+						var isOriginal   = o.value === originalSelected;
+						var isUserChoice = o.value === userChoice;
+
+						if (matchesQuery || isOriginal || isUserChoice) {
+							var opt = document.createElement('option');
+							opt.value = o.value;
+							opt.textContent = o.label;
+							if (o.value === userChoice) {
+								opt.selected = true;
+							}
+							select.appendChild(opt);
+						}
+					});
+				});
+			}
+
+			// AJAX submit. Avoids HTML's no-nested-<form> rule: GF wraps the
+			// entry detail page in its own <form>, which silently dropped our
+			// inner <form> tag during HTML parsing and caused the submit
+			// button to POST GF's form instead of ours.
+			var btn    = document.getElementById('sfa_ec_submit');
+			var status = document.getElementById('sfa_ec_submit_status');
+			if (btn && !btn.dataset.sfaEcBound) {
+				btn.dataset.sfaEcBound = '1';
+				btn.addEventListener('click', function () {
+					var entryId = (document.getElementById('sfa_ec_entry_id_field') || {}).value || '';
+					var formId  = (document.getElementById('sfa_ec_form_id_field')  || {}).value || '';
+					var nonce   = (document.getElementById('sfa_ec_nonce_field')    || {}).value || '';
+					var sel     = document.getElementById('sfa_ec_user_id');
+					var reason  = (document.getElementById('sfa_ec_reason') || {}).value || '';
+
+					if (!sel || !entryId || !formId || !nonce) { return; }
+
+					btn.disabled = true;
+					if (status) { status.textContent = '<?php echo esc_js( __( 'Saving…', 'simpleflow' ) ); ?>'; }
+
+					var fd = new FormData();
+					fd.append('action',   '<?php echo esc_js( self::POST_ACTION ); ?>');
+					fd.append('entry_id', entryId);
+					fd.append('form_id',  formId);
+					fd.append('<?php echo esc_js( self::NONCE_FIELD ); ?>', nonce);
+					fd.append('created_by', sel.value);
+					fd.append('reason', reason);
+
+					fetch('<?php echo esc_js( $action_url ); ?>', {
+						method: 'POST',
+						body: fd,
+						credentials: 'same-origin',
+						redirect: 'follow'
+					}).then(function (resp) {
+						// Server redirects back to the entry page with sfa_ec=<code>.
+						// fetch with redirect:follow exposes the final URL on resp.url.
+						window.location.href = resp.url || window.location.href;
+					}).catch(function (err) {
+						btn.disabled = false;
+						if (status) { status.textContent = '<?php echo esc_js( __( 'Network error — see browser console.', 'simpleflow' ) ); ?>'; }
+						if (window.console) { console.error('[SFA EntryCreator] submit failed', err); }
+					});
+				});
+			}
 		})();
 		</script>
 		<?php
