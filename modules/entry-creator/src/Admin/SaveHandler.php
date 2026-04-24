@@ -19,7 +19,7 @@ class SaveHandler {
 		$entry_id = isset( $_POST['entry_id'] ) ? absint( wp_unslash( $_POST['entry_id'] ) ) : 0;
 		$form_id  = isset( $_POST['form_id'] ) ? absint( wp_unslash( $_POST['form_id'] ) ) : 0;
 
-		self::debug_log( 'handle: entered', array(
+		self::diag_log( 'handle: entered', array(
 			'entry_id'  => $entry_id,
 			'form_id'   => $form_id,
 			'post_keys' => array_keys( $_POST ), // phpcs:ignore WordPress.Security.NonceVerification.Missing
@@ -27,7 +27,7 @@ class SaveHandler {
 		) );
 
 		if ( ! $entry_id || ! $form_id ) {
-			self::debug_log( 'handle: missing entry/form id, 400' );
+			self::diag_log( 'handle: missing entry/form id, 400' );
 			wp_die( esc_html__( 'Missing entry or form ID.', 'simpleflow' ), '', array( 'response' => 400 ) );
 		}
 
@@ -36,18 +36,18 @@ class SaveHandler {
 			: '';
 
 		if ( ! wp_verify_nonce( $nonce, MetaBoxRenderer::NONCE_ACTION_PREFIX . $entry_id ) ) {
-			self::debug_log( 'handle: invalid nonce' );
+			self::diag_log( 'handle: invalid nonce' );
 			$this->redirect( $form_id, $entry_id, 'invalid_nonce' );
 		}
 
 		if ( ! MetaBoxRenderer::current_user_can_change() ) {
-			self::debug_log( 'handle: caps failed (current_user_can_change)' );
+			self::diag_log( 'handle: caps failed (current_user_can_change)' );
 			$this->redirect( $form_id, $entry_id, 'no_permission' );
 		}
 
 		$entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $entry ) || empty( $entry['id'] ) ) {
-			self::debug_log( 'handle: entry not loadable', array(
+			self::diag_log( 'handle: entry not loadable', array(
 				'is_wp_error' => is_wp_error( $entry ),
 				'error'       => is_wp_error( $entry ) ? $entry->get_error_message() : 'empty',
 			) );
@@ -57,30 +57,30 @@ class SaveHandler {
 		$new_user_id = isset( $_POST['created_by'] ) ? absint( wp_unslash( $_POST['created_by'] ) ) : 0;
 		$old_user_id = (int) ( $entry['created_by'] ?? 0 );
 
-		self::debug_log( 'handle: ids resolved', array(
+		self::diag_log( 'handle: ids resolved', array(
 			'old_user_id' => $old_user_id,
 			'new_user_id' => $new_user_id,
 		) );
 
 		if ( 0 === $new_user_id && ! current_user_can( 'manage_options' ) ) {
-			self::debug_log( 'handle: no_permission (0-user requires manage_options)' );
+			self::diag_log( 'handle: no_permission (0-user requires manage_options)' );
 			$this->redirect( $form_id, $entry_id, 'no_permission' );
 		}
 
 		if ( $new_user_id > 0 && ! get_userdata( $new_user_id ) ) {
-			self::debug_log( 'handle: target user does not exist', array( 'new_user_id' => $new_user_id ) );
+			self::diag_log( 'handle: target user does not exist', array( 'new_user_id' => $new_user_id ) );
 			$this->redirect( $form_id, $entry_id, 'invalid_user' );
 		}
 
 		if ( $old_user_id === $new_user_id ) {
-			self::debug_log( 'handle: nochange (old === new)' );
+			self::diag_log( 'handle: nochange (old === new)' );
 			$this->redirect( $form_id, $entry_id, 'nochange' );
 		}
 
 		// Reset wpdb error state so we can attribute any SQL error to this write.
 		$wpdb->last_error = '';
 
-		self::debug_log( 'handle: calling GFAPI::update_entry_property', array(
+		self::diag_log( 'handle: calling GFAPI::update_entry_property', array(
 			'entry_id'    => $entry_id,
 			'property'    => 'created_by',
 			'new_user_id' => $new_user_id,
@@ -88,7 +88,7 @@ class SaveHandler {
 
 		$result = \GFAPI::update_entry_property( $entry_id, 'created_by', $new_user_id );
 
-		self::debug_log( 'handle: update_entry_property returned', array(
+		self::diag_log( 'handle: update_entry_property returned', array(
 			'result'          => is_wp_error( $result ) ? 'WP_Error: ' . $result->get_error_message() : $result,
 			'type'            => gettype( $result ),
 			'wpdb_last_error' => $wpdb->last_error,
@@ -112,7 +112,7 @@ class SaveHandler {
 		$entry_table = \GFFormsModel::get_entry_table_name();
 		$raw_result  = $wpdb->get_var( $wpdb->prepare( "SELECT created_by FROM {$entry_table} WHERE id = %d", $entry_id ) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 
-		self::debug_log( 'handle: raw verify from wp_gf_entry', array(
+		self::diag_log( 'handle: raw verify from wp_gf_entry', array(
 			'raw_result'      => $raw_result,
 			'expected'        => $new_user_id,
 			'wpdb_last_error' => $wpdb->last_error,
@@ -152,7 +152,7 @@ class SaveHandler {
 		 */
 		do_action( 'sfa_entry_creator_changed', $entry_id, $old_user_id, $new_user_id, $changed_by );
 
-		self::debug_log( 'handle: success, redirecting with updated', array(
+		self::diag_log( 'handle: success, redirecting with updated', array(
 			'entry_id'    => $entry_id,
 			'old_user_id' => $old_user_id,
 			'new_user_id' => $new_user_id,
@@ -214,15 +214,41 @@ class SaveHandler {
 	}
 
 	/**
-	 * Writes to wp-content/debug.log when WP_DEBUG + WP_DEBUG_LOG are both on.
-	 * Prefixed so grep "[SFA EntryCreator]" isolates these entries.
+	 * Resolves the plugin-owned diagnostic log path.
+	 *
+	 * Uses wp-content/ when writable (preferred — same convention as
+	 * debug.log) and falls back to the uploads dir. The filename is
+	 * suffixed with a hash derived from AUTH_KEY so it is not guessable
+	 * by an attacker who does not have DB or filesystem access.
 	 */
-	public static function debug_log( string $msg, array $ctx = array() ): void {
-		if ( ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) ) {
-			return;
+	public static function diag_log_path(): string {
+		$suffix = '';
+		if ( defined( 'AUTH_KEY' ) && AUTH_KEY ) {
+			$suffix = '-' . substr( hash( 'sha256', 'sfa_ec_diag' . AUTH_KEY ), 0, 12 );
 		}
 
-		$line = '[SFA EntryCreator] ' . $msg;
+		$basename = 'sfa-entry-creator-debug' . $suffix . '.log';
+
+		if ( defined( 'WP_CONTENT_DIR' ) && WP_CONTENT_DIR && is_dir( WP_CONTENT_DIR ) && is_writable( WP_CONTENT_DIR ) ) {
+			return rtrim( WP_CONTENT_DIR, '/\\' ) . '/' . $basename;
+		}
+
+		$upload = wp_upload_dir();
+		if ( ! empty( $upload['basedir'] ) ) {
+			return trailingslashit( $upload['basedir'] ) . $basename;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Always-on diagnostic logger. Writes to a plugin-owned file in
+	 * wp-content/ (independent of WP_DEBUG_LOG and the host's
+	 * error_log routing) and additionally mirrors to error_log()
+	 * when WP_DEBUG is on.
+	 */
+	public static function diag_log( string $msg, array $ctx = array() ): void {
+		$line = '[' . gmdate( 'Y-m-d H:i:s' ) . ' UTC] [SFA EntryCreator] ' . $msg;
 
 		if ( ! empty( $ctx ) ) {
 			$encoded = wp_json_encode( $ctx );
@@ -231,6 +257,14 @@ class SaveHandler {
 			}
 		}
 
-		error_log( $line ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+		$path = self::diag_log_path();
+		if ( $path ) {
+			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
+			@file_put_contents( $path, $line . "\n", FILE_APPEND | LOCK_EX );
+		}
+
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			error_log( $line ); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+		}
 	}
 }

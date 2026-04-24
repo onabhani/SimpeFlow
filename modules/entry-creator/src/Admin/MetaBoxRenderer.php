@@ -53,6 +53,13 @@ class MetaBoxRenderer {
 		$current_id    = (int) ( $entry['created_by'] ?? 0 );
 		$current_label = self::format_user_label( $current_id );
 
+		SaveHandler::diag_log( 'render_callback: meta box rendered', array(
+			'entry_id'   => $entry_id,
+			'form_id'    => $form_id,
+			'current_id' => $current_id,
+			'actor'      => get_current_user_id(),
+		) );
+
 		$user_args  = self::get_selectable_users_args();
 		$users_raw  = get_users( $user_args );
 		$users      = is_array( $users_raw ) ? $users_raw : array();
@@ -217,8 +224,12 @@ class MetaBoxRenderer {
 			$extra = ' ' . $why_map[ $why ];
 		}
 
-		if ( 'save_failed' === $code && ! ( defined( 'WP_DEBUG' ) && WP_DEBUG && defined( 'WP_DEBUG_LOG' ) && WP_DEBUG_LOG ) ) {
-			$extra .= ' ' . __( 'Enable WP_DEBUG and WP_DEBUG_LOG in wp-config.php, retry once, then share the [SFA EntryCreator] lines from wp-content/debug.log.', 'simpleflow' );
+		if ( 'save_failed' === $code ) {
+			$diag_path = SaveHandler::diag_log_path();
+			if ( $diag_path ) {
+				/* translators: %s: absolute path to the plugin diagnostic log file */
+				$extra .= ' ' . sprintf( __( 'Diagnostic log: %s', 'simpleflow' ), $diag_path );
+			}
 		}
 
 		printf(
