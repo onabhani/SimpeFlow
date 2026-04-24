@@ -54,7 +54,16 @@ class SaveHandler {
 		}
 
 		$result = \GFAPI::update_entry_property( $entry_id, 'created_by', $new_user_id );
-		if ( true !== $result ) {
+		if ( is_wp_error( $result ) || false === $result ) {
+			$this->redirect( $form_id, $entry_id, 'save_failed' );
+		}
+
+		// GFAPI::update_entry_property() returns $wpdb->update()'s raw result
+		// (int rows affected, or false). Re-read the entry to verify the
+		// value actually persisted before we claim success, write audit,
+		// fire the action, and redirect with 'updated'.
+		$fresh = \GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $fresh ) || (int) ( $fresh['created_by'] ?? -1 ) !== $new_user_id ) {
 			$this->redirect( $form_id, $entry_id, 'save_failed' );
 		}
 
