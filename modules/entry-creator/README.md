@@ -80,3 +80,4 @@ After submit the user is redirected back to the entry page with `?sfa_ec=<code>`
 - Arabic translations for all strings marked with the `simpleflow` text domain.
 - AJAX-backed user search for sites with >1000 users.
 - Admin UI for viewing the audit log (currently readable only via `LogRepository::get_for_entry()`).
+- Optional filter to hide email addresses from the dropdown label/search token (e.g., for sites where the module is opened to lower-trust roles). The current build relies on the `list_users` capability — same bar as `/wp-admin/users.php` — so there is no new exposure under the default gate.

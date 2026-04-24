@@ -53,7 +53,12 @@ class MetaBoxRenderer {
 		$current_id    = (int) ( $entry['created_by'] ?? 0 );
 		$current_label = self::format_user_label( $current_id );
 
-		$users = self::get_selectable_users();
+		$user_args  = self::get_selectable_users_args();
+		$users_raw  = get_users( $user_args );
+		$users      = is_array( $users_raw ) ? $users_raw : array();
+		$user_count = count( $users );
+		$user_cap   = isset( $user_args['number'] ) ? (int) $user_args['number'] : 0;
+		$truncated  = $user_cap > 0 && $user_count >= $user_cap;
 
 		$action_url = admin_url( 'admin-post.php' );
 		$nonce      = wp_create_nonce( self::NONCE_ACTION_PREFIX . $entry_id );
@@ -75,7 +80,7 @@ class MetaBoxRenderer {
 				<label for="sfa_ec_filter" style="display:block; margin-bottom:4px;">
 					<?php esc_html_e( 'Search users:', 'simpleflow' ); ?>
 				</label>
-				<input type="search" id="sfa_ec_filter" placeholder="<?php esc_attr_e( 'Type a name, login, or email…', 'simpleflow' ); ?>" style="width:100%;" autocomplete="off" />
+				<input type="search" id="sfa_ec_filter" placeholder="<?php esc_attr_e( 'Type a name, login, email, or #ID…', 'simpleflow' ); ?>" style="width:100%;" autocomplete="off" />
 			</p>
 
 			<p style="margin:0 0 6px;">
@@ -94,15 +99,26 @@ class MetaBoxRenderer {
 						</option>
 					<?php endforeach; ?>
 				</select>
-				<small style="color:#666;">
+				<small style="color:#666; display:block;">
 					<?php
-					$user_count = count( $users );
 					printf(
 						/* translators: %d: number of selectable users */
 						esc_html( _n( '%d user available.', '%d users available.', $user_count, 'simpleflow' ) ),
 						$user_count
 					);
 					?>
+					<?php if ( $truncated ) : ?>
+						<br />
+						<span style="color:#b26a00;">
+							<?php
+							printf(
+								/* translators: %d: user cap currently applied to the dropdown */
+								esc_html__( 'Showing first %d. Adjust via the sfa_entry_creator_selectable_users filter.', 'simpleflow' ),
+								$user_cap
+							);
+							?>
+						</span>
+					<?php endif; ?>
 				</small>
 			</p>
 
@@ -203,9 +219,11 @@ class MetaBoxRenderer {
 	}
 
 	/**
-	 * @return \WP_User[]
+	 * Returns the resolved get_users() args, after the
+	 * sfa_entry_creator_selectable_users filter has run. Exposed so the render
+	 * path can inspect the effective 'number' cap for truncation detection.
 	 */
-	public static function get_selectable_users(): array {
+	public static function get_selectable_users_args(): array {
 		$default_args = array(
 			'orderby' => 'display_name',
 			'order'   => 'ASC',
@@ -214,7 +232,14 @@ class MetaBoxRenderer {
 
 		$args = apply_filters( 'sfa_entry_creator_selectable_users', $default_args );
 
-		$users = get_users( is_array( $args ) ? $args : $default_args );
+		return is_array( $args ) ? $args : $default_args;
+	}
+
+	/**
+	 * @return \WP_User[]
+	 */
+	public static function get_selectable_users(): array {
+		$users = get_users( self::get_selectable_users_args() );
 
 		return is_array( $users ) ? $users : array();
 	}
