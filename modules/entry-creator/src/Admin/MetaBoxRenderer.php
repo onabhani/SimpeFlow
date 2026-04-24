@@ -53,7 +53,12 @@ class MetaBoxRenderer {
 		$current_id    = (int) ( $entry['created_by'] ?? 0 );
 		$current_label = self::format_user_label( $current_id );
 
-		$users = self::get_selectable_users();
+		$user_args  = self::get_selectable_users_args();
+		$users_raw  = get_users( $user_args );
+		$users      = is_array( $users_raw ) ? $users_raw : array();
+		$user_count = count( $users );
+		$user_cap   = isset( $user_args['number'] ) ? (int) $user_args['number'] : 0;
+		$truncated  = $user_cap > 0 && $user_count >= $user_cap;
 
 		$action_url = admin_url( 'admin-post.php' );
 		$nonce      = wp_create_nonce( self::NONCE_ACTION_PREFIX . $entry_id );
@@ -72,21 +77,49 @@ class MetaBoxRenderer {
 			</p>
 
 			<p style="margin:0 0 6px;">
+				<label for="sfa_ec_filter" style="display:block; margin-bottom:4px;">
+					<?php esc_html_e( 'Search users:', 'simpleflow' ); ?>
+				</label>
+				<input type="search" id="sfa_ec_filter" placeholder="<?php esc_attr_e( 'Type a name, login, email, or #ID…', 'simpleflow' ); ?>" style="width:100%;" autocomplete="off" />
+			</p>
+
+			<p style="margin:0 0 6px;">
 				<label for="sfa_ec_user_id" style="display:block; margin-bottom:4px;">
 					<?php esc_html_e( 'Reassign to:', 'simpleflow' ); ?>
 				</label>
-				<select name="created_by" id="sfa_ec_user_id" style="width:100%;">
+				<select name="created_by" id="sfa_ec_user_id" size="8" style="width:100%;">
 					<?php if ( $allow_none ) : ?>
-						<option value="0" <?php selected( 0, $current_id ); ?>>
+						<option value="0" data-search="<?php echo esc_attr( self::search_token_for_none() ); ?>" <?php selected( 0, $current_id ); ?>>
 							<?php esc_html_e( '— No user (system) —', 'simpleflow' ); ?>
 						</option>
 					<?php endif; ?>
 					<?php foreach ( $users as $user ) : ?>
-						<option value="<?php echo esc_attr( (int) $user->ID ); ?>" <?php selected( (int) $user->ID, $current_id ); ?>>
+						<option value="<?php echo esc_attr( (int) $user->ID ); ?>" data-search="<?php echo esc_attr( self::search_token_for_user( $user ) ); ?>" <?php selected( (int) $user->ID, $current_id ); ?>>
 							<?php echo esc_html( self::format_user_option( $user ) ); ?>
 						</option>
 					<?php endforeach; ?>
 				</select>
+				<small style="color:#666; display:block;">
+					<?php
+					printf(
+						/* translators: %d: number of selectable users */
+						esc_html( _n( '%d user available.', '%d users available.', $user_count, 'simpleflow' ) ),
+						$user_count
+					);
+					?>
+					<?php if ( $truncated ) : ?>
+						<br />
+						<span style="color:#b26a00;">
+							<?php
+							printf(
+								/* translators: %d: user cap currently applied to the dropdown */
+								esc_html__( 'Showing first %d. Adjust via the sfa_entry_creator_selectable_users filter.', 'simpleflow' ),
+								$user_cap
+							);
+							?>
+						</span>
+					<?php endif; ?>
+				</small>
 			</p>
 
 			<p style="margin:0 0 6px;">
@@ -100,6 +133,49 @@ class MetaBoxRenderer {
 				<?php submit_button( __( 'Save Creator', 'simpleflow' ), 'primary small', 'submit', false ); ?>
 			</p>
 		</form>
+		<script>
+		(function () {
+			var filter = document.getElementById('sfa_ec_filter');
+			var select = document.getElementById('sfa_ec_user_id');
+			if (!filter || !select || filter.dataset.sfaEcBound) { return; }
+			filter.dataset.sfaEcBound = '1';
+
+			// Captured once at init. Always kept in the rebuilt list so the
+			// original creator can never silently disappear while filtering.
+			var originalSelected = select.value;
+
+			var master = Array.prototype.map.call(select.options, function (opt) {
+				return {
+					value: opt.value,
+					label: opt.textContent,
+					search: (opt.getAttribute('data-search') || opt.textContent).toLowerCase()
+				};
+			});
+
+			filter.addEventListener('input', function () {
+				var q = filter.value.trim().toLowerCase();
+				var userChoice = select.value;
+
+				while (select.firstChild) { select.removeChild(select.firstChild); }
+
+				master.forEach(function (o) {
+					var matchesQuery = !q || o.search.indexOf(q) !== -1;
+					var isOriginal   = o.value === originalSelected;
+					var isUserChoice = o.value === userChoice;
+
+					if (matchesQuery || isOriginal || isUserChoice) {
+						var opt = document.createElement('option');
+						opt.value = o.value;
+						opt.textContent = o.label;
+						if (o.value === userChoice) {
+							opt.selected = true;
+						}
+						select.appendChild(opt);
+					}
+				});
+			});
+		})();
+		</script>
 		<?php
 	}
 
@@ -143,21 +219,51 @@ class MetaBoxRenderer {
 	}
 
 	/**
-	 * @return \WP_User[]
+	 * Returns the resolved get_users() args, after the
+	 * sfa_entry_creator_selectable_users filter has run. Exposed so the render
+	 * path can inspect the effective 'number' cap for truncation detection.
 	 */
-	public static function get_selectable_users(): array {
+	public static function get_selectable_users_args(): array {
 		$default_args = array(
-			'capability' => 'gravityforms_edit_entries',
-			'orderby'    => 'display_name',
-			'order'      => 'ASC',
-			'number'     => 500,
+			'orderby' => 'display_name',
+			'order'   => 'ASC',
+			'number'  => 1000,
 		);
 
 		$args = apply_filters( 'sfa_entry_creator_selectable_users', $default_args );
 
-		$users = get_users( is_array( $args ) ? $args : $default_args );
+		return is_array( $args ) ? $args : $default_args;
+	}
+
+	/**
+	 * @return \WP_User[]
+	 */
+	public static function get_selectable_users(): array {
+		$users = get_users( self::get_selectable_users_args() );
 
 		return is_array( $users ) ? $users : array();
+	}
+
+	public static function search_token_for_user( \WP_User $user ): string {
+		$parts = array(
+			$user->display_name,
+			$user->user_login,
+			$user->user_email,
+			'#' . (int) $user->ID,
+		);
+
+		return strtolower( trim( implode( ' ', array_filter( array_map( 'strval', $parts ) ) ) ) );
+	}
+
+	public static function search_token_for_none(): string {
+		// Mirror the translated label rendered in render_callback() so localized
+		// admin searches hit the same option, then append language-agnostic
+		// hints ("0", "none", "empty") so the row stays searchable even when the
+		// translated label does not contain them.
+		$label  = __( '— No user (system) —', 'simpleflow' );
+		$tokens = array( $label, '0', 'none', 'empty' );
+
+		return strtolower( trim( implode( ' ', $tokens ) ) );
 	}
 
 	public static function format_user_label( int $user_id ): string {
