@@ -80,26 +80,6 @@ After submit the user is redirected back to the entry page with `?sfa_ec=<code>`
 | `invalid_user` | Target user does not exist, or entry could not be loaded. |
 | `save_failed` | The write failed **or** could not be verified. See [Troubleshooting → Partial state after save_failed](#partial-state-after-save_failed). |
 
-## Diagnostics
-
-The save path always logs to a plugin-owned file:
-
-```
-{wp-content}/sfa-entry-creator-logs-<auth-key-hash>/debug.log
-```
-
-Falls back to a similarly-named directory under `wp-content/uploads/` when `wp-content` is not writable. The directory contains a `Deny from all` `.htaccess` and an empty `index.php` so direct web access is blocked on Apache (and the directory name is suffixed with a hash derived from `AUTH_KEY` so the path is not guessable on hosts that ignore `.htaccess`, e.g. nginx — operators on nginx should add their own deny rule).
-
-The file is rotated at 256 KB to one generation back (`debug.log.1`).
-
-**Render-path logging** (one line per entry-detail page render) is **off by default**. To turn it on while diagnosing a "module never loaded" or "filter never fired" suspicion, add to `wp-config.php`:
-
-```php
-define( 'SFA_EC_DIAG', true );
-```
-
-`WP_DEBUG = true` also enables it. Save-path logging stays always-on regardless, so a real `save_failed` in production still leaves a trail.
-
 ## Troubleshooting
 
 ### Partial state after `save_failed`
