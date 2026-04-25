@@ -2,7 +2,7 @@
 /**
  * Entry Creator Module for SimpleFlow
  * Allows authorized admins to reassign the created_by property on Gravity Forms entries.
- * Version: 1.1.7
+ * Version: 1.1.8
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'SFA_EC_VER' ) ) {
-	define( 'SFA_EC_VER', '1.1.7' );
+	define( 'SFA_EC_VER', '1.1.8' );
 }
 if ( ! defined( 'SFA_EC_DIR' ) ) {
 	define( 'SFA_EC_DIR', plugin_dir_path( __FILE__ ) );

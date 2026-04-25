@@ -56,6 +56,17 @@ add_filter( 'sfa_entry_creator_selectable_users', function ( array $args ): arra
 
 Args are passed directly to `get_users()`. Default returns all users regardless of role, ordered by display name, capped at 1000.
 
+### Filter: `sfa_entry_creator_restart_workflow_step`
+
+```php
+add_filter( 'sfa_entry_creator_restart_workflow_step', function ( bool $restart, int $entry_id, int $form_id, int $old_user_id, int $new_user_id ): bool {
+    // Example: skip the auto-restart for form 42 only.
+    return $form_id === 42 ? false : $restart;
+}, 10, 5 );
+```
+
+After a successful creator change, the module calls `Gravity_Flow_API::send_to_step()` on the entry's current step so per-step assignment records are re-resolved against the new `created_by` (otherwise GravityFlow keeps the old assignee or shows an empty assignee until "Restart Step" is clicked manually). Default: `true`. The restart is skipped silently when GravityFlow is not active or the entry has no current step. A GF entry note records each restart by step name.
+
 ## Redirect codes
 
 After submit the user is redirected back to the entry page with `?sfa_ec=<code>`:
