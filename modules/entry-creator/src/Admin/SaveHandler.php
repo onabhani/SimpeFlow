@@ -42,7 +42,7 @@ class SaveHandler {
 
 		$entry = \GFAPI::get_entry( $entry_id );
 		if ( is_wp_error( $entry ) || empty( $entry['id'] ) ) {
-			$this->redirect( $post_form_id, $entry_id, 'invalid_user', 'entry_not_found' );
+			$this->redirect( $post_form_id, $entry_id, 'invalid_entry', 'entry_not_found' );
 			return;
 		}
 
@@ -50,7 +50,7 @@ class SaveHandler {
 		// from here onward.
 		$form_id = (int) ( $entry['form_id'] ?? 0 );
 		if ( ! $form_id ) {
-			$this->redirect( $post_form_id, $entry_id, 'invalid_user', 'entry_not_found' );
+			$this->redirect( $post_form_id, $entry_id, 'invalid_entry', 'entry_not_found' );
 			return;
 		}
 

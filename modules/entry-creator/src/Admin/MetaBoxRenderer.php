@@ -247,6 +247,7 @@ class MetaBoxRenderer {
 			'invalid_nonce' => array( 'error',   __( 'Security check failed. Please reload and try again.', 'simpleflow' ) ),
 			'no_permission' => array( 'error',   __( 'You do not have permission to change the entry creator.', 'simpleflow' ) ),
 			'invalid_user'  => array( 'error',   __( 'Invalid user selected.', 'simpleflow' ) ),
+			'invalid_entry' => array( 'error',   __( 'Could not load the entry.', 'simpleflow' ) ),
 			'save_failed'   => array( 'error',   __( 'Could not save the new entry creator. Please try again.', 'simpleflow' ) ),
 		);
 
@@ -342,10 +343,10 @@ class MetaBoxRenderer {
 
 	public static function search_token_for_user( object $user ): string {
 		$parts = array(
-			$user->display_name,
-			$user->user_login,
-			$user->user_email,
-			'#' . (int) $user->ID,
+			$user->display_name ?? '',
+			$user->user_login ?? '',
+			$user->user_email ?? '',
+			'#' . (int) ( $user->ID ?? 0 ),
 		);
 
 		return strtolower( trim( implode( ' ', array_filter( array_map( 'strval', $parts ) ) ) ) );
