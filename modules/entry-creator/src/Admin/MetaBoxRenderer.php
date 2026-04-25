@@ -53,16 +53,8 @@ class MetaBoxRenderer {
 		$current_id    = (int) ( $entry['created_by'] ?? 0 );
 		$current_label = self::format_user_label( $current_id );
 
-		SaveHandler::diag_log( 'render_callback: meta box rendered', array(
-			'entry_id'   => $entry_id,
-			'form_id'    => $form_id,
-			'current_id' => $current_id,
-			'actor'      => get_current_user_id(),
-		) );
-
 		$user_args  = self::get_selectable_users_args();
-		$users_raw  = get_users( $user_args );
-		$users      = is_array( $users_raw ) ? $users_raw : array();
+		$users      = self::get_selectable_users();
 		$user_count = count( $users );
 		$user_cap   = isset( $user_args['number'] ) ? (int) $user_args['number'] : 0;
 		$truncated  = $user_cap > 0 && $user_count >= $user_cap;
@@ -240,6 +232,13 @@ class MetaBoxRenderer {
 			return;
 		}
 
+		// Same capability gate as the meta box itself — keeps diagnostic
+		// strings out of view for users who happen to land on gf_entries
+		// with the query param but lack the cap to use the feature.
+		if ( ! self::current_user_can_change() ) {
+			return;
+		}
+
 		$code = sanitize_key( wp_unslash( $_GET['sfa_ec'] ) ); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 
 		$map = array(
@@ -259,23 +258,15 @@ class MetaBoxRenderer {
 
 		$why = isset( $_GET['sfa_ec_why'] ) ? sanitize_key( wp_unslash( $_GET['sfa_ec_why'] ) ) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 		$why_map = array(
-			'entry_not_found'       => __( 'Reason: entry could not be loaded (GFAPI::get_entry returned a WP_Error or empty payload).', 'simpleflow' ),
-			'update_returned_false' => __( 'Reason: GFAPI::update_entry_property() reported failure. Check wp-content/debug.log with WP_DEBUG_LOG enabled for the underlying $wpdb error.', 'simpleflow' ),
-			'verify_read_error'     => __( 'Reason: could not read the entry row back from wp_gf_entry after the write.', 'simpleflow' ),
-			'verify_mismatch'       => __( 'Reason: the value stored in wp_gf_entry did not match what we tried to write. Likely a plugin filtering gform_get_entry, a conflicting UPDATE, or aggressive object caching.', 'simpleflow' ),
+			'entry_not_found'       => __( 'Reason: entry could not be loaded.', 'simpleflow' ),
+			'update_returned_false' => __( 'Reason: the entry update reported failure.', 'simpleflow' ),
+			'verify_read_error'     => __( 'Reason: could not read the entry back to verify the write.', 'simpleflow' ),
+			'verify_mismatch'       => __( 'Reason: the stored value did not match what we tried to write.', 'simpleflow' ),
 		);
 
 		$extra = '';
 		if ( $why && isset( $why_map[ $why ] ) ) {
 			$extra = ' ' . $why_map[ $why ];
-		}
-
-		if ( 'save_failed' === $code ) {
-			$diag_path = SaveHandler::diag_log_path();
-			if ( $diag_path ) {
-				/* translators: %s: absolute path to the plugin diagnostic log file */
-				$extra .= ' ' . sprintf( __( 'Diagnostic log: %s', 'simpleflow' ), $diag_path );
-			}
 		}
 
 		printf(
@@ -299,10 +290,16 @@ class MetaBoxRenderer {
 	 * path can inspect the effective 'number' cap for truncation detection.
 	 */
 	public static function get_selectable_users_args(): array {
+		// 'fields' whitelist returns stdClass objects with only the columns
+		// we render — skips the usermeta cache hydration that the default
+		// 'fields => all' triggers for every returned user. 'count_total'
+		// disables the extra COUNT query since we never paginate.
 		$default_args = array(
-			'orderby' => 'display_name',
-			'order'   => 'ASC',
-			'number'  => 1000,
+			'orderby'      => 'display_name',
+			'order'        => 'ASC',
+			'number'       => 1000,
+			'count_total'  => false,
+			'fields'       => array( 'ID', 'display_name', 'user_login', 'user_email' ),
 		);
 
 		$args = apply_filters( 'sfa_entry_creator_selectable_users', $default_args );
@@ -311,15 +308,39 @@ class MetaBoxRenderer {
 	}
 
 	/**
-	 * @return \WP_User[]
+	 * Per-request cache so multiple meta box renders (or callers using the
+	 * public API) do not re-run the get_users() query within the same
+	 * request. Keyed by a serialized hash of the resolved args so a
+	 * reasonable filter override does not collide with the default.
+	 *
+	 * @var array<string,object[]>
+	 */
+	private static $users_cache = array();
+
+	/**
+	 * Returns an array of user records. The shape of each record depends
+	 * on the 'fields' arg in get_selectable_users_args() — by default a
+	 * stdClass with ID/display_name/user_login/user_email. Filter overrides
+	 * may return full WP_User objects.
+	 *
+	 * @return object[]
 	 */
 	public static function get_selectable_users(): array {
-		$users = get_users( self::get_selectable_users_args() );
+		$args = self::get_selectable_users_args();
+		$key  = md5( wp_json_encode( $args ) ?: serialize( $args ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
 
-		return is_array( $users ) ? $users : array();
+		if ( isset( self::$users_cache[ $key ] ) ) {
+			return self::$users_cache[ $key ];
+		}
+
+		$users = get_users( $args );
+		$users = is_array( $users ) ? $users : array();
+
+		self::$users_cache[ $key ] = $users;
+		return $users;
 	}
 
-	public static function search_token_for_user( \WP_User $user ): string {
+	public static function search_token_for_user( object $user ): string {
 		$parts = array(
 			$user->display_name,
 			$user->user_login,
@@ -355,10 +376,10 @@ class MetaBoxRenderer {
 		return sprintf( '%s (#%d)', $user->display_name, $user_id );
 	}
 
-	public static function format_user_option( \WP_User $user ): string {
-		$name  = $user->display_name ? $user->display_name : $user->user_login;
-		$email = $user->user_email ? ' — ' . $user->user_email : '';
+	public static function format_user_option( object $user ): string {
+		$name  = ! empty( $user->display_name ) ? $user->display_name : ( $user->user_login ?? '' );
+		$email = ! empty( $user->user_email ) ? ' — ' . $user->user_email : '';
 
-		return sprintf( '%s (#%d)%s', $name, (int) $user->ID, $email );
+		return sprintf( '%s (#%d)%s', $name, (int) ( $user->ID ?? 0 ), $email );
 	}
 }
