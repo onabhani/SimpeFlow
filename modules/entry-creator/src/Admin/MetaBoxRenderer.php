@@ -53,16 +53,21 @@ class MetaBoxRenderer {
 		$current_id    = (int) ( $entry['created_by'] ?? 0 );
 		$current_label = self::format_user_label( $current_id );
 
-		SaveHandler::diag_log( 'render_callback: meta box rendered', array(
-			'entry_id'   => $entry_id,
-			'form_id'    => $form_id,
-			'current_id' => $current_id,
-			'actor'      => get_current_user_id(),
-		) );
+		// Render-path logging is noisy on a normal entry detail page load,
+		// so it is gated behind SFA_EC_DIAG (or WP_DEBUG). The save-path
+		// logging in SaveHandler stays always-on so production save_failed
+		// events still leave a trail.
+		if ( SaveHandler::diag_render_logging_enabled() ) {
+			SaveHandler::diag_log( 'render_callback: meta box rendered', array(
+				'entry_id'   => $entry_id,
+				'form_id'    => $form_id,
+				'current_id' => $current_id,
+				'actor'      => get_current_user_id(),
+			) );
+		}
 
 		$user_args  = self::get_selectable_users_args();
-		$users_raw  = get_users( $user_args );
-		$users      = is_array( $users_raw ) ? $users_raw : array();
+		$users      = self::get_selectable_users();
 		$user_count = count( $users );
 		$user_cap   = isset( $user_args['number'] ) ? (int) $user_args['number'] : 0;
 		$truncated  = $user_cap > 0 && $user_count >= $user_cap;
@@ -311,12 +316,31 @@ class MetaBoxRenderer {
 	}
 
 	/**
+	 * Per-request cache so multiple meta box renders (or callers using the
+	 * public API) do not re-run the get_users() query within the same
+	 * request. Keyed by a serialized hash of the resolved args so a
+	 * reasonable filter override does not collide with the default.
+	 *
+	 * @var array<string,\WP_User[]>
+	 */
+	private static $users_cache = array();
+
+	/**
 	 * @return \WP_User[]
 	 */
 	public static function get_selectable_users(): array {
-		$users = get_users( self::get_selectable_users_args() );
+		$args = self::get_selectable_users_args();
+		$key  = md5( wp_json_encode( $args ) ?: serialize( $args ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.serialize_serialize
 
-		return is_array( $users ) ? $users : array();
+		if ( isset( self::$users_cache[ $key ] ) ) {
+			return self::$users_cache[ $key ];
+		}
+
+		$users = get_users( $args );
+		$users = is_array( $users ) ? $users : array();
+
+		self::$users_cache[ $key ] = $users;
+		return $users;
 	}
 
 	public static function search_token_for_user( \WP_User $user ): string {

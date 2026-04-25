@@ -295,39 +295,93 @@ class SaveHandler {
 		exit;
 	}
 
+	const DIAG_LOG_MAX_BYTES = 262144; // 256 KB; rotates one generation back to .1
+
 	/**
-	 * Resolves the plugin-owned diagnostic log path.
+	 * Resolves the plugin-owned diagnostic log directory.
 	 *
-	 * Uses wp-content/ when writable (preferred — same convention as
-	 * debug.log) and falls back to the uploads dir. The filename is
-	 * suffixed with a hash derived from AUTH_KEY so it is not guessable
-	 * by an attacker who does not have DB or filesystem access.
+	 * Logs live inside their own subdirectory so we can drop a deny-all
+	 * .htaccess and an index.php next to the log file without polluting
+	 * the parent directory. Prefers wp-content/sfa-entry-creator-logs/
+	 * (same level as debug.log) and falls back to the uploads dir.
+	 *
+	 * The directory itself is suffixed with a hash derived from AUTH_KEY
+	 * so the path is not guessable on hosts that ignore the .htaccess
+	 * (e.g. nginx). Returns '' when neither location is writable.
 	 */
-	public static function diag_log_path(): string {
+	public static function diag_log_dir(): string {
 		$suffix = '';
 		if ( defined( 'AUTH_KEY' ) && AUTH_KEY ) {
 			$suffix = '-' . substr( hash( 'sha256', 'sfa_ec_diag' . AUTH_KEY ), 0, 12 );
 		}
 
-		$basename = 'sfa-entry-creator-debug' . $suffix . '.log';
+		$basename = 'sfa-entry-creator-logs' . $suffix;
 
+		$candidates = array();
 		if ( defined( 'WP_CONTENT_DIR' ) && WP_CONTENT_DIR && is_dir( WP_CONTENT_DIR ) && is_writable( WP_CONTENT_DIR ) ) {
-			return rtrim( WP_CONTENT_DIR, '/\\' ) . '/' . $basename;
+			$candidates[] = rtrim( WP_CONTENT_DIR, '/\\' );
 		}
-
 		$upload = wp_upload_dir();
 		if ( ! empty( $upload['basedir'] ) ) {
-			return trailingslashit( $upload['basedir'] ) . $basename;
+			$candidates[] = rtrim( $upload['basedir'], '/\\' );
+		}
+
+		foreach ( $candidates as $parent ) {
+			$dir = $parent . '/' . $basename;
+
+			if ( ! is_dir( $dir ) ) {
+				if ( ! @mkdir( $dir, 0755, true ) && ! is_dir( $dir ) ) { // phpcs:ignore
+					continue;
+				}
+			}
+
+			// Defense in depth — block direct web access if the host honours .htaccess.
+			$htaccess = $dir . '/.htaccess';
+			if ( ! file_exists( $htaccess ) ) {
+				@file_put_contents( $htaccess, "Deny from all\nRequire all denied\n" ); // phpcs:ignore
+			}
+			$index = $dir . '/index.php';
+			if ( ! file_exists( $index ) ) {
+				@file_put_contents( $index, "<?php // Silence is golden.\n" ); // phpcs:ignore
+			}
+
+			return $dir;
 		}
 
 		return '';
 	}
 
 	/**
-	 * Always-on diagnostic logger. Writes to a plugin-owned file in
-	 * wp-content/ (independent of WP_DEBUG_LOG and the host's
-	 * error_log routing) and additionally mirrors to error_log()
-	 * when WP_DEBUG is on.
+	 * Absolute path to the active diag log file, or '' if no writable location.
+	 */
+	public static function diag_log_path(): string {
+		$dir = self::diag_log_dir();
+		return $dir ? $dir . '/debug.log' : '';
+	}
+
+	/**
+	 * Returns true while diag logging is enabled. Save-flow logs are always
+	 * recorded; render-flow logs only when actively diagnosing.
+	 */
+	public static function diag_render_logging_enabled(): bool {
+		if ( defined( 'SFA_EC_DIAG' ) && SFA_EC_DIAG ) {
+			return true;
+		}
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Diagnostic logger. Writes to a plugin-owned file (independent of
+	 * WP_DEBUG_LOG and the host's error_log routing). Rotates at
+	 * DIAG_LOG_MAX_BYTES to keep the file bounded.
+	 *
+	 * Always logs save-path events so a real save_failed in production
+	 * still leaves a trail. Render-path events are gated behind
+	 * diag_render_logging_enabled() so quiet operation does not write
+	 * a line on every entry detail page render.
 	 */
 	public static function diag_log( string $msg, array $ctx = array() ): void {
 		$line = '[' . gmdate( 'Y-m-d H:i:s' ) . ' UTC] [SFA EntryCreator] ' . $msg;
@@ -341,6 +395,13 @@ class SaveHandler {
 
 		$path = self::diag_log_path();
 		if ( $path ) {
+			// Cheap rotation: when over cap, rename current to .1 (overwriting any
+			// prior .1) and start fresh. One generation is enough for diagnostics.
+			$size = is_file( $path ) ? @filesize( $path ) : 0;
+			if ( $size && $size >= self::DIAG_LOG_MAX_BYTES ) {
+				@rename( $path, $path . '.1' ); // phpcs:ignore
+			}
+
 			// phpcs:ignore WordPress.WP.AlternativeFunctions.file_system_operations_file_put_contents
 			@file_put_contents( $path, $line . "\n", FILE_APPEND | LOCK_EX );
 		}
