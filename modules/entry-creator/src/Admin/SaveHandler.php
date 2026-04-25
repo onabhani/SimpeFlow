@@ -152,6 +152,13 @@ class SaveHandler {
 		 */
 		do_action( 'sfa_entry_creator_changed', $entry_id, $old_user_id, $new_user_id, $changed_by );
 
+		// Re-route the entry through the current GravityFlow step so step
+		// assignees are re-resolved against the new created_by. Without this
+		// the existing per-step assignment records (wp_gravityflow_assignments)
+		// keep pointing at the old user and the inbox shows an empty assignee
+		// until an admin manually clicks "Restart Step".
+		$this->maybe_restart_workflow_step( $entry_id, $form_id, $old_user_id, $new_user_id, $changed_by );
+
 		self::diag_log( 'handle: success, redirecting with updated', array(
 			'entry_id'    => $entry_id,
 			'old_user_id' => $old_user_id,
@@ -159,6 +166,81 @@ class SaveHandler {
 		) );
 
 		$this->redirect( $form_id, $entry_id, 'updated' );
+	}
+
+	private function maybe_restart_workflow_step( int $entry_id, int $form_id, int $old_user_id, int $new_user_id, int $changed_by ): void {
+		/**
+		 * Filter — opt out of the automatic GravityFlow step restart that
+		 * normally runs after the entry creator changes. Default: true.
+		 *
+		 * @param bool $restart      Whether to call send_to_step on the current step.
+		 * @param int  $entry_id
+		 * @param int  $form_id
+		 * @param int  $old_user_id
+		 * @param int  $new_user_id
+		 */
+		if ( ! apply_filters( 'sfa_entry_creator_restart_workflow_step', true, $entry_id, $form_id, $old_user_id, $new_user_id ) ) {
+			self::diag_log( 'restart_step: skipped by filter' );
+			return;
+		}
+
+		if ( ! class_exists( '\Gravity_Flow_API' ) ) {
+			self::diag_log( 'restart_step: GravityFlow not active, nothing to restart' );
+			return;
+		}
+
+		$entry = \GFAPI::get_entry( $entry_id );
+		if ( is_wp_error( $entry ) || empty( $entry['id'] ) ) {
+			self::diag_log( 'restart_step: could not reload entry', array(
+				'error' => is_wp_error( $entry ) ? $entry->get_error_message() : 'empty',
+			) );
+			return;
+		}
+
+		$api  = new \Gravity_Flow_API( $form_id );
+		$step = $api->get_current_step( $entry );
+
+		if ( ! $step ) {
+			self::diag_log( 'restart_step: no current step (workflow complete or never started)' );
+			return;
+		}
+
+		$step_id   = $step->get_id();
+		$step_name = $step->get_name();
+
+		self::diag_log( 'restart_step: calling Gravity_Flow_API::send_to_step', array(
+			'step_id'   => $step_id,
+			'step_name' => $step_name,
+		) );
+
+		try {
+			$api->send_to_step( $entry, $step_id );
+		} catch ( \Throwable $e ) {
+			self::diag_log( 'restart_step: send_to_step threw', array(
+				'step_id' => $step_id,
+				'error'   => $e->getMessage(),
+			) );
+			return;
+		}
+
+		$actor      = get_userdata( $changed_by );
+		$actor_name = $actor ? $actor->display_name : __( 'System', 'simpleflow' );
+
+		\GFAPI::add_note(
+			$entry_id,
+			$changed_by,
+			$actor_name,
+			sprintf(
+				/* translators: %s: GravityFlow step name */
+				__( 'Workflow step "%s" was restarted to re-resolve assignees after the entry creator changed.', 'simpleflow' ),
+				$step_name
+			)
+		);
+
+		self::diag_log( 'restart_step: success', array(
+			'step_id'   => $step_id,
+			'step_name' => $step_name,
+		) );
 	}
 
 	private function add_entry_note( int $entry_id, int $old_user_id, int $new_user_id, int $changed_by, ?string $reason ): void {
