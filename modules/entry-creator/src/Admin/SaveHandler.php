@@ -176,6 +176,16 @@ class SaveHandler {
 			return;
 		}
 
+		// Guard 1: don't restart a workflow that already finished.
+		// workflow_final_status is empty or 'pending' while the workflow
+		// is running; any other value ('complete', 'approved', 'rejected',
+		// 'cancelled', 'canceled') means the workflow has ended and a
+		// step restart here would corrupt the meta.
+		$final_status = (string) gform_get_meta( $entry_id, 'workflow_final_status' );
+		if ( $final_status !== '' && $final_status !== 'pending' ) {
+			return;
+		}
+
 		$api  = new \Gravity_Flow_API( $form_id );
 		$step = $api->get_current_step( $entry );
 
@@ -183,10 +193,48 @@ class SaveHandler {
 			return;
 		}
 
+		$resolved_step_id = (int) $step->get_id();
+
+		// Guard 2: race detection. If the workflow advanced concurrently
+		// while this admin request was in flight, get_current_step() can
+		// return the pre-advance step from a cached read. Calling
+		// send_to_step() with that stale id writes workflow_step meta
+		// backwards — this is the documented root cause of the recurring
+		// "META OUT OF SYNC" entries detected by gf-stuck-entries.
+		//
+		// Cross-check against Gravity Flow's append-only activity log
+		// (source of truth). If the latest "step started" event records
+		// a different step than we resolved, abort the restart.
+		$log_step_id = self::latest_started_step_id_from_log( $entry_id );
+		if ( $log_step_id > 0 && $log_step_id !== $resolved_step_id ) {
+			$actor      = get_userdata( $changed_by );
+			$actor_name = $actor ? $actor->display_name : __( 'System', 'simpleflow' );
+
+			\GFAPI::add_note(
+				$entry_id,
+				$changed_by,
+				$actor_name,
+				sprintf(
+					/* translators: 1: step id resolved from entry meta; 2: step id read from Gravity Flow activity log */
+					__( 'Workflow step restart skipped after entry creator change: the workflow advanced concurrently (resolved step %1$d, activity log step %2$d). Per-step assignees were not re-resolved.', 'simpleflow' ),
+					$resolved_step_id,
+					$log_step_id
+				)
+			);
+
+			error_log( sprintf( // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log
+				'SimpleFlow Entry Creator: skipped workflow step restart for entry %d — concurrent advance detected (resolved=%d, activity-log=%d).',
+				$entry_id,
+				$resolved_step_id,
+				$log_step_id
+			) );
+			return;
+		}
+
 		$step_name = $step->get_name();
 
 		try {
-			$api->send_to_step( $entry, $step->get_id() );
+			$api->send_to_step( $entry, $resolved_step_id );
 		} catch ( \Throwable $e ) {
 			return;
 		}
@@ -204,6 +252,51 @@ class SaveHandler {
 				$step_name
 			)
 		);
+	}
+
+	/**
+	 * Return the most recently-started step ID from the Gravity Flow
+	 * activity log for the given entry, or 0 if unavailable.
+	 *
+	 * The activity log is append-only; the latest row with
+	 * log_object='step' and log_event='started' is the authoritative
+	 * "current step" reference — Gravity Forms entry meta can become
+	 * stale via concurrent writes, but the log cannot.
+	 *
+	 * Best-effort: errors are suppressed and 0 is returned, which causes
+	 * the caller to fall through to the pre-existing send_to_step()
+	 * behavior. Reads the Gravity Flow plugin's own table, not
+	 * wp_gf_entry / wp_gf_entry_meta.
+	 *
+	 * @param int $entry_id Entry to look up.
+	 *
+	 * @return int Step ID from the latest "started" log row, or 0.
+	 */
+	private static function latest_started_step_id_from_log( int $entry_id ): int {
+		global $wpdb;
+
+		$table = $wpdb->prefix . 'gravityflow_activity_log';
+
+		$prev_suppress = $wpdb->suppress_errors( true );
+
+		$log_step_id = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT feed_id FROM `{$table}`
+				 WHERE lead_id = %d
+				   AND log_object = %s
+				   AND log_event = %s
+				   AND feed_id > 0
+				 ORDER BY id DESC
+				 LIMIT 1",
+				$entry_id,
+				'step',
+				'started'
+			)
+		);
+
+		$wpdb->suppress_errors( $prev_suppress );
+
+		return $log_step_id === null ? 0 : (int) $log_step_id;
 	}
 
 	private function add_entry_note( int $entry_id, int $old_user_id, int $new_user_id, int $changed_by, ?string $reason ): void {
