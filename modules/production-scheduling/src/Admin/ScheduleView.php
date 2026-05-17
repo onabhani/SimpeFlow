@@ -804,14 +804,17 @@ class ScheduleView {
 		$form_title_cache = [];
 
 		foreach ( $entries as $entry_id => $entry_data ) {
-			// Get form ID, creator, and submission date for entry
-			$entry_row = $wpdb->get_row( $wpdb->prepare(
-				"SELECT form_id, created_by, date_created FROM {$wpdb->prefix}gf_entry WHERE id = %d",
-				$entry_id
-			), ARRAY_A );
-			$form_id = $entry_row ? $entry_row['form_id'] : null;
-			$entry_created_by = $entry_row ? (int) $entry_row['created_by'] : 0;
-			$entry_date_created = $entry_row ? (string) $entry_row['date_created'] : '';
+			// Resolve entry properties via GFAPI so we don't bypass GF caching.
+			$gf_entry = \GFAPI::get_entry( $entry_id );
+			if ( is_wp_error( $gf_entry ) || ! is_array( $gf_entry ) ) {
+				$form_id            = null;
+				$entry_created_by   = 0;
+				$entry_date_created = '';
+			} else {
+				$form_id            = rgar( $gf_entry, 'form_id' );
+				$entry_created_by   = (int) rgar( $gf_entry, 'created_by' );
+				$entry_date_created = (string) rgar( $gf_entry, 'date_created' );
+			}
 
 			// Get form title (cached)
 			if ( $form_id && ! isset( $form_title_cache[ $form_id ] ) ) {
