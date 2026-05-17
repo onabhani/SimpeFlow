@@ -804,13 +804,17 @@ class ScheduleView {
 		$form_title_cache = [];
 
 		foreach ( $entries as $entry_id => $entry_data ) {
-			// Get form ID and entry creator for entry
-			$entry_row = $wpdb->get_row( $wpdb->prepare(
-				"SELECT form_id, created_by FROM {$wpdb->prefix}gf_entry WHERE id = %d",
-				$entry_id
-			), ARRAY_A );
-			$form_id = $entry_row ? $entry_row['form_id'] : null;
-			$entry_created_by = $entry_row ? (int) $entry_row['created_by'] : 0;
+			// Resolve entry properties via GFAPI so we don't bypass GF caching.
+			$gf_entry = \GFAPI::get_entry( $entry_id );
+			if ( is_wp_error( $gf_entry ) || ! is_array( $gf_entry ) ) {
+				$form_id            = null;
+				$entry_created_by   = 0;
+				$entry_date_created = '';
+			} else {
+				$form_id            = rgar( $gf_entry, 'form_id' );
+				$entry_created_by   = (int) rgar( $gf_entry, 'created_by' );
+				$entry_date_created = (string) rgar( $gf_entry, 'date_created' );
+			}
 
 			// Get form title (cached)
 			if ( $form_id && ! isset( $form_title_cache[ $form_id ] ) ) {
@@ -867,6 +871,7 @@ class ScheduleView {
 					'status' => $booking_status,
 					'booked_at' => isset( $entry_data['booked_at'] ) ? $entry_data['booked_at'] : '',
 					'booked_by' => $entry_created_by,
+					'date_created' => $entry_date_created,
 					'is_date_only' => true,
 				];
 				continue;
@@ -915,9 +920,26 @@ class ScheduleView {
 					'status' => $booking_status,
 					'booked_at' => isset( $entry_data['booked_at'] ) ? $entry_data['booked_at'] : '',
 					'booked_by' => $entry_created_by,
+					'date_created' => $entry_date_created,
 				];
 			}
 		}
+
+		// Sort each day's entries by submission date (newest first) so the
+		// calendar tooltip and bookings list show recent submissions on top.
+		foreach ( $bookings as $date => &$day_data ) {
+			if ( ! empty( $day_data['entries'] ) ) {
+				usort( $day_data['entries'], function ( $a, $b ) {
+					$a_date = isset( $a['date_created'] ) ? (string) $a['date_created'] : '';
+					$b_date = isset( $b['date_created'] ) ? (string) $b['date_created'] : '';
+					if ( $a_date === $b_date ) {
+						return (int) $b['entry_id'] <=> (int) $a['entry_id'];
+					}
+					return strcmp( $b_date, $a_date );
+				} );
+			}
+		}
+		unset( $day_data );
 
 		return $bookings;
 	}

@@ -1178,6 +1178,7 @@ class FrontendCalendar {
 			SELECT
 				em.entry_id,
 				e.form_id,
+				e.date_created,
 				em.meta_value as allocation,
 				cm.meta_value as capacity_at_booking,
 				f.title as form_name
@@ -1214,6 +1215,7 @@ class FrontendCalendar {
 			SELECT
 				inst.entry_id,
 				e.form_id,
+				e.date_created,
 				inst.meta_value as install_date,
 				f.title as form_name
 			FROM {$wpdb->prefix}gf_entry_meta inst
@@ -1264,6 +1266,7 @@ class FrontendCalendar {
 					'form_id' => $row->form_id,
 					'lm_on_date' => $lm,
 					'form_name' => $row->form_name,
+					'date_created' => isset( $row->date_created ) ? (string) $row->date_created : '',
 				];
 
 				// Store historical capacity if available
@@ -1289,9 +1292,26 @@ class FrontendCalendar {
 				'form_id' => $row->form_id,
 				'lm_on_date' => 0,
 				'form_name' => $row->form_name,
+				'date_created' => isset( $row->date_created ) ? (string) $row->date_created : '',
 				'is_date_only' => true,
 			];
 		}
+
+		// Sort each day's entries by submission date (newest first) so the
+		// calendar tooltip shows recent submissions on top.
+		foreach ( $bookings as $date => &$day_data ) {
+			if ( ! empty( $day_data['entries'] ) ) {
+				usort( $day_data['entries'], function ( $a, $b ) {
+					$a_date = isset( $a['date_created'] ) ? (string) $a['date_created'] : '';
+					$b_date = isset( $b['date_created'] ) ? (string) $b['date_created'] : '';
+					if ( $a_date === $b_date ) {
+						return (int) $b['entry_id'] <=> (int) $a['entry_id'];
+					}
+					return strcmp( $b_date, $a_date );
+				} );
+			}
+		}
+		unset( $day_data );
 
 		return $bookings;
 	}
