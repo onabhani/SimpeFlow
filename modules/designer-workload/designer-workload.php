@@ -43,4 +43,8 @@ add_action( 'plugins_loaded', function () {
 	if ( ! class_exists( 'GFAPI' ) || ! function_exists( 'gravity_flow' ) ) {
 		return;
 	}
+
+	if ( is_admin() ) {
+		new SFA\DesignerWorkload\Admin\SettingsPage();
+	}
 }, 20 );
