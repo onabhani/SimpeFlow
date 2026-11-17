@@ -13,7 +13,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class WorkloadRepository {
 
-	const TRANSIENT  = 'sfa_dw_tasks_v1';
+	const TRANSIENT  = 'sfa_dw_tasks_v2';
 	const CACHE_TTL  = 120;
 	const PAGE_SIZE  = 200;
 	const ROLE       = 'designer';
@@ -59,7 +59,11 @@ final class WorkloadRepository {
 					$form               = \GFAPI::get_form( $form_id );
 					$titles[ $form_id ] = is_array( $form ) ? (string) $form['title'] : '';
 				}
-				$tasks[] = self::to_task( $entry, $user_id, $titles[ $form_id ] );
+				$step = self::current_step( $entry );
+				if ( ! Format::is_current_assignee( self::assignees( $step ), $user_id ) ) {
+					continue;
+				}
+				$tasks[] = self::to_task( $entry, $user_id, $titles[ $form_id ], $step );
 			}
 
 			$designers[] = array(
@@ -135,9 +139,10 @@ final class WorkloadRepository {
 
 	/**
 	 * @param array<string, mixed> $entry
+	 * @param \Gravity_Flow_Step|null $step  The entry's current step.
 	 * @return array{entry_id: int, form_id: int, form_title: string, client: string, step_name: string, start_ts: int}
 	 */
-	private static function to_task( array $entry, int $user_id, string $form_title ): array {
+	private static function to_task( array $entry, int $user_id, string $form_title, $step ): array {
 		$entry_id = (int) $entry['id'];
 		$form_id  = (int) $entry['form_id'];
 		$step_id  = (int) rgar( $entry, 'workflow_step' );
@@ -147,13 +152,7 @@ final class WorkloadRepository {
 			$client = trim( (string) rgar( $entry, self::CLIENT_FIELDS[ $form_id ] ) );
 		}
 
-		$step_name = '';
-		if ( $step_id > 0 ) {
-			$step = gravity_flow()->get_step( $step_id, $entry );
-			if ( $step ) {
-				$step_name = (string) $step->get_name();
-			}
-		}
+		$step_name = $step ? (string) $step->get_name() : '';
 
 		return array(
 			'entry_id'   => $entry_id,
@@ -163,6 +162,41 @@ final class WorkloadRepository {
 			'step_name'  => $step_name,
 			'start_ts'   => self::start_ts( $entry, $user_id, $step_id ),
 		);
+	}
+
+	/**
+	 * The entry's current workflow step, or null when there is none.
+	 *
+	 * @param array<string, mixed> $entry
+	 * @return \Gravity_Flow_Step|null
+	 */
+	private static function current_step( array $entry ) {
+		$step_id = (int) rgar( $entry, 'workflow_step' );
+		if ( $step_id <= 0 ) {
+			return null;
+		}
+		$step = gravity_flow()->get_step( $step_id, $entry );
+		return $step ? $step : null;
+	}
+
+	/**
+	 * The step's assignees as plain key/status pairs for Format::is_current_assignee().
+	 *
+	 * @param \Gravity_Flow_Step|null $step
+	 * @return array<int, array{key: string, status: string}>
+	 */
+	private static function assignees( $step ): array {
+		$out = array();
+		if ( ! $step ) {
+			return $out;
+		}
+		foreach ( $step->get_assignees() as $assignee ) {
+			$out[] = array(
+				'key'    => (string) $assignee->get_key(),
+				'status' => (string) $assignee->get_status(),
+			);
+		}
+		return $out;
 	}
 
 	/**

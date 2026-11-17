@@ -2,7 +2,7 @@
 /**
  * Designer Workload Module for SimpleFlow
  * Read-only page listing each designer's pending DOFS / Projects tasks
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -11,7 +11,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 if ( ! defined( 'SFA_DW_VER' ) ) {
-	define( 'SFA_DW_VER', '1.0.0' );
+	define( 'SFA_DW_VER', '1.0.1' );
 }
 if ( ! defined( 'SFA_DW_DIR' ) ) {
 	define( 'SFA_DW_DIR', plugin_dir_path( __FILE__ ) );
