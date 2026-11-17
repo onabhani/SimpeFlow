@@ -1,0 +1,80 @@
+# Arabic translation for the SimpleFlow Designer Workload module.
+msgid ""
+msgstr ""
+"Project-Id-Version: SimpleFlow Designer Workload 1.0.0\n"
+"PO-Revision-Date: 2026-11-17 20:00+0300\n"
+"Last-Translator: SimpleFlow\n"
+"Language-Team: Arabic\n"
+"Language: ar\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=6; plural=(n==0 ? 0 : n==1 ? 1 : n==2 ? 2 : n%100>=3 && n%100<=10 ? 3 : n%100>=11 ? 4 : 5);\n"
+
+msgid "Designer Workload"
+msgstr "توزيع أعمال المصممين"
+
+msgid "Open drawing tasks per designer, oldest first"
+msgstr "مهام الرسم المفتوحة لكل مصمم، الأقدم أولاً"
+
+msgid "Filter by form"
+msgstr "تصفية حسب النموذج"
+
+msgid "All forms"
+msgstr "كل النماذج"
+
+msgid "open"
+msgstr "مفتوحة"
+
+msgid "Order #"
+msgstr "رقم الطلب"
+
+msgid "Client"
+msgstr "العميل"
+
+msgid "Form"
+msgstr "النموذج"
+
+msgid "Current step"
+msgstr "الخطوة الحالية"
+
+msgid "Waiting"
+msgstr "مدة الانتظار"
+
+#, php-format
+msgid "%d day"
+msgid_plural "%d days"
+msgstr[0] "%d يوم"
+msgstr[1] "يوم واحد"
+msgstr[2] "يومان"
+msgstr[3] "%d أيام"
+msgstr[4] "%d يومًا"
+msgstr[5] "%d يوم"
+
+#, php-format
+msgid "Updated %s"
+msgstr "آخر تحديث %s"
+
+msgid "Alnuzhah"
+msgstr "النزهة"
+
+msgid "Alyasmin"
+msgstr "الياسمين"
+
+msgid "Touches"
+msgstr "تاتشز"
+
+msgid "No open tasks"
+msgstr "لا توجد مهام مفتوحة"
+
+msgid "No name"
+msgstr "بدون اسم"
+
+msgid "Unknown step"
+msgstr "خطوة غير معروفة"
+
+msgid "No designers found."
+msgstr "لا يوجد مصممون."
+
+msgid "You do not have access to this page."
+msgstr "ليس لديك صلاحية لعرض هذه الصفحة."
