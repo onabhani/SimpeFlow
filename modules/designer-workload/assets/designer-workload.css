@@ -1,0 +1,126 @@
+/* Designer Workload board. Scoped under .sfa-dw; logical properties so RTL mirrors. */
+.sfa-dw {
+	--dw-surface: #ffffff;
+	--dw-fg: #1d2733;
+	--dw-muted: #5f6b78;
+	--dw-line: #dde3ea;
+	--dw-accent: #1f6f8b;
+	--dw-accent-soft: #e3f0f5;
+	--dw-ok: #2e6b3a;
+	--dw-ok-bg: #e5f3e7;
+	--dw-warn: #8a5800;
+	--dw-warn-bg: #fff3d6;
+	--dw-crit: #b42318;
+	--dw-crit-bg: #fde7e4;
+	container-type: inline-size;
+	display: grid;
+	gap: 18px;
+	color: var(--dw-fg);
+	font-size: 14px;
+	line-height: 1.45;
+}
+.sfa-dw *,
+.sfa-dw *::before,
+.sfa-dw *::after { box-sizing: border-box; }
+.sfa-dw-denied { color: #5f6b78; }
+
+.sfa-dw-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.sfa-dw-title { font-size: 22px; margin: 0; font-weight: 700; }
+.sfa-dw-sub { margin: 2px 0 0; color: var(--dw-muted); font-size: 13px; }
+
+.sfa-dw-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+.sfa-dw-chip {
+	border: 1px solid var(--dw-line); background: var(--dw-surface); color: var(--dw-fg);
+	border-radius: 999px; padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer; line-height: 1.3;
+}
+.sfa-dw-chip[aria-pressed="true"] { background: var(--dw-accent); border-color: var(--dw-accent); color: #fff; }
+.sfa-dw-chip:focus-visible,
+.sfa-dw-card:focus-visible,
+.sfa-dw-designer summary:focus-visible,
+.sfa-dw a:focus-visible { outline: 2px solid var(--dw-accent); outline-offset: 2px; }
+
+.sfa-dw-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.sfa-dw-card {
+	display: grid; gap: 6px; text-align: start; font: inherit; color: inherit; cursor: pointer;
+	border: 1px solid var(--dw-line); border-radius: 8px; padding: 12px; background: var(--dw-surface);
+}
+.sfa-dw-card:hover { border-color: var(--dw-accent); }
+.sfa-dw-card-who { display: grid; gap: 2px; min-width: 0; }
+.sfa-dw-name { font-weight: 600; overflow-wrap: anywhere; }
+.sfa-dw-branch { font-size: 12px; color: var(--dw-muted); }
+.sfa-dw-count { font-variant-numeric: tabular-nums; line-height: 1; }
+.sfa-dw-num { font-size: 28px; font-weight: 700; }
+.sfa-dw-count small { font-size: 12px; color: var(--dw-muted); }
+.sfa-dw-bar { display: block; height: 6px; background: var(--dw-line); border-radius: 3px; overflow: hidden; }
+.sfa-dw-bar span { display: block; height: 100%; background: var(--dw-accent); }
+.sfa-dw-split { font-size: 12px; color: var(--dw-muted); font-variant-numeric: tabular-nums; }
+
+.sfa-dw-lists { display: grid; gap: 12px; }
+.sfa-dw-designer { border: 1px solid var(--dw-line); border-radius: 8px; overflow: hidden; background: var(--dw-surface); scroll-margin-top: 16px; }
+.sfa-dw-designer summary {
+	list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px;
+	padding: 12px 14px; background: var(--dw-accent-soft);
+}
+.sfa-dw-designer summary::-webkit-details-marker { display: none; }
+.sfa-dw-caret { color: var(--dw-muted); transition: transform .15s; display: inline-block; }
+.sfa-dw[dir="rtl"] .sfa-dw-caret { transform: scaleX(-1); }
+.sfa-dw-designer[open] .sfa-dw-caret { transform: rotate(90deg); }
+.sfa-dw-pill {
+	margin-inline-start: auto; background: var(--dw-accent); color: #fff; border-radius: 999px;
+	padding: 2px 10px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
+
+.sfa-dw-tablewrap { overflow-x: auto; }
+.sfa-dw-table { width: 100%; border-collapse: collapse; margin: 0; border: 0; font-variant-numeric: tabular-nums; }
+.sfa-dw-table th {
+	text-align: start; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--dw-muted);
+	font-weight: 600; padding: 8px 14px; border: 0; border-bottom: 1px solid var(--dw-line); white-space: nowrap; background: none;
+}
+.sfa-dw-table td { text-align: start; padding: 9px 14px; border: 0; border-bottom: 1px solid var(--dw-line); vertical-align: middle; background: none; }
+.sfa-dw-table tbody tr:last-child td { border-bottom: 0; }
+.sfa-dw-c-id a { color: var(--dw-accent); font-weight: 600; text-decoration: none; }
+.sfa-dw-c-id a:hover { text-decoration: underline; }
+.sfa-dw-c-client { font-weight: 500; }
+.sfa-dw-c-step { color: var(--dw-muted); }
+.sfa-dw-form { font-size: 12px; padding: 2px 8px; border-radius: 4px; border: 1px solid var(--dw-line); white-space: nowrap; }
+.sfa-dw-age { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.sfa-dw-age-ok { background: var(--dw-ok-bg); color: var(--dw-ok); }
+.sfa-dw-age-warn { background: var(--dw-warn-bg); color: var(--dw-warn); }
+.sfa-dw-age-crit { background: var(--dw-crit-bg); color: var(--dw-crit); }
+.sfa-dw-none td { color: var(--dw-muted); }
+.sfa-dw-table tr[hidden] { display: none; }
+.sfa-dw-stamp { margin: 0; color: var(--dw-muted); font-size: 12px; }
+.sfa-dw-empty { color: var(--dw-muted); }
+
+/* Phone width: summary stacks, rows become cards. */
+@container (max-width: 560px) {
+	.sfa-dw { gap: 14px; }
+	.sfa-dw-title { font-size: 19px; }
+	.sfa-dw-summary { grid-template-columns: minmax(0, 1fr); }
+	.sfa-dw-card { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
+	.sfa-dw-count { grid-row: 1; grid-column: 2; }
+	.sfa-dw-bar,
+	.sfa-dw-split { grid-column: 1 / -1; }
+	.sfa-dw-table,
+	.sfa-dw-table tbody,
+	.sfa-dw-table tr,
+	.sfa-dw-table td { display: block; }
+	.sfa-dw-table thead { display: none; }
+	.sfa-dw-table tbody tr {
+		display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: center;
+		padding: 10px 14px; border-bottom: 1px solid var(--dw-line);
+	}
+	.sfa-dw-table tbody tr:last-child { border-bottom: 0; }
+	.sfa-dw-table tbody tr[hidden] { display: none; }
+	.sfa-dw-table td { padding: 0; border: 0; }
+	.sfa-dw-c-id { grid-column: 1; }
+	.sfa-dw-c-client { grid-column: 2; overflow-wrap: anywhere; }
+	.sfa-dw-c-age { grid-column: 3; justify-self: end; }
+	.sfa-dw-c-form { grid-column: 1; }
+	.sfa-dw-c-step { grid-column: 2 / 4; font-size: 12px; }
+	.sfa-dw-none td { grid-column: 1 / -1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.sfa-dw-caret { transition: none; }
+}
