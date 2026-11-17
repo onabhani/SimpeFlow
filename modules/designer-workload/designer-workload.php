@@ -44,6 +44,8 @@ add_action( 'plugins_loaded', function () {
 		return;
 	}
 
+	new SFA\DesignerWorkload\Frontend\Shortcode();
+
 	if ( is_admin() ) {
 		new SFA\DesignerWorkload\Admin\SettingsPage();
 	}
