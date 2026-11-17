@@ -78,4 +78,20 @@ final class Format {
 	public static function count( array $tasks ): int {
 		return count( $tasks );
 	}
+
+	/**
+	 * True when the user is a pending assignee of the entry's current step.
+	 * Gravity Flow can leave workflow_user_id_X = pending behind after the entry moves on,
+	 * so that meta alone is not proof the task is still the designer's.
+	 *
+	 * @param array<int, array{key: string, status: string}> $assignees Current step's assignees.
+	 */
+	public static function is_current_assignee( array $assignees, int $user_id ): bool {
+		foreach ( $assignees as $assignee ) {
+			if ( 'user_id|' . $user_id === $assignee['key'] && 'pending' === $assignee['status'] ) {
+				return true;
+			}
+		}
+		return false;
+	}
 }

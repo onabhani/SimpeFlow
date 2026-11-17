@@ -73,5 +73,15 @@ check( 'manager allowed', Access::is_allowed( 5, array( 'manager' ), array( 'man
 check( 'designer denied', Access::is_allowed( 5, array( 'designer' ), array( 'manager' ), array() ), false );
 check( 'picked user without role allowed', Access::is_allowed( 42, array(), array( 'manager' ), array( 42 ) ), true );
 
-echo $failures ? "\n{$failures} failed\n" : "\nAll passed\n";
+// is_current_assignee: stale workflow_user_id_X=pending meta must not count (entry 3067 case).
+$step_assignees = array(
+	array( 'key' => 'user_id|14', 'status' => 'pending' ),
+	array( 'key' => 'user_id|6', 'status' => 'complete' ),
+);
+check( 'stale: other user pending on current step', Format::is_current_assignee( $step_assignees, 6 ), false );
+check( 'current pending assignee', Format::is_current_assignee( $step_assignees, 14 ), true );
+check( 'no current step', Format::is_current_assignee( array(), 6 ), false );
+check( 'id prefix not matched', Format::is_current_assignee( array( array( 'key' => 'user_id|61', 'status' => 'pending' ) ), 6 ), false );
+
+echo $failures ?"\n{$failures} failed\n" : "\nAll passed\n";
 exit( $failures ? 1 : 0 );
