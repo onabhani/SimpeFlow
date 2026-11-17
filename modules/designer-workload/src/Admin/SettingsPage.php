@@ -84,7 +84,7 @@ class SettingsPage {
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<input type="hidden" name="action" value="<?php echo esc_attr( self::ACTION ); ?>">
 				<?php wp_nonce_field( self::ACTION ); ?>
-				<table class="form-table" role="presentation">
+				<table class="form-table">
 					<tr>
 						<th scope="row"><?php echo esc_html__( 'Roles that can view', 'simpleflow' ); ?></th>
 						<td>
