@@ -1093,6 +1093,8 @@ class BookingHandler {
 		} else {
 			// On production schedule page: scan all entries. Capped per page load so a
 			// large backlog cannot stall the page; the rest is picked up on later loads.
+			// Rows without _install_date are skipped by cancel_production_booking(), so
+			// they are excluded here to keep them from filling the capped batch forever.
 			$entries = $wpdb->get_results(
 				"SELECT bs.entry_id
 				FROM {$wpdb->prefix}gf_entry_meta bs
@@ -1102,6 +1104,12 @@ class BookingHandler {
 					AND wf.meta_value IN ('cancelled', 'canceled')
 				WHERE bs.meta_key = '_prod_booking_status'
 				AND bs.meta_value = 'confirmed'
+				AND EXISTS (
+					SELECT 1 FROM {$wpdb->prefix}gf_entry_meta inst
+					WHERE inst.entry_id = bs.entry_id
+					AND inst.meta_key = '_install_date'
+					AND inst.meta_value NOT IN ('', '0')
+				)
 				LIMIT 100",
 				ARRAY_A
 			) ?? [];
