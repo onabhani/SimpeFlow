@@ -21,6 +21,25 @@ class AjaxEndpoints {
 	public function ajax_preview_schedule() {
 		check_ajax_referer( 'sfa_prod_preview', 'nonce' );
 
+		// The nopriv nonce is shared by every anonymous visitor, so it does not limit
+		// abuse. Throttle anonymous callers because each call runs heavy booking queries.
+		if ( ! is_user_logged_in() ) {
+			$ip       = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'unknown';
+			$rate_key = 'sfa_prod_preview_rl_' . md5( $ip );
+			$now      = time();
+			$window   = get_transient( $rate_key );
+			// Fixed one-minute window: keep the original start so later requests do not
+			// extend the expiry. Best-effort (not atomic), which is enough for throttling.
+			if ( ! is_array( $window ) || ( $now - (int) ( $window['start'] ?? 0 ) ) >= MINUTE_IN_SECONDS ) {
+				$window = [ 'start' => $now, 'count' => 0 ];
+			}
+			if ( (int) $window['count'] >= 30 ) {
+				wp_send_json_error( [ 'message' => 'Too many requests. Please try again shortly.' ], 429 );
+			}
+			$window['count'] = (int) $window['count'] + 1;
+			set_transient( $rate_key, $window, max( 1, MINUTE_IN_SECONDS - ( $now - (int) $window['start'] ) ) );
+		}
+
 		// Get entry ID if editing (to exclude from booking calculations)
 		$entry_id = isset( $_POST['entry_id'] ) ? absint( $_POST['entry_id'] ) : null;
 

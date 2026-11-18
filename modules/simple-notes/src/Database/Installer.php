@@ -29,16 +29,18 @@ class Installer {
 		dbDelta( $sql );
 
 		// Set default settings
-		if ( ! get_option( 'simple_notes_mention_roles' ) ) {
+		// Only seed options that do not exist yet, so an upgrade keeps stored values
+		// (e.g. notifications switched off = 0, or an empty mention-role list).
+		if ( false === get_option( 'simple_notes_mention_roles' ) ) {
 			update_option( 'simple_notes_mention_roles', array( 'administrator', 'editor', 'author' ) );
 		}
-		if ( ! get_option( 'simple_notes_email_notifications' ) ) {
+		if ( false === get_option( 'simple_notes_email_notifications' ) ) {
 			update_option( 'simple_notes_email_notifications', 1 );
 		}
-		if ( ! get_option( 'simple_notes_email_from_name' ) ) {
+		if ( false === get_option( 'simple_notes_email_from_name' ) ) {
 			update_option( 'simple_notes_email_from_name', get_bloginfo( 'name' ) );
 		}
-		if ( ! get_option( 'simple_notes_email_from_email' ) ) {
+		if ( false === get_option( 'simple_notes_email_from_email' ) ) {
 			update_option( 'simple_notes_email_from_email', get_option( 'admin_email' ) );
 		}
 

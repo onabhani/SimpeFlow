@@ -298,7 +298,11 @@
                     displayError(response.data.message || 'Unable to calculate schedule');
                 }
             },
-            error: function() {
+            error: function(xhr) {
+                if (xhr && xhr.status === 429) {
+                    displayError('Too many requests. Please wait a minute and try again.');
+                    return;
+                }
                 displayError('Network error. Please try again.');
             }
         });

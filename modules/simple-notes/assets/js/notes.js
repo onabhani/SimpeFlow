@@ -189,8 +189,11 @@ window.SimpleNotes = {
 				if (response.success && response.data.length > 0) {
 					var html = "";
 					response.data.forEach(function(user) {
-						html += `<div class="mention-item" data-username="${user.username}" data-display="${user.display_name}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px;">`;
-						html += `<strong>${user.display_name}</strong> <span style="color: #666;">@${user.username}</span>`;
+						// display_name is user-editable and may contain quotes or markup.
+						var uname = self.escapeHtml(user.username);
+						var dname = self.escapeHtml(user.display_name);
+						html += `<div class="mention-item" data-username="${uname}" data-display="${dname}" style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid #eee; font-size: 13px;">`;
+						html += `<strong>${dname}</strong> <span style="color: #666;">@${uname}</span>`;
 						html += `</div>`;
 					});
 					dropdown.html(html).show();
@@ -371,6 +374,15 @@ window.SimpleNotes = {
 
 			self.deleteNote(noteId, entityId);
 		});
+	},
+
+	escapeHtml: function(value) {
+		return String(value == null ? '' : value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
 	},
 
 	processMentions: function(content) {

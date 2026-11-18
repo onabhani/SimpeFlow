@@ -680,8 +680,13 @@ class FormSettings {
 		$form_id = isset( $_POST['form_id'] ) ? absint( $_POST['form_id'] ) : 0;
 
 		// Verify nonce
-		if ( ! wp_verify_nonce( $_POST['sfa_prod_nonce'], 'sfa_prod_save_' . $form_id ) ) {
+		if ( ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['sfa_prod_nonce'] ?? '' ) ), 'sfa_prod_save_' . $form_id ) ) {
 			wp_die( 'Security check failed.' );
+		}
+
+		// Same capability Gravity Forms requires to open the form settings screen.
+		if ( ! current_user_can( 'gravityforms_edit_forms' ) ) {
+			wp_die( 'Insufficient permissions.' );
 		}
 
 		// Get form

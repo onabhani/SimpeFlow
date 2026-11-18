@@ -115,7 +115,8 @@ function sfa_handle_zip_download() {
 				$host = wp_parse_url( $it['url'], PHP_URL_HOST );
 				if ( $host && in_array( $host, $allowed, true ) ) {
 					$tmp = wp_tempnam( 'sfa_remote' );
-					$resp = wp_remote_get( $it['url'], array( 'timeout'=>20, 'stream'=>true, 'filename'=>$tmp ) );
+					// wp_safe_remote_get rejects private/loopback hosts and non-http(s) schemes (SSRF guard).
+					$resp = wp_safe_remote_get( $it['url'], array( 'timeout'=>20, 'stream'=>true, 'filename'=>$tmp ) );
 					if ( ! is_wp_error( $resp ) && 200 === wp_remote_retrieve_response_code( $resp ) && file_exists( $tmp ) ) {
 						$total_remote += filesize( $tmp );
 						if ( $total_remote <= $limit ) $files[] = array( 'type'=>'remote', 'path'=>$tmp, 'inzip'=>$sub . '/' . $name );

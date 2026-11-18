@@ -55,7 +55,12 @@ class ScheduleView {
 		}
 
 		// Get current month or requested month
-		$month = isset( $_GET['month'] ) ? sanitize_text_field( $_GET['month'] ) : current_time( 'Y-m' );
+		$month = isset( $_GET['month'] ) ? sanitize_text_field( wp_unslash( $_GET['month'] ) ) : current_time( 'Y-m' );
+
+		// Reject malformed input instead of letting DateTime throw an uncaught exception.
+		if ( ! preg_match( '/^\d{4}-(0[1-9]|1[0-2])$/', $month ) ) {
+			$month = current_time( 'Y-m' );
+		}
 
 		// Parse month
 		$date = new \DateTime( $month . '-01' );

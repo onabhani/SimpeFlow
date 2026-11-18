@@ -44,16 +44,25 @@ class FrontendCalendar {
 	 */
 	public function render_shortcode( $atts ) {
 		$atts = shortcode_atts( [
-			'require_login' => 'no',
+			'require_login' => 'yes',
 		], $atts );
 
-		// Check login requirement
-		if ( $atts['require_login'] === 'yes' && ! is_user_logged_in() ) {
-			return '<p>You must be logged in to view the production schedule.</p>';
+		// The schedule lists order IDs, dates and staff names, so by default only
+		// workflow staff may see it. require_login="no" keeps an explicitly public page.
+		if ( $atts['require_login'] !== 'no' && ! self::current_user_is_staff() ) {
+			if ( is_user_logged_in() ) {
+				return '<p>' . esc_html__( 'Your account does not have access to the production schedule.', 'simpleflow' ) . '</p>';
+			}
+			return '<p>' . esc_html__( 'You must be logged in to view the production schedule.', 'simpleflow' ) . '</p>';
 		}
 
 		// Get current month or requested month
-		$month = isset( $_GET['prod_month'] ) ? sanitize_text_field( $_GET['prod_month'] ) : current_time( 'Y-m' );
+		$month = isset( $_GET['prod_month'] ) ? sanitize_text_field( wp_unslash( $_GET['prod_month'] ) ) : current_time( 'Y-m' );
+
+		// Reject malformed input instead of letting DateTime throw an uncaught exception.
+		if ( ! preg_match( '/^\d{4}-(0[1-9]|1[0-2])$/', $month ) ) {
+			$month = current_time( 'Y-m' );
+		}
 
 		// Parse month
 		$date = new \DateTime( $month . '-01' );
@@ -1003,10 +1012,23 @@ class FrontendCalendar {
 	}
 
 	/**
+	 * Workflow staff: any role with the Gravity Flow inbox or GF entry access.
+	 * Excludes logged-in accounts with no workflow role (terminated, time-clock only, no role).
+	 */
+	private static function current_user_is_staff(): bool {
+		return is_user_logged_in()
+			&& ( current_user_can( 'gravityflow_inbox' ) || current_user_can( 'gravityforms_view_entries' ) );
+	}
+
+	/**
 	 * AJAX handler: Search for an entry with an active booking
 	 */
 	public function ajax_search_entry() {
 		check_ajax_referer( 'sfa_prod_frontend_search', 'nonce' );
+
+		if ( ! self::current_user_is_staff() ) {
+			wp_send_json_error( [ 'message' => __( 'You do not have permission to search entries.', 'simpleflow' ) ], 403 );
+		}
 
 		if ( ! is_user_logged_in() ) {
 			wp_send_json_error( [ 'message' => __( 'You must be logged in.', 'simpleflow' ) ] );
@@ -1128,11 +1150,15 @@ class FrontendCalendar {
 							).show();
 						}
 					},
-					error: function() {
+					error: function(xhr) {
 						$('#sfa-entry-search-btn').prop('disabled', false);
 						$('#sfa-entry-search-loading').hide();
-						$('#sfa-entry-search-result').html(
-							'<div class="sfa-prod-search-error"><?php echo esc_js( __( 'Network error. Please try again.', 'simpleflow' ) ); ?></div>'
+						var msg = '<?php echo esc_js( __( 'Network error. Please try again.', 'simpleflow' ) ); ?>';
+						if (xhr && xhr.status === 403 && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) {
+							msg = xhr.responseJSON.data.message;
+						}
+						$('#sfa-entry-search-result').empty().append(
+							$('<div class="sfa-prod-search-error"></div>').text(msg)
 						).show();
 					}
 				});
