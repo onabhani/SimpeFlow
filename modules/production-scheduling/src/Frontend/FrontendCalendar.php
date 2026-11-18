@@ -553,18 +553,26 @@ class FrontendCalendar {
 
 		// Get used capacity per day
 		$used_per_day = [];
-		$results = $wpdb->get_results(
+		// Only bookings that can still occupy a day in [today, +90d]: skip finished
+		// orders (end date before today) so this does not scan the whole booking
+		// history on every page load. Missing or empty end dates are kept, matching
+		// the month calendar query.
+		$results = $wpdb->get_results( $wpdb->prepare(
 			"SELECT em.meta_value
 			FROM {$wpdb->prefix}gf_entry_meta em
 			INNER JOIN {$wpdb->prefix}gf_entry e ON em.entry_id = e.id
 			LEFT JOIN {$wpdb->prefix}gf_entry_meta bs
 				ON em.entry_id = bs.entry_id
 				AND bs.meta_key = '_prod_booking_status'
+			LEFT JOIN {$wpdb->prefix}gf_entry_meta end_meta
+				ON em.entry_id = end_meta.entry_id
+				AND end_meta.meta_key = '_prod_end_date'
 			WHERE em.meta_key = '_prod_slots_allocation'
 			AND e.status = 'active'
-			AND (bs.meta_value IS NULL OR bs.meta_value != 'canceled')",
-			ARRAY_A
-		);
+			AND (bs.meta_value IS NULL OR bs.meta_value != 'canceled')
+			AND (end_meta.meta_value IS NULL OR end_meta.meta_value = '' OR end_meta.meta_value >= %s)",
+			$today->format( 'Y-m-d' )
+		), ARRAY_A );
 
 		foreach ( $results as $row ) {
 			$allocation = json_decode( $row['meta_value'], true );
@@ -814,6 +822,39 @@ class FrontendCalendar {
 		// Flatten bookings into a list of entries
 		$entries_list = [];
 
+		// Prefetch booking meta and creators for all listed entries in two queries
+		// instead of six queries per entry.
+		$entry_ids = [];
+		foreach ( $bookings as $day_info ) {
+			foreach ( (array) ( $day_info['entries'] ?? [] ) as $entry_info ) {
+				$entry_ids[] = (int) $entry_info['entry_id'];
+			}
+		}
+		$entry_ids = array_values( array_unique( array_filter( $entry_ids ) ) );
+		$meta_map  = [];
+		$creators  = [];
+		if ( $entry_ids ) {
+			global $wpdb;
+			$id_placeholders = implode( ',', array_fill( 0, count( $entry_ids ), '%d' ) );
+			$meta_rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT entry_id, meta_key, meta_value FROM {$wpdb->prefix}gf_entry_meta
+				WHERE entry_id IN ($id_placeholders)
+				AND meta_key IN ('_install_date', '_prod_start_date', '_prod_end_date', '_prod_lm_required', '_prod_booked_at')",
+				...$entry_ids
+			), ARRAY_A );
+			foreach ( $meta_rows as $row ) {
+				$meta_map[ (int) $row['entry_id'] ][ $row['meta_key'] ] = maybe_unserialize( $row['meta_value'] );
+			}
+			// Entry creator read from gf_entry (more reliable than stored meta).
+			$creator_rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT id, created_by FROM {$wpdb->prefix}gf_entry WHERE id IN ($id_placeholders)",
+				...$entry_ids
+			), ARRAY_A );
+			foreach ( $creator_rows as $row ) {
+				$creators[ (int) $row['id'] ] = (int) $row['created_by'];
+			}
+		}
+
 		foreach ( $bookings as $day_date => $day_info ) {
 			if ( empty( $day_info['entries'] ) ) {
 				continue;
@@ -823,19 +864,13 @@ class FrontendCalendar {
 				$entry_id = $entry_info['entry_id'];
 
 				if ( ! isset( $entries_list[ $entry_id ] ) ) {
-					// Load full booking data for this entry
-					$install_date = gform_get_meta( $entry_id, '_install_date' );
-					$prod_start = gform_get_meta( $entry_id, '_prod_start_date' );
-					$prod_end = gform_get_meta( $entry_id, '_prod_end_date' );
-					$lm_required = gform_get_meta( $entry_id, '_prod_lm_required' );
-					$booked_at = gform_get_meta( $entry_id, '_prod_booked_at' );
-
-					// Read entry creator directly from gf_entry (more reliable than stored meta)
-					global $wpdb;
-					$booked_by = (int) $wpdb->get_var( $wpdb->prepare(
-						"SELECT created_by FROM {$wpdb->prefix}gf_entry WHERE id = %d",
-						$entry_id
-					) );
+					$meta         = $meta_map[ (int) $entry_id ] ?? [];
+					$install_date = $meta['_install_date'] ?? false;
+					$prod_start   = $meta['_prod_start_date'] ?? false;
+					$prod_end     = $meta['_prod_end_date'] ?? false;
+					$lm_required  = $meta['_prod_lm_required'] ?? false;
+					$booked_at    = $meta['_prod_booked_at'] ?? false;
+					$booked_by    = $creators[ (int) $entry_id ] ?? 0;
 
 					$entries_list[ $entry_id ] = [
 						'entry_id' => $entry_id,
