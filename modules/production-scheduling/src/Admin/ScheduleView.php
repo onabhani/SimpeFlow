@@ -195,18 +195,26 @@ class ScheduleView {
 
 		// Get used capacity per day for the range
 		$used_per_day = [];
-		$results = $wpdb->get_results(
+		// Only bookings that can still occupy a day in [today, +90d]: skip finished
+		// orders (end date before today) so this does not scan the whole booking
+		// history on every page load. Missing or empty end dates are kept, matching
+		// the month calendar query.
+		$results = $wpdb->get_results( $wpdb->prepare(
 			"SELECT em.meta_value
 			FROM {$wpdb->prefix}gf_entry_meta em
 			INNER JOIN {$wpdb->prefix}gf_entry e ON em.entry_id = e.id
 			LEFT JOIN {$wpdb->prefix}gf_entry_meta bs
 				ON em.entry_id = bs.entry_id
 				AND bs.meta_key = '_prod_booking_status'
+			LEFT JOIN {$wpdb->prefix}gf_entry_meta end_meta
+				ON em.entry_id = end_meta.entry_id
+				AND end_meta.meta_key = '_prod_end_date'
 			WHERE em.meta_key = '_prod_slots_allocation'
 			AND e.status = 'active'
-			AND (bs.meta_value IS NULL OR bs.meta_value != 'canceled')",
-			ARRAY_A
-		);
+			AND (bs.meta_value IS NULL OR bs.meta_value != 'canceled')
+			AND (end_meta.meta_value IS NULL OR end_meta.meta_value = '' OR end_meta.meta_value >= %s)",
+			$today->format( 'Y-m-d' )
+		), ARRAY_A );
 
 		foreach ( $results as $row ) {
 			$allocation = json_decode( $row['meta_value'], true );
@@ -741,7 +749,7 @@ class ScheduleView {
 			$wpdb->prepare(
 				"SELECT entry_id, meta_key, meta_value
 				FROM {$wpdb->prefix}gf_entry_meta
-				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking')
+				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking', 'workflow_final_status')
 				AND entry_id IN (
 					SELECT DISTINCT em.entry_id
 					FROM {$wpdb->prefix}gf_entry_meta em
@@ -769,7 +777,7 @@ class ScheduleView {
 			$wpdb->prepare(
 				"SELECT entry_id, meta_key, meta_value
 				FROM {$wpdb->prefix}gf_entry_meta
-				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking')
+				WHERE meta_key IN ('_prod_lm_required', '_prod_slots_allocation', '_prod_start_date', '_prod_end_date', '_install_date', '_prod_booking_status', '_prod_booked_at', '_prod_booked_by', '_prod_daily_capacity_at_booking', 'workflow_final_status')
 				AND entry_id IN (
 					SELECT DISTINCT inst.entry_id
 					FROM {$wpdb->prefix}gf_entry_meta inst
@@ -808,9 +816,26 @@ class ScheduleView {
 		$bookings = [];
 		$form_title_cache = [];
 
+		// Resolve entry properties via GFAPI in one call instead of one get_entry per booking.
+		$gf_entries = [];
+		if ( $entries ) {
+			$entry_ids = array_map( 'intval', array_keys( $entries ) );
+			$fetched   = \GFAPI::get_entries(
+				0,
+				[ 'field_filters' => [ [ 'key' => 'id', 'operator' => 'in', 'value' => $entry_ids ] ] ],
+				null,
+				[ 'offset' => 0, 'page_size' => count( $entry_ids ) ]
+			);
+			if ( is_array( $fetched ) ) {
+				foreach ( $fetched as $fetched_entry ) {
+					$gf_entries[ (int) $fetched_entry['id'] ] = $fetched_entry;
+				}
+			}
+		}
+
 		foreach ( $entries as $entry_id => $entry_data ) {
-			// Resolve entry properties via GFAPI so we don't bypass GF caching.
-			$gf_entry = \GFAPI::get_entry( $entry_id );
+			// Fall back to a single lookup if the batch call missed this entry.
+			$gf_entry = $gf_entries[ (int) $entry_id ] ?? \GFAPI::get_entry( $entry_id );
 			if ( is_wp_error( $gf_entry ) || ! is_array( $gf_entry ) ) {
 				$form_id            = null;
 				$entry_created_by   = 0;
@@ -834,8 +859,8 @@ class ScheduleView {
 			// Get capacity at time of booking
 			$capacity_at_booking = isset( $entry_data['daily_capacity_at_booking'] ) ? (int) $entry_data['daily_capacity_at_booking'] : null;
 
-			// Sync booking status with GravityFlow workflow status
-			$workflow_status = gform_get_meta( $entry_id, 'workflow_final_status' );
+			// Sync booking status with GravityFlow workflow status (prefetched in load query)
+			$workflow_status = $entry_data['workflow_final_status'] ?? '';
 			if ( 'cancelled' === $workflow_status || 'canceled' === $workflow_status ) {
 				if ( 'canceled' !== $booking_status ) {
 					gform_update_meta( $entry_id, '_prod_booking_status', 'canceled' );
