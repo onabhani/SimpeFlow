@@ -5,7 +5,10 @@ if ( ! defined( 'SFA_DISABLE_THEME_TEMPLATE' ) ) define( 'SFA_DISABLE_THEME_TEMP
 
 function sfa_can_view( $form, $entry ) {
 	if ( function_exists( 'gravity_flow' ) ) {
-		return is_user_logged_in();
+		// Workflow staff only; plain logged-in accounts (no role, terminated,
+		// time-clock only) must not see order attachments.
+		return is_user_logged_in()
+			&& ( current_user_can( 'gravityflow_inbox' ) || current_user_can( 'gravityforms_view_entries' ) );
 	}
 	return current_user_can( 'gravityforms_view_entries' );
 }
@@ -36,9 +39,21 @@ function sfa_url_to_path( $url ) {
 	$u = preg_replace( '#^https?://#i', '//', $url );
 	$b = preg_replace( '#^https?://#i', '//', $baseurl );
 	if ( strpos( $u, $b ) !== 0 ) return false;
-	$rel  = ltrim( substr( $url, strlen( $baseurl ) ), '/' );
+	// Slice the scheme-less forms so an http/https mismatch cannot shift the offset.
+	$rel  = ltrim( rawurldecode( (string) parse_url( substr( $u, strlen( $b ) ), PHP_URL_PATH ) ), '/' );
 	$path = wp_normalize_path( $basedir . $rel );
-	return file_exists( $path ) ? $path : false;
+	if ( ! file_exists( $path ) ) return false;
+
+	// Containment check: "../" segments must not escape the uploads directory
+	// (e.g. .../uploads/../../wp-config.php would otherwise be zipped).
+	$real_path = realpath( $path );
+	$real_base = realpath( $basedir );
+	if ( false === $real_path || false === $real_base ) return false;
+	$real_path = wp_normalize_path( $real_path );
+	$real_base = trailingslashit( wp_normalize_path( $real_base ) );
+	if ( 0 !== strpos( $real_path, $real_base ) || ! is_file( $real_path ) ) return false;
+
+	return $real_path;
 }
 
 function sfa_format_bytes( $bytes ) {
