@@ -26,11 +26,18 @@ class AjaxEndpoints {
 		if ( ! is_user_logged_in() ) {
 			$ip       = isset( $_SERVER['REMOTE_ADDR'] ) ? sanitize_text_field( wp_unslash( $_SERVER['REMOTE_ADDR'] ) ) : 'unknown';
 			$rate_key = 'sfa_prod_preview_rl_' . md5( $ip );
-			$count    = (int) get_transient( $rate_key );
-			if ( $count >= 30 ) {
+			$now      = time();
+			$window   = get_transient( $rate_key );
+			// Fixed one-minute window: keep the original start so later requests do not
+			// extend the expiry. Best-effort (not atomic), which is enough for throttling.
+			if ( ! is_array( $window ) || ( $now - (int) ( $window['start'] ?? 0 ) ) >= MINUTE_IN_SECONDS ) {
+				$window = [ 'start' => $now, 'count' => 0 ];
+			}
+			if ( (int) $window['count'] >= 30 ) {
 				wp_send_json_error( [ 'message' => 'Too many requests. Please try again shortly.' ], 429 );
 			}
-			set_transient( $rate_key, $count + 1, MINUTE_IN_SECONDS );
+			$window['count'] = (int) $window['count'] + 1;
+			set_transient( $rate_key, $window, max( 1, MINUTE_IN_SECONDS - ( $now - (int) $window['start'] ) ) );
 		}
 
 		// Get entry ID if editing (to exclude from booking calculations)

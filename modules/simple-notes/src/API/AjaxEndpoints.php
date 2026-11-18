@@ -88,9 +88,15 @@ class AjaxEndpoints {
 			// typed @login cannot email accounts outside the workflow (no role, terminated).
 			$mention_roles = (array) get_option( 'simple_notes_mention_roles', array( 'administrator', 'editor', 'author' ) );
 
+			$seen_ids = array();
 			foreach ( array_unique( $mentioned_usernames ) as $username ) {
 				$user = get_user_by( 'login', $username );
-				if ( $user && (
+				// Logins match case-insensitively, so @Name and @name can be the same user.
+				if ( ! $user || isset( $seen_ids[ $user->ID ] ) ) {
+					continue;
+				}
+				$seen_ids[ $user->ID ] = true;
+				if ( (
 					array_intersect( (array) $user->roles, $mention_roles )
 					|| user_can( $user, 'gravityflow_inbox' )
 					|| user_can( $user, 'gravityforms_view_entries' )

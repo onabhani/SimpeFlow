@@ -50,7 +50,10 @@ class FrontendCalendar {
 		// The schedule lists order IDs, dates and staff names, so by default only
 		// workflow staff may see it. require_login="no" keeps an explicitly public page.
 		if ( $atts['require_login'] !== 'no' && ! self::current_user_is_staff() ) {
-			return '<p>You must be logged in to view the production schedule.</p>';
+			if ( is_user_logged_in() ) {
+				return '<p>' . esc_html__( 'Your account does not have access to the production schedule.', 'simpleflow' ) . '</p>';
+			}
+			return '<p>' . esc_html__( 'You must be logged in to view the production schedule.', 'simpleflow' ) . '</p>';
 		}
 
 		// Get current month or requested month
@@ -1112,11 +1115,15 @@ class FrontendCalendar {
 							).show();
 						}
 					},
-					error: function() {
+					error: function(xhr) {
 						$('#sfa-entry-search-btn').prop('disabled', false);
 						$('#sfa-entry-search-loading').hide();
-						$('#sfa-entry-search-result').html(
-							'<div class="sfa-prod-search-error"><?php echo esc_js( __( 'Network error. Please try again.', 'simpleflow' ) ); ?></div>'
+						var msg = '<?php echo esc_js( __( 'Network error. Please try again.', 'simpleflow' ) ); ?>';
+						if (xhr && xhr.status === 403 && xhr.responseJSON && xhr.responseJSON.data && xhr.responseJSON.data.message) {
+							msg = xhr.responseJSON.data.message;
+						}
+						$('#sfa-entry-search-result').empty().append(
+							$('<div class="sfa-prod-search-error"></div>').text(msg)
 						).show();
 					}
 				});
