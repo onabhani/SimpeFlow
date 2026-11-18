@@ -19,8 +19,21 @@ class AjaxEndpoints {
 		add_action( 'wp_ajax_simple_notes_test_email', [ $this, 'ajax_test_email' ] );
 	}
 
+	/**
+	 * Workflow staff: any role with the Gravity Flow inbox or GF entry access.
+	 * Plain logged-in accounts (no role, terminated, time-clock only) are excluded.
+	 */
+	private function current_user_is_staff(): bool {
+		return is_user_logged_in()
+			&& ( current_user_can( 'gravityflow_inbox' ) || current_user_can( 'gravityforms_view_entries' ) );
+	}
+
 	public function ajax_search_users() {
 		check_ajax_referer( 'simple_notes_nonce', 'nonce' );
+
+		if ( ! $this->current_user_is_staff() ) {
+			wp_send_json_error( 'Permission denied', 403 );
+		}
 
 		$query = sanitize_text_field( $_POST['query'] );
 		$mention_roles = get_option( 'simple_notes_mention_roles', array( 'administrator', 'editor', 'author' ) );
@@ -38,11 +51,12 @@ class AjaxEndpoints {
 
 		$results = array();
 		foreach ( $users as $user ) {
+			// No email in the response: the dropdown never shows it and it would let
+			// any caller harvest staff addresses.
 			$results[] = array(
 				'id'           => $user->ID,
 				'username'     => $user->user_login,
 				'display_name' => $user->display_name,
-				'email'        => $user->user_email,
 			);
 		}
 
@@ -52,7 +66,7 @@ class AjaxEndpoints {
 	public function ajax_add_note() {
 		check_ajax_referer( 'simple_notes_nonce', 'nonce' );
 
-		if ( ! current_user_can( 'read' ) ) {
+		if ( ! $this->current_user_is_staff() ) {
 			wp_send_json_error( 'Permission denied' );
 		}
 
@@ -70,9 +84,23 @@ class AjaxEndpoints {
 		$mentioned_users     = array();
 
 		if ( ! empty( $mentioned_usernames ) ) {
-			foreach ( $mentioned_usernames as $username ) {
+			// Notify only workflow staff or users in the configured mention roles, so a
+			// typed @login cannot email accounts outside the workflow (no role, terminated).
+			$mention_roles = (array) get_option( 'simple_notes_mention_roles', array( 'administrator', 'editor', 'author' ) );
+
+			$seen_ids = array();
+			foreach ( array_unique( $mentioned_usernames ) as $username ) {
 				$user = get_user_by( 'login', $username );
-				if ( $user ) {
+				// Logins match case-insensitively, so @Name and @name can be the same user.
+				if ( ! $user || isset( $seen_ids[ $user->ID ] ) ) {
+					continue;
+				}
+				$seen_ids[ $user->ID ] = true;
+				if ( (
+					array_intersect( (array) $user->roles, $mention_roles )
+					|| user_can( $user, 'gravityflow_inbox' )
+					|| user_can( $user, 'gravityforms_view_entries' )
+				) ) {
 					$mentioned_users[] = array(
 						'id'           => $user->ID,
 						'username'     => $user->user_login,
@@ -141,6 +169,10 @@ class AjaxEndpoints {
 
 	public function ajax_get_notes() {
 		check_ajax_referer( 'simple_notes_nonce', 'nonce' );
+
+		if ( ! $this->current_user_is_staff() ) {
+			wp_send_json_error( 'Permission denied', 403 );
+		}
 
 		$entity_type     = sanitize_text_field( $_POST['entity_type'] );
 		$entity_id       = sanitize_text_field( $_POST['entity_id'] );

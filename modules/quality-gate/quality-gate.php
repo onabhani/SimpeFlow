@@ -3,7 +3,7 @@
  * SFA Quality Gate
  * Mode: Per-item from Upload field (Advanced tab)
  * Honors GF "Required" on QC field
- * Version: 2.3.25
+ * Version: 2.3.26
  * Author: Omar Alnabhani (hdqah.com)
  */
 
@@ -20,7 +20,7 @@ if ( ! function_exists( 'sfa_qg_log' ) ) {
 	}
 }
 
-if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.25');
+if ( ! defined( 'SFA_QG_VER' ) ) define( 'SFA_QG_VER', '2.3.26');
 if ( ! defined( 'SFA_QG_DIR' ) ) define( 'SFA_QG_DIR', plugin_dir_path( __FILE__ ) );
 if ( ! defined( 'SFA_QG_URL' ) ) define( 'SFA_QG_URL', plugin_dir_url( __FILE__ ) );
 
@@ -319,6 +319,11 @@ add_action( 'gform_editor_js', function () { ?>
  * ----------------------------------------------------------------*/
 function sfa_qg_ajax_items() {
 	check_ajax_referer( 'sfa_qg', 'nonce' );
+
+	// Returns raw entry field values, so restrict to workflow staff.
+	if ( ! current_user_can( 'gravityflow_inbox' ) && ! current_user_can( 'gravityforms_view_entries' ) ) {
+		wp_send_json_error( array( 'message' => 'forbidden' ), 403 );
+	}
 
 	$eid       = isset( $_POST['eid'] )      ? absint( $_POST['eid'] )      : 0;
 	$source_id = isset( $_POST['sourceId'] ) ? absint( $_POST['sourceId'] ) : 0;

@@ -562,7 +562,9 @@ class BookingHandler {
 
 			// Read admin capacity choice BEFORE the blocking check so over_capacity
 			// can bypass the "date fully booked" block.
-			// First check transient (set by AJAX before form submission), then fall back to POST.
+			// The choice comes only from the transient written by ajax_store_capacity_choice(),
+			// which is nonce + manage_options gated. There is deliberately no $_POST fallback:
+			// a raw POST field would let any form submitter bypass the daily capacity cap.
 			$transient_key = 'sfa_capacity_choice_' . $entry_id . '_' . get_current_user_id();
 			$capacity_choice = get_transient( $transient_key );
 
@@ -570,8 +572,7 @@ class BookingHandler {
 				// Clear the transient after reading (one-time use)
 				delete_transient( $transient_key );
 			} else {
-				// Fall back to POST (legacy support)
-				$capacity_choice = isset( $_POST['sfa_capacity_choice'] ) ? sanitize_text_field( $_POST['sfa_capacity_choice'] ) : '';
+				$capacity_choice = '';
 			}
 
 			// For MANUAL bookings: check if chosen date has available capacity

@@ -2,7 +2,7 @@
 /**
  * Plugin Name:       Simple Flow Attachment
  * Description:       Grouped file attachments for Gravity Forms/Gravity Flow (admin + inbox). Collapsible UI, badges, Download All/Selected (ZIP), remote ZIP with host controls.
- * Version:           1.6.9.1
+ * Version:           1.6.9.2
  * Author:            Omar Alnabhani
  * Author URI:        https://hdqah.com
  * Requires at least: 6.0
@@ -15,7 +15,7 @@ defined( 'ABSPATH' ) || exit;
 if ( defined( 'SFA_LOADED' ) ) { return; }
 define( 'SFA_LOADED', true );
 
-define( 'SFA_VER', '1.6.9.1' );
+define( 'SFA_VER', '1.6.9.2' );
 define( 'SFA_FILE', __FILE__ );
 define( 'SFA_DIR', plugin_dir_path( __FILE__ ) );
 define( 'SFA_URL', plugin_dir_url( __FILE__ ) );
